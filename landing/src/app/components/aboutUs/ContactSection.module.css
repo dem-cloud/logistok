@@ -1,0 +1,38 @@
+.aboutContact {
+    padding: 5rem 10rem;
+    margin-bottom: 5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.title {
+    font-size: 32px;
+    font-weight: bold;
+}
+  
+.subtitle {
+    color: var(--foreground-secondary);
+    margin-top: 1rem;
+    font-size: 18px;
+    max-width: 900px;
+}
+
+.buttons {
+    display: flex;
+    gap: 2rem;
+    margin-top: 3rem;
+}
+
+@media (max-width:850px) {
+    .aboutContact {
+        padding: 5rem;
+    }
+    
+    .buttons {
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+}

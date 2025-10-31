@@ -1,0 +1,111 @@
+.resendVerificationLink {
+    display: flex;
+    justify-content: center;
+    position: relative;
+    padding: 10rem 0;
+    min-height: 100vh;
+    width: 100%;
+    background-color: var(--theme-color);
+}
+
+.logo {
+    position: absolute;
+    top: 2rem;
+    left: 2rem;
+}
+
+.container {
+    width: 550px;
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: height 0.2s ease-in-out,width 0.4s ease-in-out;
+    position: relative;
+}
+
+.slidesWrapper {
+    position: relative;
+    width: 100%;
+}
+  
+.slide {
+    width: 100%;
+    padding: 2rem 3rem 3rem;
+    transition: transform 0.4s ease-in-out;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+  
+.activeSlide {
+    transform: translateX(0);
+    position: relative;
+}
+  
+.leftSlide {
+    transform: translateX(-100%);
+}
+  
+.rightSlide {
+    transform: translateX(100%);
+}
+
+.title {
+    margin-bottom: .5rem;
+    font-weight: 600;
+    font-size: 18px;
+    text-align: center;
+}
+
+.subtitle {
+    margin-bottom: 2rem;
+    font-size: 14px;
+    text-align: center;
+}
+
+.form {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2rem;
+}
+
+.input {
+    height: 3rem;
+    width: 100%;
+    border-radius: 5px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    padding-left: 1rem;
+    box-sizing: border-box;
+}
+
+.input:hover {
+    outline: none;
+    border-color: rgba(0, 0, 0, 0.4);
+}
+
+.input:focus {
+    outline: none;
+    border: 1px solid #608aeb;
+    box-shadow: 0 0 0 1px #608aeb;
+}
+
+.error {
+    border: 1px solid red !important;
+}
+
+@media (max-width: 930px) {
+    .logo {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
+
+@media (max-width: 730px) {
+    .container {
+        width: 400px
+    }
+}

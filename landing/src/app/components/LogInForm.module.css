@@ -1,0 +1,52 @@
+.login {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.labelsAndInputs {
+    display: flex;
+    flex-direction: column;
+}
+
+.message {
+    color: red;
+    font-size: 12px;
+}
+
+.label {
+    font-weight: 600;
+    margin-bottom: .5rem;
+}
+
+.input {
+    height: 3rem;
+    width: 100%;
+    border-radius: 5px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    padding-left: 1rem;
+    box-sizing: border-box;
+}
+
+.input:hover {
+    outline: none;
+    border-color: rgba(0, 0, 0, 0.4);
+}
+
+.input:focus {
+    outline: none;
+    border: 1px solid #608aeb;
+    box-shadow: 0 0 0 1px #608aeb;
+}
+
+.error {
+    border: 1px solid red !important;
+}
+
+.forgot {
+    margin: 1rem 0;
+    display: flex;
+    align-self: flex-end;
+    font-size: 14px;
+    color: var(--foreground-secondary);
+}

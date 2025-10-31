@@ -1,0 +1,29 @@
+.terms { 
+    margin-top: 4rem;
+    padding: 2rem 5rem 10rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.title {
+    font-size: 32px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.lastUpdate {
+    color: var(--foreground-secondary);
+}
+  
+.paragraph {
+    color: var(--foreground-secondary);
+    margin-top: 1rem;
+    font-size: 18px;
+    max-width: 900px;
+}
+
+.paragraph p {
+    padding-left: 2rem;
+}

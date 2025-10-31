@@ -1,0 +1,55 @@
+.openPositions {
+    padding: 0 5rem;
+    margin-top: 6rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2rem;
+}
+
+.card {
+    padding: 2rem;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin: 0 5rem;
+}
+
+.cardTitle {
+    font-size: 24px;
+    color: var(--theme-color);
+    font-weight: 600;
+}
+
+.cardSubtitle {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+}
+
+.cardSubtitle span {
+    color: var(--foreground-secondary);
+}
+
+.notAvailablePositions {
+    font-size: 24px;
+    color: var(--foreground-secondary);
+    font-weight: 600;
+    align-self: center;
+}
+
+@media (max-width: 955px) {
+    .card {
+        margin: 0;
+    }
+}
+
+@media (max-width: 795px) {
+    .card {
+        height: 14rem;
+        text-align: center;
+        align-items: center;
+    }
+}

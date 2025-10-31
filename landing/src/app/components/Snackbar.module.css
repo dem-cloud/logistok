@@ -1,0 +1,43 @@
+.snackbar {
+    position: fixed;
+    bottom: 20px;
+    right: 2rem;
+    background-color: #333;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 16px;
+    font-weight: 600;
+    opacity: 0;
+    animation: fadeInOut 3s forwards;
+}
+
+.success {
+    background-color: #4CAF50;
+}
+
+.error {
+    background-color: #f44336;
+}
+
+@keyframes fadeInOut {
+    0% {
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+@media (max-width: 950px) {
+    .snackbar {
+        right: 50%;
+        transform: translateX(-50%);
+    }
+}

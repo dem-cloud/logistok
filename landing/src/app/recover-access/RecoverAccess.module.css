@@ -1,0 +1,69 @@
+.recoverAccess {
+    display: flex;
+    justify-content: center;
+    position: relative;
+    padding: 10rem 0;
+    min-height: 100vh;
+    width: 100%;
+    background-color: var(--theme-color);
+}
+
+.logo {
+    position: absolute;
+    top: 2rem;
+    left: 2rem;
+}
+
+.container {
+    width: 500px;
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: height 0.4s ease-in-out, width 0.4s ease-in-out;
+}
+  
+.slidesWrapper {
+    position: relative;
+    width: 100%;
+}
+  
+.slide {
+    width: 100%;
+    padding: 2rem 3rem 3rem;
+    transition: transform 0.4s ease-in-out;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+  
+.activeSlide {
+    transform: translateX(0);
+    position: relative;
+}
+  
+.leftSlide {
+    transform: translateX(-100%);
+}
+  
+.rightSlide {
+    transform: translateX(100%);
+}
+
+.link {
+    color: var(--theme-color);
+    font-size: 16px;
+}
+
+@media (max-width: 930px) {
+    .logo {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
+
+@media (max-width: 730px) {
+    .container {
+        width: 400px
+    }
+}

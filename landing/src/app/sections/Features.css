@@ -1,0 +1,42 @@
+.features-section {
+    padding: 2rem 10rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.fs-title {
+    font-size: 28px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.fs-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+    margin: 4rem auto;
+    justify-content: center;
+}
+
+
+@media (max-width: 1525px) {
+
+    .features-section {
+        padding: 2rem 5rem;
+    }
+
+}
+
+@media (max-width: 1400px) {
+
+    .fs-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 760px) {
+    .fs-cards {
+        grid-template-columns: repeat(1, 1fr);
+    }
+}

@@ -1,0 +1,23 @@
+[
+    {
+        "id": 1,
+        "image": "/construction_yards_icon.png",
+        "title": "Κατασκευαστικές Εταιρείες",
+        "subtitle": "Διαχείριση οικοδομικών υλικών, εργαλείων και εφοδιαστικής αλυσίδας.",
+        "available": true
+    },
+    {
+        "id": 2,
+        "image": "/clothing_stores_icon.png",
+        "title": "Καταστήματα Ένδυσης",
+        "subtitle": "Παρακολούθηση αποθέματος ρούχων, μεγεθών και πωλήσεων.",
+        "available": true
+    },
+    {
+        "id": 3,
+        "image": "/rental_businesses_icon.png",
+        "title": "Επιχειρήσεις Ενοικίασης Οχημάτων",
+        "subtitle": "Διαχείριση διαθεσιμότητας στόλου, συντήρησης και κρατήσεων.",
+        "available": false
+    }
+]

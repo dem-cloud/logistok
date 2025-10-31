@@ -1,0 +1,84 @@
+
+.backdrop {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 99;
+    background-color: rgba(150, 150, 150, 0.1);
+    backdrop-filter: blur(1px);
+}
+
+.container {
+    width: 550px;
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    padding: 2rem 3rem 3rem;
+    
+    position: fixed;
+    top: 10rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+
+    animation: slideFromTop 0.5s ease-out;
+}
+
+.closing {
+    animation: slideToTop 0.5s ease-out forwards;
+}
+
+.image {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    cursor: pointer;
+}
+
+.title {
+    margin-bottom: .5rem;
+    font-weight: 600;
+    font-size: 18px;
+    text-align: center;
+}
+
+.subtitle {
+    margin-bottom: 2rem;
+    font-size: 14px;
+    text-align: center;
+}
+
+.message {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.buttons {
+    display: flex;
+    gap: 2rem;
+    width: 100%;
+}
+
+@keyframes slideFromTop {
+    from {
+        transform: translate(-50%, -100%);
+        opacity: 0;
+    }
+    to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideToTop {
+    from {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
+    to {
+        transform: translate(-50%, -100%);
+        opacity: 0;
+    }
+}

@@ -1,0 +1,72 @@
+.card {
+    width: 280px;
+    height: 430px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    background-color: #E7EDFF;
+    border-radius: 10px;
+    display: flex;
+    padding: 2rem;
+    flex-direction: column;
+    transition: transform 0.3s ease-in-out, z-index 0.3s ease-in-out;
+    position: relative;
+    overflow: hidden;
+}
+
+.title {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.subtitle {
+    margin-top: .2rem;
+    font-size: 14px;
+    color: var(--foreground-secondary);
+}
+
+.priceTextContainer {
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+}
+
+.priceText {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.secondaryPriceText {
+    margin-left: .5rem;
+    font-size: 14px;
+    color: var(--foreground-secondary);
+}
+
+.features {
+    color: var(--foreground-secondary);
+    margin-top: 2rem;
+    font-size: 12px;
+}
+
+.suggested {
+    background-color: white;
+    transform: scale(1.05);
+    z-index: 100;
+}
+
+.card:hover {
+    transform: scale(1.05);
+    z-index: 101;
+}
+
+.suggested:hover {
+    transform: scale(1.1);
+}
+
+@media (max-width: 1028px) {
+    .suggested {
+        z-index: auto;
+        transform: scale(1);
+    }
+    .suggested:hover {
+        transform: scale(1.05);
+    }
+}

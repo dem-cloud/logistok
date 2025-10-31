@@ -1,0 +1,30 @@
+.container {
+    width: 450px;
+    height: fit-content;
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: height 0.4s ease-in-out, width 0.4s ease-in-out;
+    padding: 2rem 3rem 3rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2rem;
+}
+
+.image {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+}
+
+@media (max-width: 730px) {
+    .container {
+        width: 400px
+    }
+
+    .message {
+        text-align: center;
+    }
+}

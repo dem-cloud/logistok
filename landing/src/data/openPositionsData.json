@@ -1,0 +1,17 @@
+[
+    {
+        "id": 1,
+        "position": "Frontend Developer (React)",
+        "location": "Αθήνα"
+    },
+    {
+        "id": 2,
+        "position": "Backend Developer (Node.js & SQL)",
+        "location": "Αθήνα"
+    },
+    {
+        "id": 3,
+        "position": "Υπεύθυνος Πωλήσεων & Υποστήριξης Πελατών",
+        "location": "Αθήνα"
+    }
+]

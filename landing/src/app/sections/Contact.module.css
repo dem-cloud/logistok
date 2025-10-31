@@ -1,0 +1,28 @@
+.section {
+    padding: 2rem 10rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.subtitle {
+    margin-top: .5rem;
+    color: var(--foreground-secondary);
+    text-align: center;
+}
+
+.form {
+    margin-top: 4rem;
+}
+
+@media (max-width: 1240px) {
+    .section {
+        padding: 2rem 5rem;
+    }
+}

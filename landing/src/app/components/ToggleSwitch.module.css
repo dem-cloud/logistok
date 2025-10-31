@@ -1,0 +1,44 @@
+.toggleContainer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: bold;
+}
+
+.toggleLabel {
+    color: rgb(231, 231, 231);
+    transition: color 0.3s;
+}
+
+.active {
+    color: #738ED1;
+}
+
+.toggleSwitch {
+    width: 52px;
+    height: 24px;
+    background-color: rgb(231, 231, 231);
+    border-radius: 20px;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.toggleCircle {
+    width: 20px;
+    height: 20px;
+    background-color: #738ED1;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    transition: transform 0.3s ease;
+}
+
+.monthly {
+    left: 3px;
+}
+
+.yearly {
+    left: 29px;
+}

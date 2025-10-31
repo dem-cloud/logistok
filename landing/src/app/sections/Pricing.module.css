@@ -1,0 +1,40 @@
+.section {
+    padding: 2rem 10rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.switch {
+    margin: 2rem auto;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+    margin: 2rem auto;
+    justify-content: center;
+}
+
+@media (max-width: 1240px) {
+    .section {
+        padding: 2rem 5rem;
+    }
+    .cards {
+        gap: 0;
+    }
+}
+
+@media (max-width: 1028px) {
+    .cards {
+        gap: 2rem;
+        grid-template-columns: repeat(1, 1fr);
+    }
+}
