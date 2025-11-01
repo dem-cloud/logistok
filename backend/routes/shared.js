@@ -7,11 +7,14 @@ const bcrypt = require('bcrypt')
 const { v4: uuidv4 } = require('uuid'); // Generate unique subscription codes
 const jwt = require('jsonwebtoken')
 
-const sgMail = require('@sendgrid/mail');
+// const sgMail = require('@sendgrid/mail');
+const Resend = require('resend')
 const supabase = require('../supabaseConfig');
 
 // Set up SendGrid API Key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Routes
 router.post('/signup', async (req, res) => {
@@ -61,7 +64,7 @@ router.post('/signup', async (req, res) => {
 
         const msg = {
             to: email,
-            from: process.env.SENDGRID_EMAIL,
+            from: process.env.RESEND_EMAIL,
             subject: 'Your Logistok Account - Verify Your Email Address',
             html: `<p>Click the link below to verify your email:</p>
                    <a href="${verificationLink}" style="padding: 10px 15px; color: white; background: blue; text-decoration: none;">Verify Email</a>
@@ -93,9 +96,9 @@ router.post('/signup', async (req, res) => {
             return res.status(500).json({ success: false, message: 'Error inserting user data' });
         }
 
-
         try {
-            await sgMail.send(msg);
+            // await sgMail.send(msg);
+            await resend.emails.send(msg);
             res.json({ success: true, message: 'Επιτυχής δημιουργία λογαριασμού! Παρακαλώ ελέγξτε το email σας για επιβεβαίωση.' });
         } catch (emailError) {
             console.error('Error sending email:', emailError);
@@ -144,7 +147,7 @@ router.post('/resend-verification-link', async (req, res) => {
 
         const msg = {
             to: email,
-            from: process.env.SENDGRID_EMAIL,
+            from: process.env.RESEND_EMAIL,
             subject: 'Your Logistok Account - Verify Your Email Address',
             html: `<p>Click the link below to verify your email:</p>
                    <a href="${verificationLink}" style="padding: 10px 15px; color: white; background: blue; text-decoration: none;">Verify Email</a>
@@ -153,7 +156,8 @@ router.post('/resend-verification-link', async (req, res) => {
 
 
         try {
-            await sgMail.send(msg);
+            // await sgMail.send(msg);
+            await resend.emails.send(msg);
             res.json({ success: true, message: 'Ο σύνδεσμος επαλήθευσης email στάλθηκε με επιτυχία. Παρακαλώ ελέγξτε το email σας.' });
         } catch (emailError) {
             console.error('Error sending email:', emailError);
@@ -257,7 +261,7 @@ router.post('/forgot-password', async (req, res) => {
 
         const msg = {
             to: email,
-            from: process.env.SENDGRID_EMAIL,
+            from: process.env.RESEND_EMAIL,
             subject: 'Reset Your Logistok Account Password',
             html: `<p>We received a request to reset your password. Click the link below to set a new password:</p>
                    <a href="${resetLink}" style="padding: 10px 15px; color: white; background: blue; text-decoration: none;">Reset Password</a>
@@ -265,7 +269,8 @@ router.post('/forgot-password', async (req, res) => {
         };
 
         try {
-            await sgMail.send(msg);
+            // await sgMail.send(msg);
+            await resend.emails.send(msg);
             res.json({ success: true, message: 'Το email επαναφοράς κωδικού στάλθηκε με επιτυχία. Παρακαλώ ελέγξτε το email σας.' });
         } catch (emailError) {
             console.error('Error sending reset email:', emailError);

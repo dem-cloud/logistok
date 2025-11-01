@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import sgMail from "@sendgrid/mail";
+// import sgMail from "@sendgrid/mail";
+import { Resend } from 'resend';
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+// sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const senderEmail = process.env.SENDGRID_FROM_EMAIL;
+// const senderEmail = process.env.SENDGRID_FROM_EMAIL;
+const senderEmail = process.env.RESEND_EMAIL;
 
 if (!senderEmail) {
     throw new Error('Recipient or Sender email is not defined in the environment variables.');
@@ -27,7 +30,8 @@ export async function POST(req: Request) {
             html: "<p>Σας ευχαριστούμε που εγγραφήκατε στο newsletter μας!</p>",
         };
 
-        await sgMail.send(msg);
+        // await sgMail.send(msg);
+        await resend.emails.send(msg);
 
         console.log("New subscriber:", email);
         return NextResponse.json({ message: "Επιτυχής εγγραφή!" }, { status: 200 });
