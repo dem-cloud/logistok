@@ -1,8 +1,8 @@
 "use client"
 import React, { useEffect, useRef, useState } from 'react'
 import styles from './ResetPassword.module.css'
-import ResetPasswordForm from '../components/ResetPasswordForm'
-import CheckYourEmail from '../components/CheckYourEmail';
+import ResetPasswordForm from '@/components/ResetPasswordForm'
+import CheckYourEmail from '@/components/CheckYourEmail';
 import Image from 'next/image';
 import WhiteLogo from '../../../public/white_logo.png'
 import Link from 'next/link';

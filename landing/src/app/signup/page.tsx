@@ -1,12 +1,13 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import styles from './Signup.module.css'
 import Image from 'next/image'
 import WhiteLogo from '../../../public/white_logo.png'
-import SignUpForm from '../components/SignUpForm'
-import GoogleButton from '../components/GoogleButton'
+import SignUpForm from '@/components/SignUpForm'
+import GoogleButton from '@/components/GoogleButton'
 import Link from 'next/link'
 
 export default function Signup() {
+    
     return (
         <div className={styles.signup}>
             <Link href="/" className={styles.logo}>

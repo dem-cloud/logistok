@@ -1,10 +1,10 @@
-import Footer from "./components/Footer";
-import Navbar from "./components/Navbar";
-import Contact from "./sections/Contact";
-import Features from "./sections/Features";
-import HomeSection from "./sections/HomeSection";
-import Industries from "./sections/Industries";
-import Pricing from "./sections/Pricing";
+import Footer from "@/components/Footer";
+import Navbar from "@/components/Navbar";
+import Contact from "@/sections/Contact";
+import Features from "@/sections/Features";
+import HomeSection from "@/sections/HomeSection";
+import Industries from "@/sections/Industries";
+import Pricing from "@/sections/Pricing";
 
 export default function Home() {
 

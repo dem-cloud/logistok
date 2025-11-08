@@ -1,9 +1,9 @@
 import React from 'react'
-import Navbar from '../components/Navbar'
-import Footer from '../components/Footer'
-import Header from '../components/careers/Header'
-import OpenPositions from '../components/careers/OpenPositions'
-import Apply from '../components/careers/Apply'
+import Navbar from '@/components/Navbar'
+import Footer from '@/components/Footer'
+import Header from '@/components/careers/Header'
+import OpenPositions from '@/components/careers/OpenPositions'
+import Apply from '@/components/careers/Apply'
 
 export default function Careers() {
     return (

@@ -1,0 +1,15 @@
+.authForm {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.inputs {
+    display: flex;
+    flex-direction: column;
+}
+
+.responseMessage {
+    color: red;
+    font-size: 12px;
+}

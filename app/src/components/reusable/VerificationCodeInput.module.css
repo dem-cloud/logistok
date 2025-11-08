@@ -1,0 +1,74 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+}
+
+.boxContainer {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    width: 100%;
+}
+
+.box {
+    width: 2.5rem;
+    height: 2.5rem;
+    text-align: center;
+    font-size: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    transition: border-color 0.2s ease;
+}
+
+.box:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-color);
+}
+
+.errorInput {
+    border-color: #e74c3c;
+}
+
+.error {
+    color: #e74c3c;
+    font-size: 0.8rem;
+    min-height: 1em; /* κρατά πάντα χώρο */
+    visibility: visible;
+    transition: opacity 0.2s ease;
+    align-self: flex-start;
+    margin-bottom: .3rem;
+}
+
+.hiddenError {
+    visibility: hidden;
+    opacity: 0;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+
+.resendBtn {
+    background: none;
+    border: none;
+    color: var(--text-secondary-color);
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.2s ease;
+}
+
+.resendBtn:hover:not(:disabled) {
+    color: var(--primary-hover-color);
+}
+
+.resendBtn:disabled {
+    color: var(--primary-disabled-color);
+    cursor: not-allowed;
+}

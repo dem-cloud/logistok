@@ -12,7 +12,7 @@ if (!senderEmail) {
     throw new Error('Recipient or Sender email is not defined in the environment variables.');
 }
 
-
+// TODO: Implement this to backend and delete it. Also we need a subscribers table in db to promote them marketing emails.
 export async function POST(req: Request) {
     try {
         const { email } = await req.json();

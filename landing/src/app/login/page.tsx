@@ -3,8 +3,8 @@ import Image from 'next/image'
 import LogoIcon from '../../../public/logo_icon.png'
 import styles from './Login.module.css'
 import Link from 'next/link'
-import GoogleButton from '../components/GoogleButton'
-import LogInForm from '../components/LogInForm'
+import GoogleButton from '@/components/GoogleButton'
+import LogInForm from '@/components/LogInForm'
 
 
 export default function Login() {

@@ -3,12 +3,12 @@ require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 
-const bcrypt = require('bcrypt')
+const bcrypt = require('bcryptjs')
 const { v4: uuidv4 } = require('uuid'); // Generate unique subscription codes
 const jwt = require('jsonwebtoken')
 
 // const sgMail = require('@sendgrid/mail');
-const Resend = require('resend')
+const { Resend } = require('resend');
 const supabase = require('../supabaseConfig');
 
 // Set up SendGrid API Key
@@ -59,16 +59,33 @@ router.post('/signup', async (req, res) => {
             { expiresIn: '24h' } // Token expires in 24 hours
         );
 
-        // Send verification email with SendGrid
+        // Send verification email with Resend
         const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
         const msg = {
+            from: `Logistok <${process.env.RESEND_EMAIL}>`,
             to: email,
-            from: process.env.RESEND_EMAIL,
             subject: 'Your Logistok Account - Verify Your Email Address',
-            html: `<p>Click the link below to verify your email:</p>
-                   <a href="${verificationLink}" style="padding: 10px 15px; color: white; background: blue; text-decoration: none;">Verify Email</a>
-                   <p>This link will expire in 24 hours.</p>`,
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <p>Click the button below to verify your email address for your Logistok account:</p>
+                <a href="${verificationLink}" 
+                    style="
+                    display: inline-block;
+                    background-color: #1e40af;
+                    color: #ffffff;
+                    padding: 12px 20px;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    ">
+                    Verify Email
+                </a>
+                <p style="margin-top: 20px;">This link will expire in 24 hours.</p>
+                <p>If the button doesn’t work, copy and paste this link into your browser:</p>
+                <p><a href="${verificationLink}">${verificationLink}</a></p>
+                </div>
+            `,
         };
 
         // 2. Hash the password
@@ -142,16 +159,33 @@ router.post('/resend-verification-link', async (req, res) => {
             { expiresIn: '24h' } // Token expires in 24 hours
         );
 
-        // Send verification email with SendGrid
+        // Send verification email with Resend
         const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
         const msg = {
+            from: `Logistok <${process.env.RESEND_EMAIL}>`,
             to: email,
-            from: process.env.RESEND_EMAIL,
             subject: 'Your Logistok Account - Verify Your Email Address',
-            html: `<p>Click the link below to verify your email:</p>
-                   <a href="${verificationLink}" style="padding: 10px 15px; color: white; background: blue; text-decoration: none;">Verify Email</a>
-                   <p>This link will expire in 24 hours.</p>`,
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <p>Click the button below to verify your email address for your Logistok account:</p>
+                <a href="${verificationLink}" 
+                    style="
+                    display: inline-block;
+                    background-color: #1e40af;
+                    color: #ffffff;
+                    padding: 12px 20px;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    ">
+                    Verify Email
+                </a>
+                <p style="margin-top: 20px;">This link will expire in 24 hours.</p>
+                <p>If the button doesn’t work, copy and paste this link into your browser:</p>
+                <p><a href="${verificationLink}">${verificationLink}</a></p>
+                </div>
+            `,
         };
 
 
@@ -172,8 +206,8 @@ router.post('/resend-verification-link', async (req, res) => {
 
 router.get('/verify-email', async (req, res) => {
     try {
-        // const { token } = req.query;
-        const token = req.headers.authorization?.split(' ')[1];
+        const { token } = req.query;
+        // const token = req.headers.authorization?.split(' ')[1];
 
         if (!token) {
             return res.status(400).json({ success: false, message: 'Missing token' });
@@ -250,22 +284,55 @@ router.post('/forgot-password', async (req, res) => {
         const subscriptionId = existingUser.subscription_id;
 
         // Generate JWT Token for reset password
+        const tokenId = crypto.randomUUID();
         const resetToken = jwt.sign(
-            { email, subscriptionId },
+            { 
+                email, 
+                subscriptionId,
+                // action: 'password-reset',
+                tokenId
+            },
             process.env.JWT_SECRET,
-            { expiresIn: '1h' } // Token expires in 1 hour
+            { expiresIn: '15m' }
         );
 
-        // Send reset password email with SendGrid
+        // TODO: Store in database
+        // await db.resetTokens.create({
+        //     tokenId,
+        //     email: user.email,
+        //     subscriptionId: user.subscriptionId,
+        //     used: false,
+        //     createdAt: new Date()
+        // });
+
+        // Send reset password email with Resend
         const resetLink = `${process.env.FRONTEND_URL}/recover-access?token=${resetToken}`;
 
-        const msg = {
+        const msg = { 
+            from: `Logistok <${process.env.RESEND_EMAIL}>`,
             to: email,
-            from: process.env.RESEND_EMAIL,
             subject: 'Reset Your Logistok Account Password',
-            html: `<p>We received a request to reset your password. Click the link below to set a new password:</p>
-                   <a href="${resetLink}" style="padding: 10px 15px; color: white; background: blue; text-decoration: none;">Reset Password</a>
-                   <p>If you didn't request this, you can ignore this email. This link will expire in <b>1 hour</b> for security reasons.</p>`,
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <p>We received a request to reset your password. Click the button below to set a new password:</p>
+                    <a href="${resetLink}" 
+                        style="
+                        display: inline-block;
+                        background-color: #1e40af;
+                        color: #ffffff;
+                        padding: 12px 20px;
+                        text-decoration: none;
+                        border-radius: 6px;
+                        font-weight: bold;
+                        ">
+                        Reset Password
+                    </a>
+                    <p style="margin-top: 20px;">If you didn’t request this, you can safely ignore this email.</p>
+                    <p>This link will expire in <b>1 hour</b> for security reasons.</p>
+                    <p>If the button doesn’t work, copy and paste this link into your browser:</p>
+                    <p><a href="${resetLink}">${resetLink}</a></p>
+                </div>
+            `,
         };
 
         try {
@@ -285,12 +352,31 @@ router.post('/forgot-password', async (req, res) => {
 
 router.get('/reset-password', async (req, res) => {
     try {
-        // const { token } = req.query;
-        const token = req.headers.authorization?.split(' ')[1];
+        const { token } = req.query;
+        // const token = req.headers.authorization?.split(' ')[1];
 
         if (!token) {
             return res.status(400).json({ success: false, message: 'Missing token' });
         }
+
+        // TODO: Check if token exists and not used
+        // const tokenRecord = await db.resetTokens.findOne({ 
+        //     tokenId: decoded.tokenId 
+        // });
+        
+        // if (!tokenRecord) {
+        //     return res.status(401).json({ 
+        //         success: false, 
+        //         message: 'Invalid token' 
+        //     });
+        // }
+        
+        // if (tokenRecord.used) {
+        //     return res.status(403).json({ 
+        //         success: false, 
+        //         message: 'This reset link has already been used. Please request a new one.' 
+        //     });
+        // }
 
         // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -322,8 +408,8 @@ router.get('/reset-password', async (req, res) => {
 
 router.post('/create-new-password', async (req, res) => {
     try {
-        // const { token } = req.query;
-        const token = req.headers.authorization?.split(' ')[1];
+        const { token } = req.query;
+        // const token = req.headers.authorization?.split(' ')[1];
         const { password, confirmPassword } = req.body;
 
         if (!token) {

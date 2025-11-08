@@ -2,10 +2,11 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import styles from './VerifyEmail.module.css'
-import ServerMessage from "../components/ServerMessage";
+import ServerMessage from "@/components/ServerMessage";
 import WhiteLogo from '../../../public/white_logo.png'
 import Image from "next/image";
 import Link from "next/link";
+import { axiosPublic } from "@/lib/axios";
 
 export default function VerifyEmail() {
 
@@ -18,27 +19,38 @@ export default function VerifyEmail() {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        if (token) {
-            fetch(`/api/verifyAccount?token=${token}`)
-                .then((res) => res.json())
-                .then((data) => {
-                    setMessage(data.message);
-                    if (data.success) {
-                        setTokenIsInvalidOrExpired(false);
-                    }
-                })
-                .catch(() => {
-                    setMessage("Something went wrong. Please try again.");
-                    setTokenNull(true);
-                    setTimeout(() => router.push("/"), 3000);
-                })
-                .finally(() => setLoading(false));
-        } else {
-            setMessage("Something went wrong. Please try again.");
+    
+        if (!token) {
+            setMessage('No verify token provided');
             setTokenNull(true);
             setLoading(false);
             setTimeout(() => router.push("/"), 3000);
+            return;
         }
+
+        const verifyEmail = async () => {
+            setLoading(true);
+            
+            try {
+                const response = await axiosPublic.get(
+                    '/api/shared/verify-email',
+                    { params: { token } }
+                );
+                
+                const { success, message } = response.data;
+                setMessage(message);
+                setTokenIsInvalidOrExpired(!success);
+                
+            } catch (error) {
+                setMessage("Something went wrong. Please try again.")
+                setTokenNull(true)
+                setTimeout(() => router.push("/"), 3000);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        verifyEmail();
     }, [token]);
 
     return (

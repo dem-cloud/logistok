@@ -1,0 +1,22 @@
+.signupForm {
+    display: flex;
+    flex-direction: column;
+}
+
+.terms {
+    display: flex;
+    flex-wrap: wrap;
+    align-self: flex-start;
+    font-size: 14px;
+    color: var(--text-secondary-color);
+    /* margin: -1rem 0 1rem; */
+    margin: .5rem 0 1rem;
+}
+
+.link {
+    text-wrap: none;
+    margin: 0 .3rem;
+    color: var(--primary-color);
+    font-weight: 500;
+    cursor: pointer;
+}

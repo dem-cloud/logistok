@@ -1,0 +1,20 @@
+industries: id, name, created
+plans: id, name, base_price_per_month, base_price_per_year, max_users_per_station, features, created_at, extra_station_price, is_public
+plan_industry_features: id, features, created_at, plan_id, industry_id
+roles: id, name, created_at
+permissions: id, name, created_at
+role_permissions: role_id, permission_id
+subscriptions: id, subscription_code, company_name, managers_phone, created_at, plan_id, indusry_id, owner_id, billing_status, stripe_customer_id, stripe_subscription_id
+stations: id, name, subscription_id, created_at
+users: id, first_name, last_name, email, password_hash, phone, email_verified, created_at, subscription_id
+user_roles: user_id, subscription_id, role_id
+user_station_roles: user_id, station_id, role_id
+invoices: id, stripe_invoice_id, amount_paid, currency, status, created_at, subscription_id
+payments: id, stripe_payment_intent_id, amount, currency, paid_at, invoice_id
+plan_history: id, changed_at, old_plan_id, new_plan_id, subscription_id
+user_sessions: id, user_id, refresh_token_hash, fingerprint, ip_address, user_agent, revoked, expires_at, created_at, updated_at
+posts: id, name, created_at, station_id
+shifts: id, name, start_time, end_time, created_at, post_id
+shift_users: shift_id, user_id
+shift_data: id, closed, total_sales_cash, total_sales_card, created_at, shift_id
+onboarding: id, step, is_completed, created_at, subscription_id

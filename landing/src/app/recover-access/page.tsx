@@ -2,12 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import styles from './RecoverAccess.module.css';
-import CreateNewPasswordForm from "../components/CreateNewPasswordForm";
-import ServerMessage from "../components/ServerMessage";
+import CreateNewPasswordForm from "@/components/CreateNewPasswordForm";
+import ServerMessage from "@/components/ServerMessage";
 import Image from "next/image";
 import WhiteLogo from '../../../public/white_logo.png'
-import ServerMessageContentOnly from "../components/ServerMessageContentOnly";
+import ServerMessageContentOnly from "@/components/ServerMessageContentOnly";
 import Link from "next/link";
+import { axiosPublic } from "@/lib/axios";
 
 interface ServerResponse {
     success: boolean;
@@ -34,31 +35,38 @@ export default function RecoverAccess() {
     const [containerHeight, setContainerHeight] = useState('fit-content');
 
     useEffect(() => {
-        if (token) {
-            fetch(`/api/resetPassword?token=${token}`)
-                .then((res) => res.json())
-                .then((data) => {
-                    setMessage(data.message);
-                    if (data.success) {
-                        setTokenIsInvalidOrExpired(false)
-                    } else {
-                        // Invalid Verification Link
-                    }
-                })
-                .catch((error) => { //Actually is Invalid or Expired
-                    setMessage("Something went wrong. Please try again.")
-                    setTokenNull(true)
-                    setTimeout(() => router.push("/"), 3000);
-                })
-                .finally(()=> {
-                    setLoading(false)
-                });
-        } else {
-            setMessage("Something went wrong. Please try again.")
-            setTokenNull(true)
-            setLoading(false)
+
+        if (!token) {
+            setMessage('No reset token provided');
+            setTokenNull(true);
+            setLoading(false);
             setTimeout(() => router.push("/"), 3000);
+            return;
         }
+
+        const validateResetToken = async () => {
+            setLoading(true);
+            
+            try {
+                const response = await axiosPublic.get(
+                    '/api/shared/reset-password',
+                    { params: { token } }
+                );
+                
+                const { success, message } = response.data;
+                setMessage(message);
+                setTokenIsInvalidOrExpired(!success);
+                
+            } catch (error) {
+                setMessage("Something went wrong. Please try again.")
+                setTokenNull(true)
+                setTimeout(() => router.push("/"), 3000);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        validateResetToken();
     }, [token]);
 
     useEffect(() => {

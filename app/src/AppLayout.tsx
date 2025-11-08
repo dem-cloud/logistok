@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import useAuth from './auth/useAuth';
+import { useAuth } from './context/AuthContext';
 
 export default function AppLayout() {
     const { user, refresh, logout } = useAuth();

@@ -3,10 +3,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import styles from './ResendVerificationLink.module.css'
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import ThemeButton from '../components/ThemeButton';
-import ServerMessageContentOnly from '../components/ServerMessageContentOnly';
+import ThemeButton from '@/components/ThemeButton';
+import ServerMessageContentOnly from '@/components/ServerMessageContentOnly';
 import WhiteLogo from '../../../public/white_logo.png'
 import Link from 'next/link';
+import { axiosPublic } from '@/lib/axios';
 
 interface ServerResponse {
     success: boolean;
@@ -41,15 +42,8 @@ export default function ResendVerificationLink() {
             console.log("Form submitted successfully", email);
 
             try {
-                const res = await fetch('/api/resendVerificationLink', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({email}),
-                });
-    
-                const data = await res.json();
+                const response = await axiosPublic.post('resend-verification-link', {email});
+                const data = response.data;
     
                 console.log(data.message)
                 if (data.success) {
