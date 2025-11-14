@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import styles from "./VerificationCodeInput.module.css";
 
 interface VerificationCodeInputProps {
@@ -7,14 +7,12 @@ interface VerificationCodeInputProps {
     onChange?: (code: string) => void;
     error?: string;
     onResend?: () => void;
-    resendDelay?: number; // σε δευτερόλεπτα, π.χ. 30
-    resetTrigger?: any;
+    remainingSec: number;
 }
 
-export default function VerificationCodeInput({ label, value, onChange, error, onResend, resendDelay = 30, resetTrigger }: VerificationCodeInputProps) {
+export default function VerificationCodeInput({ label, value, onChange, error, onResend, remainingSec }: VerificationCodeInputProps) {
     const [internalValue, setInternalValue] = useState<string>('');
     const inputsRef = useRef<HTMLInputElement[]>([]);
-    const [timer, setTimer] = useState(0);
     // console.log(values)
 
     // Αν έχει value από parent, χρησιμοποίησε αυτό, αλλιώς το internal
@@ -23,21 +21,6 @@ export default function VerificationCodeInput({ label, value, onChange, error, o
 
     // Πάντα 6 inputs - ακόμα και αν είναι όλα άδεια
     const values = Array.from({ length: 6 }, (_, i) => currentValue[i] || '');
-
-    // Countdown logic
-    useEffect(() => {
-        if (timer > 0) {
-            const interval = setInterval(() => setTimer((t) => t - 1), 1000);
-            return () => clearInterval(interval);
-        }
-    }, [timer]);
-
-    // Restart timer όταν αλλάξει το resetTrigger
-    useEffect(() => {
-        if (resetTrigger !== undefined) {
-            setTimer(resendDelay);
-        }
-    }, [resetTrigger, resendDelay]);
 
     const handleInput = (index: number, inputValue: string) => {
         if (!/^\d?$/.test(inputValue)) return; // μόνο 1 αριθμό
@@ -88,13 +71,6 @@ export default function VerificationCodeInput({ label, value, onChange, error, o
         }
     };
 
-    const handleResend = () => {
-        if (timer === 0 && onResend) {
-            onResend();
-            setTimer(resendDelay);
-        }
-    };
-
     return (
         <div className={styles.container}>
             {(label || onResend) && (
@@ -104,11 +80,11 @@ export default function VerificationCodeInput({ label, value, onChange, error, o
                         onResend && (
                             <button
                                 type="button"
-                                onClick={handleResend}
+                                onClick={onResend}
                                 className={styles.resendBtn}
-                                disabled={timer > 0}
+                                disabled={remainingSec > 0}
                             >
-                                {timer > 0 ? `Resend in ${timer}s` : "Resend code"}
+                                {remainingSec > 0 ? `Resend in ${remainingSec}s` : "Resend code"}
                             </button>
                         )
                     }
@@ -127,7 +103,7 @@ export default function VerificationCodeInput({ label, value, onChange, error, o
                     value={val.trim()}
                     onChange={(e) => handleInput(i, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(i, e)}
-                    onClick={() => handleInputClick(i)}  // ← Πρόσθεσε αυτό
+                    onClick={() => handleInputClick(i)}
                     onPaste={handlePaste}
                     className={`${styles.box} ${error ? styles.errorInput : ""}`}
                 />

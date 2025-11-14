@@ -17,10 +17,10 @@ interface SignupFormProps {
     codeError: string;
     onChange: (code: string) => void;
     onResend: () => Promise<void>;
-    resendKey?: any;
+    remainingSec: number;
 }
 
-export default function SignupForm({code, codeError, onChange, onResend, resendKey, password, passwordError, onChangeP, confirmPassword, confirmPasswordError, onChangeCP }: SignupFormProps) {
+export default function SignupForm({code, codeError, onChange, onResend, remainingSec, password, passwordError, onChangeP, confirmPassword, confirmPasswordError, onChangeCP }: SignupFormProps) {
 
     return (
         <div className={styles.signupForm}>
@@ -36,7 +36,7 @@ export default function SignupForm({code, codeError, onChange, onResend, resendK
 
             <PasswordInput
                 label="Επιβεβαίωση Κωδικού"
-                name="password"
+                name="confirmPassword"
                 value={confirmPassword}
                 placeholder="Πληκτρολογήστε ξανά τον κωδικό"
                 onChange={onChangeCP}
@@ -48,12 +48,8 @@ export default function SignupForm({code, codeError, onChange, onResend, resendK
                 value={code}
                 onChange = {onChange}
                 error = {codeError}
-                onResend = {() => {
-                    console.log("Resend verification email");
-                    onResend();
-                }}
-                resendDelay = {30}
-                resetTrigger = {resendKey}
+                remainingSec = {remainingSec}
+                onResend = {onResend}
             />
            
            <div className={styles.terms}>

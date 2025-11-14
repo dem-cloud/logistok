@@ -1,17 +1,21 @@
 "use client"
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import styles from './AuthForm.module.css'
-import FingerprintJS from '@fingerprintjs/fingerprintjs';
-import { axiosPrivate } from '../api/axios';
+import { axiosPublic } from '../api/axios';
 import { useNavigate } from 'react-router-dom';
 import Button from './reusable/Button';
 import Input from './reusable/Input';
 import LoginForm from './LoginForm';
 import SignupForm from './SignupForm';
+import { getFingerprint } from '../auth/getFingerprint';
+import { useAuth } from '../context/AuthContext';
+
+type VerificationType = 'email_verify' | 'password_reset';
 
 export default function AuthForm() {
 
     const navigate = useNavigate();
+    const { login } = useAuth();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -24,14 +28,27 @@ export default function AuthForm() {
     const [confirmPasswordError, setConfirmPasswordError] = useState('');
     const [codeError, setCodeError] = useState('');
 
+    const [loadingSubmitRequest, setLoadingSubmitRequest] = useState(false);
+    const [secondsLeft, setSecondsLeft] = useState(0);
 
-    // const [responseMessage, setResponseMessage] = useState('')
+    const [responseMessage, setResponseMessage] = useState('') // Αυτο πρεπει να ειναι στο Context
     const [isUserChecked, setIsUserChecked] = useState(false)
-    const [isExistedUser, setIsExistedUser] = useState(false)
-
-    const [resendKey, setResendKey] = useState(0);
+    const [isExistedUser, setIsExistedUser] = useState<boolean | null>(null)
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // console.log(responseMessage);
+
+    useEffect(() => {
+        if (secondsLeft === null) return; // Αν δεν έχουμε countdown, μην κάνεις τίποτα
+        if (secondsLeft === 0) return;
+
+        const timer = setInterval(() => {
+            setSecondsLeft(prev => prev > 0 ? prev - 1 : 0);
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [secondsLeft]);
 
     const handleChangeEmail = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { value } = e.target;
@@ -39,9 +56,7 @@ export default function AuthForm() {
         setEmailError("");
 
         setIsUserChecked(false);
-
-        // Όταν σταλεί νέο email, αλλάζουμε το key
-        setResendKey((k) => k + 1);
+        setIsExistedUser(null);
 
         setPassword("");
         setConfirmPassword("");
@@ -70,6 +85,31 @@ export default function AuthForm() {
         setCodeError("");
     }
 
+    
+    const handleResend = async (email: string, type: VerificationType) => {
+        const response = await axiosPublic.post("/api/auth/send-code", { email, type })
+        const { success, message, code, data = {} } = response.data;
+        const { remaining = 0 } = data;
+
+        const COOLDOWNS = {
+            email_verify: 59 * 1000,    // 59 δευτερόλεπτα
+            password_reset: 59 * 1000   // 59 δευτερόλεπτα
+        };
+
+        const COOLDOWN_MS = COOLDOWNS[type] || 59 * 1000;
+
+        if(!success)
+            throw new Error(message);
+
+        if (code === "ACTIVE_VERIFICATION_CODE") {
+            setSecondsLeft(remaining); // πρακτικα εδω δεν θα μπει γιατι το κουμπι ειναι disabled μεχρι να τελειωσει το countdown
+        }else if (code === "VERIFICATION_CODE_SENT") {
+            setSecondsLeft(COOLDOWN_MS / 1000);
+        }
+
+        // setResponseMessage(message);
+    }
+
     const handleCheckUser = async () => {
 
         // Email validation
@@ -78,26 +118,41 @@ export default function AuthForm() {
             return;
         }
 
-        console.log("User Checked", email)
+        try {
+            setLoadingSubmitRequest(true);
+             // 1) Check user
+            const type = "email_verify";
+            const response = await axiosPublic.post("/api/auth/check-user", { email, type })
+            const { success, message, code, data = {} } = response.data;
+            const { isCoolingDown, remaining } = data;
 
-        // Call api/shared/check-user
-        // Check existed User
-            /* 
-            Existed {
-                return existed = true, 200 OK
+            if(!success)
+                throw new Error(message); // SERVER_ERROR
+
+            switch (code) {
+                case "USER_FOUND":
+                    setIsExistedUser(true);
+                    break;
+                case "USER_NOT_FOUND":
+                    setIsExistedUser(false);
+                    isCoolingDown && setSecondsLeft(remaining);
+                    break;
             }
-                
-            Not existed {
-                create verification code
-                store it in db
-                send verification code on email
-                return existed = false, 200 OK
+
+            // 2) Προχωράμε στις φόρμες (Login | Signup):
+            setIsUserChecked(true);
+
+            if(code === "USER_NOT_FOUND"){
+                // 3) Send code
+                !isCoolingDown && await handleResend(email, type);
             }
-            */
 
-        setIsUserChecked(true)
-        setIsExistedUser(false)
-
+        } catch (error) {
+            console.error("error:", error);
+            // setResponseMessage(error);
+        } finally {
+            setLoadingSubmitRequest(false);
+        }
     }
 
     const handleLogin = async () => {
@@ -107,16 +162,34 @@ export default function AuthForm() {
             setPasswordError("Το πεδίο είναι υποχρεωτικό");
             return;
         }
+
+        try {
+            const fingerprint = await getFingerprint();
     
-        console.log("Log In", email, password)
+            console.log("Log In", email, password, fingerprint)
 
-        // Στο login θα καλέσω setToken()
-        // const res = await axiosPrivate.post("/api/auth/login", { username, password })
-        // login(res.data.accessToken, res.data.user)
+            const response = await axiosPublic.post("/api/auth/login", { email, password, fingerprint }, { withCredentials: true })
+            const { success, message, data = {}, code } = response.data;
+            const { access_token, user } = data;
+            
+            if(!success){
+                if(code === "USER_NOT_FOUND") setEmailError(message)
+                else if (code === "WRONG_PASSWORD") setPasswordError(message)
+                else setResponseMessage("Ανεπιτυχής Σύνδεση")
+                return;
+            }
 
-        // Call api/auth/login
-        // Check Existed User
-        // Create Session
+            login(access_token, user)
+            // navigate('/')
+
+        } catch {
+            setResponseMessage("Κάτι πήγε λάθος. Προσπαθήστε ξανά.")
+        } finally {
+            // optional ?
+            setIsUserChecked(false)
+            setIsExistedUser(null)
+        }
+
     }
 
     const handleSignup = async () => {
@@ -143,14 +216,46 @@ export default function AuthForm() {
                 
             return;
         }
-    
-        console.log("Sign Up", email, password, confirmPassword, verificationCode)
 
-        // Call api/shared/signup
-        // Check Existed User
-        // Check Verification Code
-        // Create User
-        // Create Session
+        try {
+            const fingerprint = await getFingerprint();
+
+            console.log("Sign Up", email, password, confirmPassword, verificationCode, fingerprint)
+
+            const response = await axiosPublic.post("/api/auth/signup", { email, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
+            const { success, message, data = {}, code } = response.data;
+            const { access_token, user } = data;
+
+            if(!success){
+                console.log(message, " dsdfs")
+
+                switch (code) {
+                    case "MISSING_VALUES":
+                        // setResponseMessage(message);
+                        return;
+                    case "INVALID_PASSWORD":
+                    case "PASSWORD_MISMATCH":
+                        setPasswordError(message);
+                        setConfirmPasswordError(message);
+                        return;
+                    case "OTP_NOT_FOUND":
+                    case "INVALID_OTP":
+                    case "OTP_EXPIRED":
+                        setCodeError(message)
+                        return;
+                    default:
+                        setResponseMessage(message);
+                        return;
+                }
+            }
+
+            login(access_token, user);
+            navigate('/');
+
+        } catch (error) {
+            console.log('poutsaaaaaaaaaaaaaa')
+            setResponseMessage("Κάτι πήγε λάθος. Προσπαθήστε ξανά.")
+        }
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -165,60 +270,6 @@ export default function AuthForm() {
             handleCheckUser();
         }
     }
-    
-
-    async function getFingerprint() {
-        const fp = await FingerprintJS.load();
-        const result = await fp.get();
-        return result.visitorId; // Unique fingerprint
-    }
-
-    // const handleSubmit = async (e: React.FormEvent) => {
-    //     e.preventDefault();
-
-    //     let newErrors = { email: "", password: "", verificationCode: "" };
-    //     if(formData.email.trim() === "" || !emailRegex.test(formData.email)) newErrors.email = "Invalid email";
-    //     if(formData.password.trim() === "") newErrors.password = "Password is required";
-
-    //     setErrors(newErrors);
-
-    //     // Αν δεν υπάρχουν errors → προχωράς
-    //     const hasErrors = Object.values(newErrors).some((err) => err);
-
-    //     if (!hasErrors) {
-    //         // console.log("Form submitted successfully", formData);
-
-    //         try {
-    //             const fingerprint = await getFingerprint();
-
-    //             const response = await axiosPrivate.post('/api/auth/login', {...formData, fingerprint});
-    //             const data = response.data;
-                
-    //             console.log(data)
-    
-    //             if (data.success) {
-    //                 console.log(data.responseMessage)
-    //                 navigate('/')
-    //                 // setResponseMessage(data.responseMessage);
-    //             } else if (data.invalid_credentials) {
-    //                 setResponseMessage(data.responseMessage);
-    //                 // setErrors({
-    //                 //     email: "Λανθασμένα Διαπιστευτήρια",
-    //                 //     password: "Λανθασμένα Διαπιστευτήρια"
-    //                 // })
-    //             } else if (!data.email_verified) {
-    //                 setResponseMessage(data.responseMessage);
-    //                 // setIsPopupOpen(true)
-    //             } else {
-    //                 // console.log(data.responseMessage)
-    //                 alert(data.responseMessage);
-    //             }
-    //         } catch (error) {
-    //             // console.error('Error:', error);
-    //             alert('Something went wrong. Please try again.')
-    //         }
-    //     }
-    // }
 
     return (
         <>
@@ -258,8 +309,8 @@ export default function AuthForm() {
                             codeError = {codeError}
                             onChange = {handleChangeVerificationCode}
 
-                            onResend = {handleCheckUser}
-                            resendKey = {resendKey}
+                            onResend = {()=>handleResend(email, "email_verify")}
+                            remainingSec = {secondsLeft}
                         />
                     )
                     }
@@ -269,13 +320,21 @@ export default function AuthForm() {
                 
                 {/* Conditional button rendering */}
                 { !isUserChecked && (
-                    <Button type='submit'>
+                    <Button 
+                        type='submit'
+                        loading={loadingSubmitRequest}
+                        disabled={loadingSubmitRequest}
+                    >
                         Συνέχεια
                     </Button>
                 )}
                 
                 { isUserChecked && isExistedUser && (
-                    <Button type='submit'>
+                    <Button 
+                        type='submit'
+                        loading={loadingSubmitRequest}
+                        disabled={loadingSubmitRequest}
+                    >
                         Σύνδεση
                     </Button>
                 )}
@@ -283,7 +342,8 @@ export default function AuthForm() {
                 { isUserChecked && !isExistedUser && (
                     <Button 
                         type='submit'
-                        // disabled={!isCodeComplete}
+                        loading={loadingSubmitRequest}
+                        disabled={loadingSubmitRequest}
                     >
                         Δημιουργία Λογαριασμού
                     </Button>

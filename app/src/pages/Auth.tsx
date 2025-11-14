@@ -1,24 +1,15 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
 import styles from './Auth.module.css'
 import LogoIcon from '../assets/logo_icon.png'
 import AuthForm from "../components/AuthForm";
 import GoogleButton from "../components/GoogleButton.js"
-import { useAuth } from "../context/AuthContext.js";
+import { useAutoLogin } from "../hooks/useAutoLogin.js";
 
 const WEBSITE_URL = import.meta.env.VITE_WEBSITE_URL;
 
 export default function Auth() {
-    const { user, loading } = useAuth();
-    const navigate = useNavigate();
     
-    useEffect(() => {
-        // Αν είναι ήδη logged in, πήγαινε στο dashboard
-        if (!loading && user) {
-            navigate('/', { replace: true });
-        }
-    }, [user, loading, navigate]);
+    const { loading } = useAutoLogin();
     
     if (loading) {
         return <LoadingSpinner />;

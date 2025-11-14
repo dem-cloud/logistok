@@ -1,39 +1,38 @@
 import { useEffect, useState } from "react"
-import axios from "axios"
 import { useAuth } from "../context/AuthContext"
-import { setToken } from "../auth/tokenStore"
+import { axiosPrivate } from "../api/axios";
 
 // Ελέγχει αν υπάρχει ενεργό access token για να συνδέσει τον χρήστη χωρίς να τον ξαναβάλει σε login form.
 export const useAutoLogin = () => {
-    const { login, logout } = useAuth()
-    const [loading, setLoading] = useState(true)
+    const { refresh, forceLogout, setUser } = useAuth();
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const checkRefresh = async () => {
-        try {
-            const res = await axios.post(
-                `${import.meta.env.VITE_BASE_URL}/api/auth/refresh`,
-                {},
-                { withCredentials: true }
-            )
+        const attempt = async () => {
+            try {
 
-            const { accessToken, user } = res.data
+                await refresh();      // Χρησιμοποιούμε την κεντρική λογική ανανέωσης
 
-            if (accessToken && user) {
-                setToken(accessToken)
-                login(accessToken, user)
-            } else {
-                logout()
+                const response = await axiosPrivate.get("/api/auth/me");
+                const { success, message, data } = response.data
+                const { user } = data;
+
+                if(!success || !user){
+                    console.log(message)
+                    throw new Error("invalid_me_response");
+                }
+
+                setUser(user);
+
+            } catch {
+                forceLogout();        // Αν απέτυχε, η συνεδρία έληξε → redirect login
+            } finally {
+                setLoading(false);
             }
-        } catch {
-            logout()
-        } finally {
-            setLoading(false)
-        }
-        }
+        };
 
-        checkRefresh()
-    }, [login, logout])
+        attempt();
+    }, []);
 
-    return { loading }
-}
+  return { loading };
+};

@@ -1,8 +1,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
-// const bcrypt = require('bcrypt')
-// const jwt = require('jsonwebtoken')
 
 export function generateAccessToken(userId) {
     return jwt.sign(
@@ -34,8 +32,8 @@ const refreshCookieOpts = {
     // domain: '.logistok.gr',
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",      // ή 'lax' αν χρειάζεσαι cross-site redirects
-    path: "/auth/refresh",   // μειώνει επιφάνεια επίθεσης
+    // sameSite: "strict",      // ή 'lax' αν χρειάζεσαι cross-site redirects
+    // path: "/api/auth/refresh",   // μειώνει επιφάνεια επίθεσης
 };
 
 export function setRefreshCookie(res, token, maxAgeDays) {

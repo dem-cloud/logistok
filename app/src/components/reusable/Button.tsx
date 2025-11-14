@@ -1,5 +1,6 @@
 import React, { ReactNode } from "react";
 import styles from "./Button.module.css";
+import Spinner from "../Spinner";
 
 interface ButtonProps {
     children: ReactNode;
@@ -7,6 +8,7 @@ interface ButtonProps {
     type?: "button" | "submit" | "reset";
     variant?: "primary" | "secondary" | "outline";
     disabled?: boolean;
+    loading?: boolean;
 }
 
 const Button: React.FC<ButtonProps> = ({
@@ -15,6 +17,7 @@ const Button: React.FC<ButtonProps> = ({
     type = "button",
     variant = "primary",
     disabled = false,
+    loading = false
 }) => {
     return (
         <button
@@ -25,6 +28,7 @@ const Button: React.FC<ButtonProps> = ({
               disabled ? styles.disabled : ""
             }`}
         >
+            {loading && <Spinner />}
             {children}
         </button>
     );

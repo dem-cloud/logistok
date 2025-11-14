@@ -1,5 +1,8 @@
 import axios from "axios";
-import { getToken, setToken } from "../auth/tokenStore"
+import { getToken } from "../auth/tokenStore"
+import { triggerLogout } from "../auth/logoutHandler";
+import { getExp } from "../auth/getExp";
+import { getExternalRefresh } from "../auth/refreshHandler";
 
 const BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -9,7 +12,8 @@ export const axiosPublic = axios.create({
     // timeout: 10000,
     headers: {
         'Content-Type': 'application/json'
-    }
+    },
+    validateStatus: () => true // Έτσι το Axios ΔΕΝ θα κάνει throw για 400, 401, 404, Θα κάνει throw μόνο σε network errors 500
 });
 
 // Private axios instance (με authentication)
@@ -26,8 +30,9 @@ export const axiosPrivate = axios.create({
 axiosPrivate.interceptors.request.use(
     (config) => {
         const token = getToken()
+        const exp = getExp(token);
 
-        if (token) {
+        if (token && exp) {
             config.headers.Authorization = `Bearer ${token}`
         }
 
@@ -41,26 +46,26 @@ axiosPrivate.interceptors.response.use(
     res => res,
     async error => {
         const original = error.config;
+
         if (error.response?.status === 401 && !original._retry) {
-            original._retry = true;
-            try {
-                const refreshed = await fetch(`${BASE_URL}/api/auth/refresh`, {
-                    method: "POST",
-                    credentials: "include"
-                });
-                if (!refreshed.ok) throw new Error("refresh_failed");
+        original._retry = true;
 
-                const data = await refreshed.json();
+        const refresh = getExternalRefresh();
+        if (!refresh) return Promise.reject(error); // safeguard
 
-                setToken(data.access_token);
+        try {
+            const newToken = await refresh();
 
-                original.headers.Authorization = `Bearer ${data.access_token}`;
+            original.headers.Authorization = `Bearer ${newToken}`;
+            
+            return axiosPrivate(original);
 
-                return axiosPrivate(original);
-            } catch {
-                setToken(null);
-            }
+        } catch {
+            triggerLogout(); // Η συνεδρία έληξε → forceLogout
+            return Promise.reject(error); 
         }
+        }
+
         return Promise.reject(error);
     }
 );

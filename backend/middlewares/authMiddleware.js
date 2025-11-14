@@ -1,39 +1,32 @@
-// authMiddleware.js
-const jwt = require('jsonwebtoken');
-const supabase = require('../supabaseConfig');
+const { verifyAccessToken } = require('../helpers/tokens.js');
 
-async function authenticateToken(req, res, next) {
-    const token = req.cookies["accessToken"]
-    
+// --- Middleware for protected routes (με Access JWT στο Authorization header) ---
+function requireAuth(req, res, next) {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
     if (!token) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({
+            success: false,
+            message: "Δεν έγινε πιστοποίηση.",
+            code: "NO_ACCESS_TOKEN"
+        });
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-        const { user_id } = decoded;
+        const payload = verifyAccessToken(token);
 
-        // Check if the session exists
-        const { data: sessions, error: sessionsError } = await supabase
-            .from("subscription_sessions")
-            .select("*")
-            .eq("user_id", user_id);
+        // Το sub στο JWT είναι το user_id
+        req.user = { id: payload.sub };
 
-        if (sessionsError) {
-            console.error('Error selecting session:', sessionsError);
-            return res.status(500).json({ success: false, message: 'Error selecting session' });
-        }
-
-        if (sessions.length === 0) {
-            return res.status(401).json({ message: "Session expired. Please log in again." });
-        }
-
-        req.user = decoded;
-        next();
-
+        return next();
     } catch (err) {
-        return res.status(401).json({ message: "Invalid token" });
+        return res.status(401).json({
+            success: false,
+            message: "Η συνεδρία έληξε. Συνδεθείτε ξανά.",
+            code: "ACCESS_TOKEN_EXPIRED_OR_INVALID"
+        });
     }
 }
 
-module.exports = authenticateToken;
+module.exports = requireAuth;
