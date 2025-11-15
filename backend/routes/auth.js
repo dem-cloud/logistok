@@ -27,16 +27,16 @@ const loginRateLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 λεπτό
     max: 5, // max 5 attempts
     message: { error: "Too many login attempts. Please try again later." },
-    standardHeaders: true,
-    legacyHeaders: false,
+    // standardHeaders: true,
+    // legacyHeaders: false,
 });
 
 const refreshRateLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 λεπτό
     max: 10, // max 10 αιτήματα / λεπτό ανά IP
     message: { error: "Too many refresh attempts. Please wait." },
-    standardHeaders: true,
-    legacyHeaders: false,
+    // standardHeaders: true,
+    // legacyHeaders: false,
 });
 
 router.post("/check-user", loginRateLimiter, async (req, res) => {

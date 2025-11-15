@@ -48,22 +48,22 @@ axiosPrivate.interceptors.response.use(
         const original = error.config;
 
         if (error.response?.status === 401 && !original._retry) {
-        original._retry = true;
+            original._retry = true;
 
-        const refresh = getExternalRefresh();
-        if (!refresh) return Promise.reject(error); // safeguard
+            const refresh = getExternalRefresh();
+            if (!refresh) return Promise.reject(error);
 
-        try {
-            const newToken = await refresh();
+            try {
+                const newToken = await refresh();
 
-            original.headers.Authorization = `Bearer ${newToken}`;
-            
-            return axiosPrivate(original);
+                original.headers.Authorization = `Bearer ${newToken}`;
+                
+                return axiosPrivate(original);
 
-        } catch {
-            triggerLogout(); // Η συνεδρία έληξε → forceLogout
-            return Promise.reject(error); 
-        }
+            } catch {
+                triggerLogout(); // Η συνεδρία έληξε -> forceLogout
+                return Promise.reject(error); 
+            }
         }
 
         return Promise.reject(error);

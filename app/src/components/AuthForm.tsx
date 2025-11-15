@@ -15,7 +15,7 @@ type VerificationType = 'email_verify' | 'password_reset';
 export default function AuthForm() {
 
     const navigate = useNavigate();
-    const { login } = useAuth();
+    const { login, showToast } = useAuth();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -28,10 +28,11 @@ export default function AuthForm() {
     const [confirmPasswordError, setConfirmPasswordError] = useState('');
     const [codeError, setCodeError] = useState('');
 
-    const [loadingSubmitRequest, setLoadingSubmitRequest] = useState(false);
+    const [loadingCheckUser, setLoadingCheckUser] = useState(false);
+    const [loadingSubmitRequest, setLoadingSubmitRequest] = useState(false); // login/signup
+
     const [secondsLeft, setSecondsLeft] = useState(0);
 
-    const [responseMessage, setResponseMessage] = useState('') // Αυτο πρεπει να ειναι στο Context
     const [isUserChecked, setIsUserChecked] = useState(false)
     const [isExistedUser, setIsExistedUser] = useState<boolean | null>(null)
 
@@ -98,16 +99,22 @@ export default function AuthForm() {
 
         const COOLDOWN_MS = COOLDOWNS[type] || 59 * 1000;
 
-        if(!success)
+        if(!success){
             throw new Error(message);
+            // if(code === "MISSING_VALUES" || code === "INVALID_TYPE")
+            //     showToast({ message: message, type: "error" });
+            // else
+            //     showToast({ message: "Κάτι πήγε στραβά", type: "error" });
 
-        if (code === "ACTIVE_VERIFICATION_CODE") {
-            setSecondsLeft(remaining); // πρακτικα εδω δεν θα μπει γιατι το κουμπι ειναι disabled μεχρι να τελειωσει το countdown
-        }else if (code === "VERIFICATION_CODE_SENT") {
-            setSecondsLeft(COOLDOWN_MS / 1000);
+        } else {
+
+            if (code === "ACTIVE_VERIFICATION_CODE") {
+                setSecondsLeft(remaining); // πρακτικα εδω δεν θα μπει γιατι το κουμπι ειναι disabled μεχρι να τελειωσει το countdown
+            } else if (code === "VERIFICATION_CODE_SENT") {
+                setSecondsLeft(COOLDOWN_MS / 1000);
+            }
         }
 
-        // setResponseMessage(message);
     }
 
     const handleCheckUser = async () => {
@@ -119,15 +126,21 @@ export default function AuthForm() {
         }
 
         try {
-            setLoadingSubmitRequest(true);
+            setLoadingCheckUser(true);
              // 1) Check user
             const type = "email_verify";
             const response = await axiosPublic.post("/api/auth/check-user", { email, type })
             const { success, message, code, data = {} } = response.data;
             const { isCoolingDown, remaining } = data;
 
-            if(!success)
-                throw new Error(message); // SERVER_ERROR
+            if(!success){
+                if(code === "MISSING_VALUES")
+                    showToast({ message: message, type: "error" });
+                else
+                    showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+
+                return;
+            }
 
             switch (code) {
                 case "USER_FOUND":
@@ -149,9 +162,10 @@ export default function AuthForm() {
 
         } catch (error) {
             console.error("error:", error);
-            // setResponseMessage(error);
+            // const message = error.response?.data?.message || 'Κάτι πήγε στραβά';
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
         } finally {
-            setLoadingSubmitRequest(false);
+            setLoadingCheckUser(false);
         }
     }
 
@@ -164,6 +178,8 @@ export default function AuthForm() {
         }
 
         try {
+            setLoadingSubmitRequest(true);
+            
             const fingerprint = await getFingerprint();
     
             console.log("Log In", email, password, fingerprint)
@@ -173,51 +189,68 @@ export default function AuthForm() {
             const { access_token, user } = data;
             
             if(!success){
-                if(code === "USER_NOT_FOUND") setEmailError(message)
-                else if (code === "WRONG_PASSWORD") setPasswordError(message)
-                else setResponseMessage("Ανεπιτυχής Σύνδεση")
+                // MISSING_VALUES
+                // USER_NOT_FOUND
+                // WRONG_PASSWORD
+
+                if (code === "WRONG_PASSWORD") setPasswordError(message)
+                else showToast({ message: "Κάτι πήγε στραβά", type: "error" });
                 return;
             }
 
-            login(access_token, user)
-            // navigate('/')
+            // showToast({ message: "Επιτυχής σύνδεση!", type: "success" });
 
-        } catch {
-            setResponseMessage("Κάτι πήγε λάθος. Προσπαθήστε ξανά.")
+            login(access_token, user)
+            navigate('/')
+
+        } catch (error) {
+            console.error("error:", error);
+            // const message = error.response?.data?.message || 'Κάτι πήγε στραβά';
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
         } finally {
-            // optional ?
-            setIsUserChecked(false)
-            setIsExistedUser(null)
+            setLoadingSubmitRequest(false);
         }
 
     }
 
     const handleSignup = async () => {
 
-        // Password & Verification code validation
-        if(verificationCode.length !== 6 || password !== confirmPassword || password.length < 6){
+        // Password regex validation
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
 
-            if(password.trim() === "" || confirmPassword.trim() === "") {
-                setPasswordError("Το πεδίο είναι υποχρεωτικό")
-                setConfirmPasswordError("Το πεδίο είναι υποχρεωτικό")
-            }
-            else if(password.trim().length < 6 || confirmPassword.trim().length < 6) {
-                setPasswordError("Ο κωδικός πρέπει να αποτελείται πάνω απο 6 χαρακτήρες")
-                setConfirmPasswordError("Ο κωδικός πρέπει να αποτελείται πάνω απο 6 χαρακτήρες")
-            }
-            else if(password.trim() !== confirmPassword.trim()){
-                setPasswordError("Οι κωδικοί δεν ταιριάζουν")
-                setConfirmPasswordError("Οι κωδικοί δεν ταιριάζουν")
-            }
-            
-            // Validate verification code
-            if(verificationCode.length !== 6)
-                setCodeError("Συμπληρώστε τον κωδικό επαλήθευσης");
-                
-            return;
+        let hasError = false;
+
+        // Empty fields
+        if (password.trim() === "" || confirmPassword.trim() === "") {
+            setPasswordError("Το πεδίο είναι υποχρεωτικό");
+            setConfirmPasswordError("Το πεδίο είναι υποχρεωτικό");
+            hasError = true;
         }
 
+        // Password strength validation
+        if (!passwordRegex.test(password)) {
+            setPasswordError("Ο κωδικός πρέπει να περιέχει τουλάχιστον 6 χαρακτήρες, 1 κεφαλαίο, 1 μικρό και 1 αριθμό");
+            hasError = true;
+        }
+
+        // Passwords mismatch
+        if (password !== confirmPassword) {
+            setPasswordError("Οι κωδικοί δεν ταιριάζουν");
+            setConfirmPasswordError("Οι κωδικοί δεν ταιριάζουν");
+            hasError = true;
+        }
+
+        // Verification Code
+        if (verificationCode.length !== 6) {
+            setCodeError("Συμπληρώστε τον κωδικό επαλήθευσης");
+            hasError = true;
+        }
+
+        if (hasError) return;
+
         try {
+            setLoadingSubmitRequest(true);
+            
             const fingerprint = await getFingerprint();
 
             console.log("Sign Up", email, password, confirmPassword, verificationCode, fingerprint)
@@ -227,12 +260,16 @@ export default function AuthForm() {
             const { access_token, user } = data;
 
             if(!success){
-                console.log(message, " dsdfs")
+                // MISSING_VALUES
+                // USER_FOUND
+                // DB_NO_DATA
+                // INVALID_PASSWORD
+                // PASSWORD_MISMATCH
+                // OTP_NOT_FOUND
+                // INVALID_OTP
+                // OTP_EXPIRED
 
                 switch (code) {
-                    case "MISSING_VALUES":
-                        // setResponseMessage(message);
-                        return;
                     case "INVALID_PASSWORD":
                     case "PASSWORD_MISMATCH":
                         setPasswordError(message);
@@ -244,17 +281,22 @@ export default function AuthForm() {
                         setCodeError(message)
                         return;
                     default:
-                        setResponseMessage(message);
+                        showToast({ message: "Κάτι πήγε στραβά", type: "error" });
                         return;
                 }
             }
+
+            // showToast({ message: "Επιτυχής εγγραφή!", type: "success" });
 
             login(access_token, user);
             navigate('/');
 
         } catch (error) {
-            console.log('poutsaaaaaaaaaaaaaa')
-            setResponseMessage("Κάτι πήγε λάθος. Προσπαθήστε ξανά.")
+            console.error("error:", error);
+            // const message = error.response?.data?.message || 'Κάτι πήγε στραβά';
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+        } finally {
+            setLoadingSubmitRequest(false);
         }
     }
 
@@ -322,8 +364,8 @@ export default function AuthForm() {
                 { !isUserChecked && (
                     <Button 
                         type='submit'
-                        loading={loadingSubmitRequest}
-                        disabled={loadingSubmitRequest}
+                        loading={loadingCheckUser}
+                        disabled={loadingCheckUser}
                     >
                         Συνέχεια
                     </Button>

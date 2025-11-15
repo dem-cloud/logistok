@@ -19,6 +19,8 @@ function requireAuth(req, res, next) {
         // Το sub στο JWT είναι το user_id
         req.user = { id: payload.sub };
 
+        // UPDATE last_activity_at
+
         return next();
     } catch (err) {
         return res.status(401).json({

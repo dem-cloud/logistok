@@ -22,7 +22,7 @@ export default function LoginForm({password, passwordError, onChange}: LoginForm
             />
 
             <Link 
-                to='/reset-password' 
+                to='/auth/reset-password' 
                 className={styles.forgot}
             >
                 <span>Ξεχάσατε τον Κωδικό;</span>

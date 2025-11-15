@@ -3,13 +3,13 @@ import styles from './Auth.module.css'
 import LogoIcon from '../assets/logo_icon.png'
 import AuthForm from "../components/AuthForm";
 import GoogleButton from "../components/GoogleButton.js"
-import { useAutoLogin } from "../hooks/useAutoLogin.js";
+import { useAuth } from "../context/AuthContext.js";
 
 const WEBSITE_URL = import.meta.env.VITE_WEBSITE_URL;
 
 export default function Auth() {
     
-    const { loading } = useAutoLogin();
+    const { loading } = useAuth();
     
     if (loading) {
         return <LoadingSpinner />;

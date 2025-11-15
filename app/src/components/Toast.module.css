@@ -1,0 +1,33 @@
+.toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    padding: 1rem 1.5rem;
+    border-radius: 10px;
+    color: white;
+    font-size: 0.95rem;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Visible animation */
+.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Toast Types */
+.success {
+    background: #4caf50;
+}
+
+.error {
+    background: #e53935;
+}
+
+.info {
+    background: #333;
+}

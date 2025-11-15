@@ -1,14 +1,18 @@
-import { Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import AppLayout from '../AppLayout';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { useAutoLogin } from '../hooks/useAutoLogin';
+import { useAuth } from '../context/AuthContext';
 
 export default function ProtectedRoute() {
     
-    const { loading } = useAutoLogin();
+    const { loading, user } = useAuth();
 
     if (loading) {
         return <LoadingSpinner />;
+    }
+
+    if (!user) {
+        return <Navigate to="/auth" replace />;
     }
 
     return (
