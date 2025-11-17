@@ -69,13 +69,24 @@ router.post("/check-user", loginRateLimiter, async (req, res) => {
             });
         }
 
-        if (existingUser) {
+        if(type === VERIFICATION_TYPES.PASSWORD_RESET && !existingUser){
+
+            return res.status(400).json({
+                success: false,
+                message: "Δεν υπάρχει χρήστης με αυτό το email",
+                code: "PR_USER_NOT_FOUND",
+            });
+
+        } else if(type !== VERIFICATION_TYPES.PASSWORD_RESET && existingUser) {
+            
             return res.json({
                 success: true,
                 message: "ΟΚ",
                 code: "USER_FOUND",
             });
+
         }
+        
 
         // 2) Αν δεν υπάρχει χρήστης, έλεγξε cooldown/ενεργό κωδικό
         const { isCoolingDown, remaining, error } = await getCooldownStatus(email, type);
@@ -90,16 +101,31 @@ router.post("/check-user", loginRateLimiter, async (req, res) => {
         }
 
         // 3) Επιστροφή αποτελέσματος
-        return res.json({
-            success: true,
-            message: "ΟΚ",
-            code: "USER_NOT_FOUND",
-            data: {
-                isCoolingDown, // true/false
-                remaining      // δευτερόλεπτα που απομένουν
-            },
-        });
+        if(type === VERIFICATION_TYPES.PASSWORD_RESET && existingUser){
 
+            return res.json({
+                success: true,
+                message: "ΟΚ",
+                code: "PR_USER_FOUND",
+                data: {
+                    isCoolingDown, // true/false
+                    remaining      // δευτερόλεπτα που απομένουν
+                },
+            });
+
+        } else if(type !== VERIFICATION_TYPES.PASSWORD_RESET && !existingUser){
+
+            return res.json({
+                success: true,
+                message: "ΟΚ",
+                code: "USER_NOT_FOUND",
+                data: {
+                    isCoolingDown, // true/false
+                    remaining      // δευτερόλεπτα που απομένουν
+                },
+            });
+
+        }
 
     } catch (error) {
         console.error('Error checking user', error);
@@ -188,6 +214,269 @@ router.post("/send-code", verificationRateLimiter, async (req, res) => {
     
 })
 
+router.post("/password-reset", loginRateLimiter, async (req, res) => {
+    const { email, password, confirmPassword, verificationCode, fingerprint } = req.body;
+
+    if (!email || !password || !confirmPassword || !verificationCode || !fingerprint) {
+        console.log("NO DATA RECEIVED");
+        return res.status(400).json({
+            success: false,
+            message: "Δεν δόθηκαν τιμές",
+            code: "MISSING_VALUES"
+        });
+    }
+
+    try {
+        // ---------------------------------------------
+        // 1. USER EXISTANCE
+        // ---------------------------------------------
+        const { data: userFound, error: userError } = await supabase
+            .from("users")
+            .select("*")
+            .eq("email", email)
+            .maybeSingle();
+
+        if(userError){
+            console.error("DB SELECT ERROR (users):", userError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση users",
+                code: "DB_ERROR",
+            });
+        }
+
+        if(!userFound){
+            console.log("USER DOESN'T EXISTS");
+            return res.status(400).json({
+                success: false,
+                message: "Ο χρήστης δεν υπάρχει",
+                code: "USER_NOT_FOUND",
+            });
+        }
+
+        // ---------------------------------------------
+        // 2. PASSWORD VALIDATION
+        // ---------------------------------------------
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
+
+        if (!passwordRegex.test(password)) {
+            console.log("INVALID PASSWORD");
+            return res.status(400).json({
+                success: false,
+                message: "Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες, 1 κεφαλαίο, 1 πεζό και 1 αριθμό.",
+                code: "INVALID_PASSWORD",
+            });
+        }
+
+        if (password !== confirmPassword) {
+            console.log("PASSWORD MISMATCH");
+            return res.status(400).json({
+                success: false,
+                message: "Οι κωδικοί δεν ταιριάζουν.",
+                code: "PASSWORD_MISMATCH",
+            });
+        }
+
+        // ---------------------------------------------
+        // 3. CHECK OTP (verification_code table)
+        // ---------------------------------------------
+        const { data: otpRecord, error: otpErr } = await supabase
+            .from("verification_codes")
+            .select("*")
+            .eq("email", email)
+            .eq("type", VERIFICATION_TYPES.PASSWORD_RESET)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (otpErr){
+            console.error("DB SELECT ERROR (verification_codes):", otpErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση verification_codes",
+                code: "DB_ERROR",
+            });
+        };
+
+        if(!otpRecord){
+            console.log("NO VERIFICATION CODE RETURNED AFTER SELECT");
+            return res.status(400).json({
+                success: false,
+                message: "Λάθος κωδικός OTP",
+                code: "OTP_NOT_FOUND",
+            });
+        }
+
+        const otpMatch = await bcrypt.compare(verificationCode, otpRecord.code_hash);
+
+        if (!otpMatch) {
+            console.log("INVALID OTP");
+            return res.status(400).json({
+                success: false,
+                message: "Λάθος κωδικός OTP",
+                code: "INVALID_OTP",
+            });
+        }
+
+        // Check expiry
+        if (new Date(otpRecord.expires_at) < new Date()) {
+            console.log("OTP EXPIRED");
+            return res.status(400).json({
+                success: false,
+                message: "Ο κωδικός OTP έχει λήξει.",
+                code: "OTP_EXPIRED",
+            });
+        }
+
+        // ---------------------------------------------
+        // 4. UPDATE USER with new password
+        // ---------------------------------------------
+        const password_hash = await bcrypt.hash(password, 10);
+
+        const { error: updateUserError } = await supabase
+            .from("users")
+            .update({ 
+                password_hash
+             })
+            .eq("id", userFound.id);
+
+        if (updateUserError) {
+            console.error("DB UPDATE ERROR (users):", updateUserError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση users",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ---------------------------------------------
+        // 5. CREATE OR UPDATE USER SESSION
+        // ---------------------------------------------
+        const refreshToken = generateRefreshToken();
+        const refreshTokenHash = hashRefreshToken(refreshToken);
+
+        // 1) Παλιές συσκευές -> revoke
+        const { error: revokeOldSessionsError } = await supabase
+            .from("user_sessions")
+            .update({ 
+                revoked: true,
+                revoked_at: new Date()
+            })
+            .eq("user_id", userFound.id)
+            .neq("fingerprint", fingerprint);
+
+        if (revokeOldSessionsError){
+            console.error("DB UPDATE ERROR (user_sessions):", revokeOldSessionsError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση user_sessions",
+                code: "DB_ERROR",
+            });
+        };
+
+        // 2) Έλεγχος υπάρχοντος session για το συγκεκριμένο fingerprint
+        const { data: existingSessions, error: existingSessionsError } = await supabase
+            .from("user_sessions")
+            .select("id")
+            .eq("user_id", userFound.id)
+            .eq("fingerprint", fingerprint)
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+        if (existingSessionsError){
+            console.error("DB SELECT ERROR (user_sessions):", existingSessionsError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση user_sessions",
+                code: "DB_ERROR",
+            });
+        };
+
+        const existingSession = existingSessions?.[0];
+
+        const expires_at = new Date();
+        expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
+
+        if (existingSession) {
+            // Υπάρχει session για αυτή τη συσκευή -> ανανέωσε το token
+            const { error: updateError } = await supabase
+                .from("user_sessions")
+                .update({
+                    refresh_token_hash: refreshTokenHash,
+                    revoked: false,
+                    revoked_at: null,
+                    expires_at: expires_at,
+                    last_login_at: new Date(),
+                    last_activity_at: new Date(),
+                    // user_agent: req.headers["user-agent"],
+                    // device: deviceName,
+                    // platform: `${browser} on ${os}`,
+                })
+                .eq("id", existingSession.id);
+
+            if (updateError){
+                console.error("DB UPDATE ERROR (user_sessions):", updateError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ενημέρωση user_sessions",
+                    code: "DB_ERROR",
+                });
+            };
+
+        } else {
+            // Νέα συσκευή -> δημιουργία session
+            const { error: insertError } = await supabase
+                .from("user_sessions")
+                .insert({
+                    user_id: userFound.id,
+                    refresh_token_hash: refreshTokenHash,
+                    fingerprint,
+                    revoked: false,
+                    revoked_at: null,
+                    expires_at: expires_at,
+                    created_at: new Date(),
+                    last_login_at: new Date(),
+                    last_activity_at: new Date(),
+                    // user_agent: req.headers["user-agent"],
+                    // device: deviceName,
+                    // platform: `${browser} on ${os}`,
+                });
+
+            if (insertError){
+                console.error("DB INSERT ERROR (user_sessions):", insertError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την καταχώρηση user_sessions",
+                    code: "DB_ERROR",
+                });
+            };
+        }
+
+        setRefreshCookie(res, refreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
+
+        // ---------------------------------------------
+        // SUCCESS
+        // ---------------------------------------------
+        return res.json({
+            success: true,
+            message: "Επιτυχής αλλαγή κωδικού",
+            data: {
+                access_token: generateAccessToken(userFound.id),
+                user: {
+                    email: userFound.email,
+                    first_name: userFound.first_name,
+                    last_name: userFound.last_name
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error signing up', error);
+        return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
+    }
+    
+})
+
 router.post("/signup", loginRateLimiter, async (req, res) => {
 
     // 1. Check if user exists ✔️
@@ -270,7 +559,7 @@ router.post("/signup", loginRateLimiter, async (req, res) => {
             .from("verification_codes")
             .select("*")
             .eq("email", email)
-            .eq("type", "email_verify")
+            .eq("type", VERIFICATION_TYPES.EMAIL_VERIFY)
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -562,7 +851,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
 
         const { data: user, error: userError } = await supabase
             .from('users')
-            .select('id, email, first_name, last_name, password_hash')
+            .select('id, email, first_name, last_name, password_hash, email_verified')
             .eq('email', email)
             .maybeSingle();
 
@@ -584,6 +873,15 @@ router.post("/login", loginRateLimiter, async (req, res) => {
             });
         }
 
+        if(!user.email_verified){
+            console.log("EMAIL NOT VERIFIED");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν έχει γίνει επαλήθευση email",
+                code: "EMAIL_NOT_VERIFIED",
+            });
+        }
+
         const match = await bcrypt.compare(password, user.password_hash);
         if (!match) {
             console.log("WRONG PASSWORD");
@@ -602,11 +900,11 @@ router.post("/login", loginRateLimiter, async (req, res) => {
         // const browser = ua.browser.name || "Unknown Browser";
         // const os = ua.os.name || "Unknown OS";
         
-        // create session + refresh cookie
+        // create or update session + refresh cookie
         const refreshToken = generateRefreshToken();
         const refreshTokenHash = hashRefreshToken(refreshToken);
 
-        // 1) Παλιές συσκευές → revoke
+        // 1) Παλιές συσκευές -> revoke
         const { error: revokeOldSessionsError } = await supabase
             .from("user_sessions")
             .update({ 
@@ -649,7 +947,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
         if (existingSession) {
-            // Υπάρχει session για αυτή τη συσκευή → ανανέωσε το token
+            // Υπάρχει session για αυτή τη συσκευή -> ανανέωσε το token
             const { error: updateError } = await supabase
                 .from("user_sessions")
                 .update({
@@ -675,7 +973,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
             };
 
         } else {
-            // Νέα συσκευή → δημιουργία session
+            // Νέα συσκευή -> δημιουργία session
             const { error: insertError } = await supabase
                 .from("user_sessions")
                 .insert({
@@ -793,7 +1091,7 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
         // 3) Έλεγχος refresh token integrity
         const match = verifyRefreshToken(refreshToken, session.refresh_token_hash);
         if (!match) {
-            // πιθανή κλοπή token → revoke όλα τα sessions
+            // πιθανή κλοπή token -> revoke όλα τα sessions
             const { error: updateRevokeError } = await supabase
                 .from("user_sessions")
                 .update({ 

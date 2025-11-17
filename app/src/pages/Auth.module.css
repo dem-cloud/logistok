@@ -30,6 +30,7 @@
 .title {
     font-size: 28px;
     font-weight: 600;
+    width: max-content;
 }
 
 .tagline {
@@ -37,6 +38,7 @@
     font-weight: 600;
     color: var(--text-secondary-color);
     margin-bottom: 2rem;
+    width: max-content;
 }
 
 .footer {

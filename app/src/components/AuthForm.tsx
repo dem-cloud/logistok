@@ -9,10 +9,16 @@ import LoginForm from './LoginForm';
 import SignupForm from './SignupForm';
 import { getFingerprint } from '../auth/getFingerprint';
 import { useAuth } from '../context/AuthContext';
+import ResetPasswordForm from './ResetPasswordForm';
 
 type VerificationType = 'email_verify' | 'password_reset';
 
-export default function AuthForm() {
+interface AuthFormProps {
+    type: VerificationType;
+    setTagline?: React.Dispatch<React.SetStateAction<string>>;
+}
+
+export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
     const navigate = useNavigate();
     const { login, showToast } = useAuth();
@@ -34,11 +40,12 @@ export default function AuthForm() {
     const [secondsLeft, setSecondsLeft] = useState(0);
 
     const [isUserChecked, setIsUserChecked] = useState(false)
-    const [isExistedUser, setIsExistedUser] = useState<boolean | null>(null)
+    const [showLoginForm, setShowLoginForm] = useState(false)
+    const [showSignupForm, setShowSignupForm] = useState(false)
+    const [showResetPasswordForm, setShowResetPasswordForm] = useState(false)
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    // console.log(responseMessage);
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
 
     useEffect(() => {
         if (secondsLeft === null) return; // Αν δεν έχουμε countdown, μην κάνεις τίποτα
@@ -57,7 +64,10 @@ export default function AuthForm() {
         setEmailError("");
 
         setIsUserChecked(false);
-        setIsExistedUser(null);
+        
+        setShowLoginForm(false);
+        setShowSignupForm(false);
+        setShowResetPasswordForm(false);
 
         setPassword("");
         setConfirmPassword("");
@@ -65,6 +75,8 @@ export default function AuthForm() {
         setPasswordError("");
         setConfirmPasswordError("");
         setCodeError("");
+
+        setTagline?.("Πες μας το email σου για να σου στείλουμε τον κωδικό επαλήθευσης.");
     }
 
     const handleChangePassword = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,7 +140,6 @@ export default function AuthForm() {
         try {
             setLoadingCheckUser(true);
              // 1) Check user
-            const type = "email_verify";
             const response = await axiosPublic.post("/api/auth/check-user", { email, type })
             const { success, message, code, data = {} } = response.data;
             const { isCoolingDown, remaining } = data;
@@ -136,6 +147,8 @@ export default function AuthForm() {
             if(!success){
                 if(code === "MISSING_VALUES")
                     showToast({ message: message, type: "error" });
+                else if(code === "PR_USER_NOT_FOUND")
+                    setEmailError(message)
                 else
                     showToast({ message: "Κάτι πήγε στραβά", type: "error" });
 
@@ -144,10 +157,24 @@ export default function AuthForm() {
 
             switch (code) {
                 case "USER_FOUND":
-                    setIsExistedUser(true);
+                    setShowSignupForm(false);
+                    setShowResetPasswordForm(false);
+
+                    setShowLoginForm(true);
                     break;
                 case "USER_NOT_FOUND":
-                    setIsExistedUser(false);
+                    setShowLoginForm(false);
+                    setShowResetPasswordForm(false);
+
+                    setShowSignupForm(true);
+                    isCoolingDown && setSecondsLeft(remaining);
+                    break;
+                case "PR_USER_FOUND":
+                    setShowLoginForm(false);
+                    setShowSignupForm(false);
+
+                    setTagline?.("Διάλεξε τον νέο σου κωδικό πρόσβασης και συμπλήρωσε τον 6ψήφιο κωδικό επαλήθευσης.");
+                    setShowResetPasswordForm(true);
                     isCoolingDown && setSecondsLeft(remaining);
                     break;
             }
@@ -155,7 +182,7 @@ export default function AuthForm() {
             // 2) Προχωράμε στις φόρμες (Login | Signup):
             setIsUserChecked(true);
 
-            if(code === "USER_NOT_FOUND"){
+            if(code === "USER_NOT_FOUND" || code === "PR_USER_FOUND"){
                 // 3) Send code
                 !isCoolingDown && await handleResend(email, type);
             }
@@ -191,9 +218,11 @@ export default function AuthForm() {
             if(!success){
                 // MISSING_VALUES
                 // USER_NOT_FOUND
+                // EMAIL_NOT_VERIFIED
                 // WRONG_PASSWORD
 
-                if (code === "WRONG_PASSWORD") setPasswordError(message)
+                if (code === "EMAIL_NOT_VERIFIED") setEmailError(message)
+                else if (code === "WRONG_PASSWORD") setPasswordError(message)
                 else showToast({ message: "Κάτι πήγε στραβά", type: "error" });
                 return;
             }
@@ -213,11 +242,7 @@ export default function AuthForm() {
 
     }
 
-    const handleSignup = async () => {
-
-        // Password regex validation
-        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
-
+    const validationSigninReset = () => {
         let hasError = false;
 
         // Empty fields
@@ -230,6 +255,7 @@ export default function AuthForm() {
         // Password strength validation
         if (!passwordRegex.test(password)) {
             setPasswordError("Ο κωδικός πρέπει να περιέχει τουλάχιστον 6 χαρακτήρες, 1 κεφαλαίο, 1 μικρό και 1 αριθμό");
+            setConfirmPasswordError("Ο κωδικός πρέπει να περιέχει τουλάχιστον 6 χαρακτήρες, 1 κεφαλαίο, 1 μικρό και 1 αριθμό");
             hasError = true;
         }
 
@@ -246,6 +272,12 @@ export default function AuthForm() {
             hasError = true;
         }
 
+        return hasError;
+    }
+
+    const handleSignup = async () => {
+
+        const hasError = validationSigninReset();
         if (hasError) return;
 
         try {
@@ -286,7 +318,64 @@ export default function AuthForm() {
                 }
             }
 
-            // showToast({ message: "Επιτυχής εγγραφή!", type: "success" });
+            // showToast({ message, type: "success" });
+
+            login(access_token, user);
+            navigate('/onboarding');
+
+        } catch (error) {
+            console.error("error:", error);
+            // const message = error.response?.data?.message || 'Κάτι πήγε στραβά';
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+        } finally {
+            setLoadingSubmitRequest(false);
+        }
+    }
+
+    const handleResetPassword = async () => {
+
+        const hasError = validationSigninReset();
+        if (hasError) return;
+
+        try {
+            setLoadingSubmitRequest(true);
+            
+            const fingerprint = await getFingerprint();
+
+            console.log("Reset Password", email, password, confirmPassword, verificationCode, fingerprint)
+
+
+            const response = await axiosPublic.post("/api/auth/password-reset", { email, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
+            const { success, message, data = {}, code } = response.data;
+            const { access_token, user } = data;
+
+            if(!success){
+                // MISSING_VALUES
+                // USER_NOT_FOUND
+                // INVALID_PASSWORD
+                // PASSWORD_MISMATCH
+                // OTP_NOT_FOUND
+                // INVALID_OTP
+                // OTP_EXPIRED
+
+                switch (code) {
+                    case "INVALID_PASSWORD":
+                    case "PASSWORD_MISMATCH":
+                        setPasswordError(message);
+                        setConfirmPasswordError(message);
+                        return;
+                    case "OTP_NOT_FOUND":
+                    case "INVALID_OTP":
+                    case "OTP_EXPIRED":
+                        setCodeError(message)
+                        return;
+                    default:
+                        showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+                        return;
+                }
+            }
+
+            // showToast({ message, type: "success" });
 
             login(access_token, user);
             navigate('/');
@@ -304,10 +393,12 @@ export default function AuthForm() {
         e.preventDefault();
     
         if(isUserChecked) {
-            if(isExistedUser)
+            if(showLoginForm)
                 handleLogin()
-            else
+            else if(showSignupForm)
                 handleSignup()
+            else if(showResetPasswordForm)
+                handleResetPassword()
         } else {
             handleCheckUser();
         }
@@ -330,14 +421,15 @@ export default function AuthForm() {
                         error={emailError}
                     />
                     
-                    { isUserChecked && (
-                    isExistedUser ? 
+                    { isUserChecked && showLoginForm && (
                         <LoginForm 
                             password = {password}
                             passwordError = {passwordError}
                             onChange = {handleChangePassword}
                         />
-                    :
+                    )}
+
+                    {isUserChecked && showSignupForm && (
                         <SignupForm
                             password = {password}
                             passwordError = {passwordError}
@@ -351,12 +443,29 @@ export default function AuthForm() {
                             codeError = {codeError}
                             onChange = {handleChangeVerificationCode}
 
-                            onResend = {()=>handleResend(email, "email_verify")}
+                            onResend = {()=>handleResend(email, type)}
                             remainingSec = {secondsLeft}
                         />
-                    )
-                    }
+                    )}
+                    
+                    { isUserChecked && showResetPasswordForm && (
+                        <ResetPasswordForm 
+                            password = {password}
+                            passwordError = {passwordError}
+                            onChangeP = {handleChangePassword}
 
+                            confirmPassword = {confirmPassword}
+                            confirmPasswordError = {confirmPasswordError}
+                            onChangeCP = {handleChangeConfirmPassword}
+
+                            code = {verificationCode}
+                            codeError = {codeError}
+                            onChange = {handleChangeVerificationCode}
+
+                            onResend = {()=>handleResend(email, type)}
+                            remainingSec = {secondsLeft}
+                        />
+                    )}
 
                 </div>
                 
@@ -371,7 +480,7 @@ export default function AuthForm() {
                     </Button>
                 )}
                 
-                { isUserChecked && isExistedUser && (
+                { isUserChecked && showLoginForm && (
                     <Button 
                         type='submit'
                         loading={loadingSubmitRequest}
@@ -381,13 +490,23 @@ export default function AuthForm() {
                     </Button>
                 )}
                 
-                { isUserChecked && !isExistedUser && (
+                { isUserChecked && showSignupForm && (
                     <Button 
                         type='submit'
                         loading={loadingSubmitRequest}
                         disabled={loadingSubmitRequest}
                     >
                         Δημιουργία Λογαριασμού
+                    </Button>
+                )}
+
+                { isUserChecked && showResetPasswordForm && (
+                    <Button 
+                        type='submit'
+                        loading={loadingSubmitRequest}
+                        disabled={loadingSubmitRequest}
+                    >
+                        Αλλαγή Κωδικού
                     </Button>
                 )}
             </form>

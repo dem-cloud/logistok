@@ -8,8 +8,3 @@
     display: flex;
     flex-direction: column;
 }
-
-.responseMessage {
-    color: red;
-    font-size: 12px;
-}

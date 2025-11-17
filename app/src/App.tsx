@@ -8,6 +8,9 @@ import Auth from './pages/Auth'
 import { useAuth } from './context/AuthContext'
 import ResetPassword from './pages/ResetPassword'
 import RequireLoggedOut from './routes/RequireLoggedOut'
+import Onboarding from './pages/protected/Onboarding'
+import RequireOnboarding from './routes/RequireOnboarding'
+import RequireFinishedOnboarding from './routes/RequireFinishedOnboarding'
 
 export default function App() {
 
@@ -30,7 +33,18 @@ export default function App() {
 
             {/* PROTECTED ROUTES - APP */}
             <Route element={<ProtectedRoute />}>
-                <Route path="/" element={<Dashboard />} />
+
+                {/* ROUTES ΓΙΑ ΧΡΗΣΤΕΣ ΠΟΥ ΕΙΝΑΙ ΣΕ ONBOARDING */}
+                <Route element={<RequireOnboarding />}>
+                    <Route path="/onboarding" element={<Onboarding />} />
+                </Route>
+
+                {/* ROUTES ΓΙΑ ΧΡΗΣΤΕΣ ΠΟΥ ΕΧΟΥΝ ΟΛΟΚΛΗΡΩΣΕΙ ΤΟ ONBOARDING */}
+                <Route element={<RequireFinishedOnboarding />}>
+                    <Route path="/" element={<Dashboard />} />
+                    {/* άλλα protected routes εδώ */}
+                </Route>
+
                 {/* Catch-all για logged-in χρήστες -> redirect στο "/" */}
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

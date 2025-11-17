@@ -38,8 +38,10 @@ export default function Auth() {
                     <div className={styles.line}></div>
                 </div>
 
-                {/* Login Form */}
-                <AuthForm />
+                {/* Login/Signup Form */}
+                <AuthForm 
+                    type = "email_verify"
+                />
 
                 <div className={styles.footer}>
                     <div 

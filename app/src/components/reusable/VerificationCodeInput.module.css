@@ -40,6 +40,7 @@
     transition: opacity 0.2s ease;
     align-self: flex-start;
     margin-bottom: .3rem;
+    text-align: left;
 }
 
 .hiddenError {
