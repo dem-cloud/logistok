@@ -1,10 +1,9 @@
 import { createContext, useState, useEffect, ReactNode, useContext, useRef, useCallback } from 'react';
-import { axiosPrivate, axiosPublic } from '../api/axios';
+import { axiosPublic } from '../api/axios';
 import { getExp } from '../auth/getExp';
 import { getToken, setToken } from '../auth/tokenStore';
 import { registerLogout } from '../auth/logoutHandler';
 import { useNavigate } from 'react-router-dom';
-import { getFingerprint } from '../auth/getFingerprint';
 import { registerRefresh } from '../auth/refreshHandler';
 import Toast from '../components/Toast';
 
@@ -13,13 +12,20 @@ interface User {
     email: string;
     first_name: string;
     last_name: string;
+    needsOnboarding: boolean;
+    onboardingStep: number | null;
+}
+
+interface RefreshResponse {
+    access_token: string;
+    user: User;
 }
 
 interface AuthContextType {
     user: User | null;
     setUser: React.Dispatch<React.SetStateAction<User | null>>;
     login: (token: string, user: User) => void;
-    refresh: () => Promise<string>; // Επιστρέφει access token
+    refresh: () => Promise<RefreshResponse>; // Επιστρέφει access token
     logout: () => Promise<void>; // Async function
     forceLogout: () => void; // Sync function
     loading: boolean;
@@ -99,18 +105,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     useEffect(() => {
         const initAuth = async () => {
             try {
-                await refresh();
-
-                const response = await axiosPrivate.get("/api/auth/me");
-                const { success, data = {} } = response.data;
-                const { user } = data;
                 
-                if (success && user) {
-                    setUser(user);
-                    schedule();
-                } else {
-                    throw new Error("invalid_me_response");
-                }
+                const { user } = await refresh();
+
+                setUser(user);
+                schedule();
+
             } catch {
                 forceLogout();
             } finally {
@@ -136,33 +136,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const refresh = useCallback(async () => {
 
-        const fingerprint = await getFingerprint();
-
-        const response = await axiosPublic.post("/api/auth/refresh", { fingerprint }, { withCredentials: true });
+        const response = await axiosPublic.post("/api/auth/refresh", {}, { withCredentials: true });
         const { success, message, data } = response.data;
-        const { access_token } = data;
+        const { access_token, user } = data;
 
-        if(!success || !access_token){
+        if(!success || !access_token || !user){
             console.log(message)
             throw new Error("invalid_refresh_response");
         }
 
         setToken(access_token);
 
-        return access_token;
+        return { access_token, user };
     }, []);
 
     // Graceful logout - Όταν ο χρήστης πατάει "Logout"
     const logout = async () => {
 
         try {
-            const fingerprint = await getFingerprint();
 
-            await axiosPublic.post('/api/auth/logout', { fingerprint }, { withCredentials: true });
+            await axiosPublic.post('/api/auth/logout', {}, { withCredentials: true });
 
-            // const response = await axiosPublic.post('/api/auth/logout', { fingerprint }, { withCredentials: true });
-            // const { success, message } = response.data;
-            // console.log(message)
         } catch (error) {
             console.error(error);
             // setResponseMessage

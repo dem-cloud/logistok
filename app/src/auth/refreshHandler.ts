@@ -1,9 +1,22 @@
-let externalRefresh: (() => Promise<string>) | null = null;
+interface User {
+    email: string;
+    first_name: string;
+    last_name: string;
+    needsOnboarding: boolean;
+    onboardingStep: number;
+}
 
-export function registerRefresh(fn: () => Promise<string>) {
-  externalRefresh = fn;
+interface RefreshResponse {
+    access_token: string;
+    user: User;
+}
+
+let externalRefresh: (() => Promise<RefreshResponse>) | null = null;
+
+export function registerRefresh(fn: () => Promise<RefreshResponse>) {
+    externalRefresh = fn;
 }
 
 export function getExternalRefresh() {
-  return externalRefresh;
+    return externalRefresh;
 }

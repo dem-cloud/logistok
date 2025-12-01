@@ -4,8 +4,8 @@ const router = express.Router();
 const bcrypt = require('bcryptjs')
 const rateLimit = require('express-rate-limit');
 const supabase = require('../supabaseConfig');
-const { generateRefreshToken, hashRefreshToken, setRefreshCookie, generateAccessToken, verifyRefreshToken, clearRefreshCookie } = require('../helpers/tokens.js');
-const requireAuth = require('../middlewares/authMiddleware');
+const { generateRefreshToken, hashRefreshToken, setRefreshCookie, generateAccessToken, clearRefreshCookie } = require('../helpers/tokens.js');
+const { requireAuth } = require('../middlewares/authMiddleware');
 const { Resend } = require('resend');
 const verificationRateLimiter = require('../middlewares/verificationRateLimiter.js');
 const { generateSixDigitCode } = require('../helpers/generateSixDigitCode.js');
@@ -13,9 +13,11 @@ const getCooldownStatus = require('../helpers/getCooldownStatus.js');
 const { generateVerificationEmail, generatePasswordResetEmail } = require('../helpers/emailTemplate.js');
 const { generateSubscriptionCode } = require('../helpers/generateSubscriptionCode.js');
 const { VERIFICATION_TYPES } = require('../helpers/verificationTypes.js');
+const Stripe = require('stripe');
 // const UAParser = require('ua-parser-js');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ## Rate Limiting (ανά IP) -> Προστατεύει τον server από spam & network floods από DoS / Botnets
 // ## Brute-force ανά Fingerprint -> Προστατεύει τον λογαριασμό από token/password guessing από Account takeover
@@ -254,6 +256,58 @@ router.post("/password-reset", loginRateLimiter, async (req, res) => {
             });
         }
 
+        // -----
+        // Find subscription id
+        const { data: sub, error: subError } = await supabase
+            .from('subscriptions')
+            .select('id')
+            .eq('owner_id', userFound.id)
+            .maybeSingle();
+
+        if (subError){
+            console.error("DB SELECT ERROR (subscriptions):", subError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση subscriptions",
+                code: "DB_ERROR",
+            });
+        };
+
+        let userIsOwner = true;
+        if(!sub) userIsOwner = false;
+        let needsOnboarding = false;
+        let onboardingStep = null;
+
+        if(userIsOwner){
+            // Find is_completed on onboarding table
+            const { data: onboarding, error: onboardingError } = await supabase
+                .from('onboarding')
+                .select('step, is_completed')
+                .eq('subscription_id', sub.id)
+                .maybeSingle();
+
+            if (onboardingError){
+                console.error("DB SELECT ERROR (onboarding):", onboardingError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση onboarding",
+                    code: "DB_ERROR",
+                });
+            };
+
+            if(!onboarding){
+                console.log("ONBOARDING NOT FOUND");
+                return res.status(404).json({
+                    success: false,
+                    message: "Δεν βρέθηκε onboarding stage",
+                    code: "ONBOARDING_NOT_FOUND",
+                });
+            }
+
+            needsOnboarding = !onboarding.is_completed;
+            onboardingStep = onboarding.step || 1;
+        }
+
         // ---------------------------------------------
         // 2. PASSWORD VALIDATION
         // ---------------------------------------------
@@ -465,7 +519,9 @@ router.post("/password-reset", loginRateLimiter, async (req, res) => {
                 user: {
                     email: userFound.email,
                     first_name: userFound.first_name,
-                    last_name: userFound.last_name
+                    last_name: userFound.last_name,
+                    needsOnboarding: needsOnboarding,
+                    onboardingStep: onboardingStep
                 }
             }
         });
@@ -477,6 +533,7 @@ router.post("/password-reset", loginRateLimiter, async (req, res) => {
     
 })
 
+// sign up for owners only
 router.post("/signup", loginRateLimiter, async (req, res) => {
 
     // 1. Check if user exists ✔️
@@ -643,6 +700,7 @@ router.post("/signup", loginRateLimiter, async (req, res) => {
         // ---------------------------------------------
         // 5. CREATE SUBSCRIPTION
         // ---------------------------------------------
+
         const { data: subscriptionInsert, error: subErr } = await supabase
             .from("subscriptions")
             .insert({
@@ -821,8 +879,10 @@ router.post("/signup", loginRateLimiter, async (req, res) => {
                 access_token: generateAccessToken(user_id),
                 user: {
                     email: userInsert.email,
-                    first_name: userInsert.first_name,
-                    last_name: userInsert.last_name
+                    first_name: "",
+                    last_name: "",
+                    needsOnboarding: true,
+                    onboardingStep: 1
                 }
             }
         });
@@ -851,7 +911,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
 
         const { data: user, error: userError } = await supabase
             .from('users')
-            .select('id, email, first_name, last_name, password_hash, email_verified')
+            .select('id, email, first_name, last_name, password_hash, email_verified, subscription_id')
             .eq('email', email)
             .maybeSingle();
 
@@ -875,7 +935,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
 
         if(!user.email_verified){
             console.log("EMAIL NOT VERIFIED");
-            return res.status(404).json({
+            return res.status(403).json({
                 success: false,
                 message: "Δεν έχει γίνει επαλήθευση email",
                 code: "EMAIL_NOT_VERIFIED",
@@ -890,6 +950,57 @@ router.post("/login", loginRateLimiter, async (req, res) => {
                 message: "Λάθος κωδικός", 
                 code: "WRONG_PASSWORD" 
             });
+        }
+
+        // Find subscription id
+        const { data: sub, error: subError } = await supabase
+            .from('subscriptions')
+            .select('id')
+            .eq('owner_id', user.id)
+            .maybeSingle();
+
+        if (subError){
+            console.error("DB SELECT ERROR (subscriptions):", subError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση subscriptions",
+                code: "DB_ERROR",
+            });
+        };
+
+        let userIsOwner = true;
+        if(!sub) userIsOwner = false;
+        let needsOnboarding = false;
+        let onboardingStep = null;
+
+        if(userIsOwner){
+            // Find is_completed on onboarding table
+            const { data: onboarding, error: onboardingError } = await supabase
+                .from('onboarding')
+                .select('step, is_completed')
+                .eq('subscription_id', sub.id)
+                .maybeSingle();
+
+            if (onboardingError){
+                console.error("DB SELECT ERROR (onboarding):", onboardingError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση onboarding",
+                    code: "DB_ERROR",
+                });
+            };
+
+            if(!onboarding){
+                console.log("ONBOARDING NOT FOUND");
+                return res.status(404).json({
+                    success: false,
+                    message: "Δεν βρέθηκε onboarding stage",
+                    code: "ONBOARDING_NOT_FOUND",
+                });
+            }
+
+            needsOnboarding = !onboarding.is_completed;
+            onboardingStep = onboarding.step || 1;
         }
 
         // TODO: Πάρε info συσκευής
@@ -1011,7 +1122,9 @@ router.post("/login", loginRateLimiter, async (req, res) => {
                 user: {
                     email: user.email,
                     first_name: user.first_name,
-                    last_name: user.last_name
+                    last_name: user.last_name,
+                    needsOnboarding: needsOnboarding,
+                    onboardingStep: onboardingStep
                 }
             }
         });
@@ -1026,7 +1139,7 @@ router.post("/login", loginRateLimiter, async (req, res) => {
 // --- REFRESH (ROTATION) ---
 router.post("/refresh", refreshRateLimiter, async (req, res) => {
 
-    // -- Anti-CSRF: έλεγξε Origin/Referer (προαιρετικό αλλά συνισταται)
+    // -- Anti-CSRF
     const allowedOrigins = [
         "https://logistok.com",
         "https://logistok.gr",
@@ -1037,89 +1150,139 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
     ];
 
     const origin = req.headers.origin || "";
-
     if (!origin || !allowedOrigins.includes(origin)) {
         console.log("NOT ALLOWED ORIGIN");
-        return res.status(403).json({ 
-            success: false, 
-            message: 'Αποτυχία διακομιστή.', 
+        return res.status(403).json({
+            success: false,
+            message: 'Αποτυχία διακομιστή.',
             code: "SERVER_ERROR"
         });
     }
     // --
 
     const refreshToken = req.cookies.refresh_token;
-    const { fingerprint } = req.body || {};
 
-    if ( !refreshToken || !fingerprint ) {
-        console.log("UNAUTHORIZED");
-        return res.status(401).json({ 
-            success: false, 
-            message: 'Έληξε η σύνδεση.', 
+    if (!refreshToken) {
+        console.log("NO REFRESH TOKEN");
+        clearRefreshCookie(res);
+        return res.status(401).json({
+            success: false,
+            message: 'Έληξε η σύνδεση.',
             code: "UNAUTHORIZED"
         });
     }
 
     try {
-        // 1) Βρες τo πιο πρόσφατo session με αυτό το fingerprint
+        const refreshHash = hashRefreshToken(refreshToken);
+
+        // 1) Find session
         const { data: session, error: sessionError } = await supabase
             .from("user_sessions")
             .select("id, user_id, refresh_token_hash, revoked, expires_at")
-            .eq("fingerprint", fingerprint)
-            .order("created_at", { ascending: false })
+            .eq("refresh_token_hash", refreshHash)
+            .single();
+
+        if (sessionError) {
+            console.error("DB SELECT ERROR:", sessionError);
+            clearRefreshCookie(res);
+            return res.status(401).json({
+                success: false,
+                message: "Έληξε η σύνδεση",
+                code: "UNAUTHORIZED",
+            });
+        }
+
+        // 2) Validate session
+        const now = new Date();
+        if (session.revoked || new Date(session.expires_at) < now) {
+            console.log("SESSION INVALID");
+            clearRefreshCookie(res);
+            return res.status(401).json({
+                success: false,
+                message: 'Έληξε η σύνδεση',
+                code: "UNAUTHORIZED"
+            });
+        }
+
+        // ------
+        // Find user
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('email, first_name, last_name')
+            .eq('id', session.user_id)
             .maybeSingle();
 
-        if (sessionError){
-            console.error("DB SELECT ERROR (user_sessions):", sessionError);
+        if (userError){
+            console.error("DB SELECT ERROR (users):", userError);
             return res.status(500).json({
                 success: false,
-                message: "Σφάλμα κατά την ανάγνωση user_sessions",
+                message: "Σφάλμα κατά την ανάγνωση users",
                 code: "DB_ERROR",
             });
         };
 
-        // 2) Έλεγχος αν έχει λήξει ή είναι revoked ή δεν υπάρχει
-        if (!session || session.revoked || new Date(session.expires_at) < new Date()) {
-            console.log("SESSION NOT FOUND OR REVOKED OR EXPIRED");
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Έληξε η σύνδεση', 
-                code: "UNAUTHORIZED"
+        if(!user){
+            console.log("USER NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε χρήστης",
+                code: "USER_NOT_FOUND",
             });
         }
 
-        // 3) Έλεγχος refresh token integrity
-        const match = verifyRefreshToken(refreshToken, session.refresh_token_hash);
-        if (!match) {
-            // πιθανή κλοπή token -> revoke όλα τα sessions
-            const { error: updateRevokeError } = await supabase
-                .from("user_sessions")
-                .update({ 
-                    revoked: true,
-                    revoked_at: new Date()
-                })
-                .eq("user_id", session.user_id);
+        // Find subscription id
+        const { data: sub, error: subError } = await supabase
+            .from('subscriptions')
+            .select('id')
+            .eq('owner_id', session.user_id)
+            .maybeSingle();
 
-            if (updateRevokeError){
-                console.error("DB UPDATE ERROR (user_sessions):", updateRevokeError);
+        if (subError){
+            console.error("DB SELECT ERROR (subscriptions):", subError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση subscriptions",
+                code: "DB_ERROR",
+            });
+        };
+
+        let userIsOwner = true;
+        if(!sub) userIsOwner = false;
+        let needsOnboarding = false;
+        let onboardingStep = null;
+
+        if(userIsOwner){
+            // Find is_completed on onboarding table
+            const { data: onboarding, error: onboardingError } = await supabase
+                .from('onboarding')
+                .select('step, is_completed')
+                .eq('subscription_id', sub.id)
+                .maybeSingle();
+
+            if (onboardingError){
+                console.error("DB SELECT ERROR (onboarding):", onboardingError);
                 return res.status(500).json({
                     success: false,
-                    message: "Σφάλμα κατά την ενημέρωση user_sessions",
+                    message: "Σφάλμα κατά την ανάγνωση onboarding",
                     code: "DB_ERROR",
                 });
             };
 
-            clearRefreshCookie(res);
+            if(!onboarding){
+                console.log("ONBOARDING NOT FOUND");
+                return res.status(404).json({
+                    success: false,
+                    message: "Δεν βρέθηκε onboarding stage",
+                    code: "ONBOARDING_NOT_FOUND",
+                });
+            }
 
-            console.log("TOKEN COMPROMIZED");
-            return res.status(401).json({ // Token compromised, forced logout
-                success: false, 
-                message: 'Έληξε η σύνδεση.', 
-                code: "UNAUTHORIZED"
-            });
+            needsOnboarding = !onboarding.is_completed;
+            onboardingStep = onboarding.step || 1;
         }
+        // ------
 
-        // 4) ROTATION
+        // 3) Rotate token
         const newRefreshToken = generateRefreshToken();
         const newHash = hashRefreshToken(newRefreshToken);
 
@@ -1130,100 +1293,107 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
             .from("user_sessions")
             .update({
                 refresh_token_hash: newHash,
-                expires_at: expires_at,
-                last_activity_at: new Date(),
+                expires_at,
+                last_activity_at: now,
             })
             .eq("id", session.id);
 
-        if (updateError){
-            console.error("DB UPDATE ERROR (user_sessions):", updateError);
+        if (updateError) {
+            console.error("DB UPDATE ERROR:", updateError);
             return res.status(500).json({
                 success: false,
-                message: "Σφάλμα κατά την ενημέρωση user_sessions",
-                code: "DB_ERROR",
+                message: "Σφάλμα κατά την ενημέρωση session",
+                code: "DB_ERROR"
             });
-        };
+        }
 
-        // 5) Set updated refresh cookie
+        // 4) NEW refresh cookie
         setRefreshCookie(res, newRefreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
-        // 6) Return new access token
+
+        // 5) Return access token
         return res.json({
             success: true,
-            message: "OK",
             data: {
                 access_token: generateAccessToken(session.user_id),
+                user: {
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    needsOnboarding: needsOnboarding,
+                    onboardingStep: onboardingStep
+                }
             }
         });
 
-    } catch (error) {
-        console.error("Refresh error:", error);
-        return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
+    } catch (err) {
+        console.error("Refresh error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Αποτυχία διακομιστή.",
+            code: "SERVER_ERROR"
+        });
     }
 });
 
+
 // --- LOGOUT current device ---
 router.post("/logout", async (req, res) => {
-
-    const refreshToken = req.cookies.refresh_token;
-    const { fingerprint } = req.body || {};
-
-    if (!refreshToken || !fingerprint) {
-        clearRefreshCookie(res);
-        return res.json({ 
-            success: true, 
-            message: "Logged out" 
-        });
-    }
-
-
     try {
-        // Βρες session για τη συσκευή
-        const { data: session, error } = await supabase
-            .from("user_sessions")
-            .select("id, refresh_token_hash, revoked, expires_at")
-            .eq("fingerprint", fingerprint)
-            .order("created_at", { ascending: false })
-            .maybeSingle();
+        const refreshToken = req.cookies.refresh_token;
 
-        if (error){
-            console.error("DB SELECT ERROR (user_sessions):", error);
+        if (!refreshToken) {
+            // No cookie → already logged out
+            clearRefreshCookie(res);
+            return res.json({
+                success: true,
+                message: "Logged out"
+            });
+        }
+
+        // 1) Hash incoming refresh token
+        const refreshHash = hashRefreshToken(refreshToken);
+
+        // 2) Εύρεση του session στη βάση
+        const { data: session, error: sessionError } = await supabase
+            .from("user_sessions")
+            .select("id, revoked")
+            .eq("refresh_token_hash", refreshHash)
+            .single();
+
+        if (sessionError && sessionError.code !== "PGRST116") {
+            // error other than "no rows"
+            console.error("DB SELECT ERROR (user_sessions):", sessionError);
+            clearRefreshCookie(res);
             return res.status(500).json({
                 success: false,
                 message: "Σφάλμα κατά την ανάγνωση user_sessions",
                 code: "DB_ERROR",
             });
-        };
+        }
 
-        if (session) {
-            // 1) Αν το session είναι ήδη revoked ή expired — απλώς προχωράμε
-            const expired = new Date(session.expires_at) < new Date();
-            if (!session.revoked && !expired) {
-                // 2) Επιβεβαίωση ότι ο refresh token ταιριάζει
-                const match = verifyRefreshToken(refreshToken, session.refresh_token_hash);
-                if (match) {
-                    // 3) Κάνε revoke ΜΟΝΟ αν υπάρχει λόγος
-                    const { error: sessionUpdateError} = await supabase
-                        .from("user_sessions")
-                        .update({ 
-                            revoked: true,
-                            revoked_at: new Date()
-                        })
-                        .eq("id", session.id);
+        // 3) Αν βρήκαμε session, κάνε revoke (μόνο αν δεν είναι ήδη)
+        if (session && !session.revoked) {
+            const { error: revokeError } = await supabase
+                .from("user_sessions")
+                .update({
+                    revoked: true,
+                    revoked_at: new Date(),
+                })
+                .eq("id", session.id);
 
-                    if (sessionUpdateError){
-                        console.error("DB UPDATE ERROR (user_sessions):", sessionUpdateError);
-                        return res.status(500).json({
-                            success: false,
-                            message: "Σφάλμα κατά την ενημέρωση user_sessions",
-                            code: "DB_ERROR",
-                        });
-                    };
-                }
+            if (revokeError) {
+                console.error("DB UPDATE ERROR (user_sessions):", revokeError);
+                clearRefreshCookie(res);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ενημέρωση user_sessions",
+                    code: "DB_ERROR",
+                });
             }
         }
 
-        // 4) Καθάρισε cookie οπωσδήποτε
+        // 4) Πάντα καθάρισε το cookie
         clearRefreshCookie(res);
 
         return res.json({
@@ -1233,6 +1403,7 @@ router.post("/logout", async (req, res) => {
 
     } catch (err) {
         console.error("Logout error:", err);
+        clearRefreshCookie(res);
         return res.status(500).json({
             success: false,
             message: "Αποτυχία διακομιστή.",
@@ -1240,7 +1411,6 @@ router.post("/logout", async (req, res) => {
         });
     }
 });
-
 
 // --- LOGOUT all devices ---
 router.post("/logout-all", requireAuth, async (req, res) => {
@@ -1283,47 +1453,47 @@ router.post("/logout-all", requireAuth, async (req, res) => {
 });
 
 //  GET User Details
-router.get("/me", requireAuth, async (req, res) => {
+// router.get("/me", requireAuth, async (req, res) => {
 
-    const userId = req.user.id;
+//     const userId = req.user.id;
 
-    try {
-        const { data: user, error: userError } = await supabase
-            .from("users")
-            .select("email, first_name, last_name")
-            .eq("id", userId)
-            .single();
+//     try {
+//         const { data: user, error: userError } = await supabase
+//             .from("users")
+//             .select("email, first_name, last_name")
+//             .eq("id", userId)
+//             .single();
 
-        if (userError){
-            console.error("DB SELECT ERROR (users):", userError);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την ανάγνωση users",
-                code: "DB_ERROR",
-            });
-        };
+//         if (userError){
+//             console.error("DB SELECT ERROR (users):", userError);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Σφάλμα κατά την ανάγνωση users",
+//                 code: "DB_ERROR",
+//             });
+//         };
 
-        if(!user){
-            console.error("USER NOT FOUND");
-            return res.status(404).json({
-                success: false,
-                message: "Δεν βρέθηκε χρήστης",
-                code: "USER_NOT_FOUND",
-            });
-        }
+//         if(!user){
+//             console.error("USER NOT FOUND");
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "Δεν βρέθηκε χρήστης",
+//                 code: "USER_NOT_FOUND",
+//             });
+//         }
 
-        res.json({ 
-            success: true,
-            message: "OK",
-            data: {
-                user,
-            }
-        });
-    } catch (error) {
-        console.error('Get me error', error);
-        return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
-    }
+//         res.json({ 
+//             success: true,
+//             message: "OK",
+//             data: {
+//                 user: user
+//             }
+//         });
+//     } catch (error) {
+//         console.error('Get me error', error);
+//         return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
+//     }
     
-});
+// });
 
 module.exports = router;

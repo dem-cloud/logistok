@@ -18,6 +18,8 @@ interface AuthFormProps {
     setTagline?: React.Dispatch<React.SetStateAction<string>>;
 }
 
+// TODO: change general codes like MISSING_VALUES to specific codes like MISSING_EMAIL. Make errors more specific
+
 export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
     const navigate = useNavigate();
@@ -230,7 +232,11 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
             // showToast({ message: "Επιτυχής σύνδεση!", type: "success" });
 
             login(access_token, user)
-            navigate('/')
+
+            if(user.needsOnboarding)
+                navigate(`/onboarding/${user.onboardingStep}`)
+            else
+                navigate('/')
 
         } catch (error) {
             console.error("error:", error);
@@ -321,7 +327,7 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
             // showToast({ message, type: "success" });
 
             login(access_token, user);
-            navigate('/onboarding');
+            navigate(`/onboarding/${user.onboardingStep}`);
 
         } catch (error) {
             console.error("error:", error);
@@ -378,7 +384,11 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
             // showToast({ message, type: "success" });
 
             login(access_token, user);
-            navigate('/');
+
+            if(user.needsOnboarding)
+                navigate(`/onboarding/${user.onboardingStep}`)
+            else
+                navigate('/')
 
         } catch (error) {
             console.error("error:", error);

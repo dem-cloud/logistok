@@ -6,8 +6,9 @@ const cookieParser = require('cookie-parser');
 
 const authRoutes = require('./routes/auth');
 const sharedRoutes = require('./routes/shared');
-const clothingRoutes = require('./routes/clothing');
-const constructionRoutes = require('./routes/construction');
+const stripeRoutes = require('./routes/stripe');
+//const clothingRoutes = require('./routes/clothing');
+//const constructionRoutes = require('./routes/construction');
 
 // Create Application Object
 const app = express();
@@ -27,10 +28,16 @@ app.use(cookieParser());
 // Use the routes
 app.use('/api/auth', authRoutes); // Mount the auth routes
 app.use('/api/shared', sharedRoutes); // Mount the shared routes
-app.use('/api/clothing', clothingRoutes); // Mount the clothing routes
-app.use('/api/construction', constructionRoutes); // Mount the construction routes
+app.use('/api/stripe', stripeRoutes);
+
+//app.use('/api/clothing', clothingRoutes); // Mount the clothing routes
+//app.use('/api/construction', constructionRoutes); // Mount the construction routes
+
+app.get("/test", (req, res) => {
+    res.send("Express server is working!");
+});
 
 // Start the server
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => { // το 2ο argument -> "0.0.0.0" μπηκε για να κανω expose σε τοπικο δικτυο τον σερβερ (προεραιτικο)
     console.log(`Server is running on ${PORT}`);
 });

@@ -6,7 +6,7 @@ export default function AppLayout() {
     return (
         <div>
             AppLayout
-            <h1>Welcome, {user?.first_name || user?.email}!</h1>
+            <h1>Welcome, {user?.email}!</h1>
             {/* <p>Your role: {user.role}</p> */}
             <p>Email: {user?.email}</p>
 

@@ -11,6 +11,7 @@ import RequireLoggedOut from './routes/RequireLoggedOut'
 import Onboarding from './pages/protected/Onboarding'
 import RequireOnboarding from './routes/RequireOnboarding'
 import RequireFinishedOnboarding from './routes/RequireFinishedOnboarding'
+import ProtectedCatchAll from './routes/ProtectedCatchAll'
 
 export default function App() {
 
@@ -36,7 +37,10 @@ export default function App() {
 
                 {/* ROUTES ΓΙΑ ΧΡΗΣΤΕΣ ΠΟΥ ΕΙΝΑΙ ΣΕ ONBOARDING */}
                 <Route element={<RequireOnboarding />}>
-                    <Route path="/onboarding" element={<Onboarding />} />
+                    <Route path="/onboarding">
+                        <Route index element={<Navigate to="/onboarding/1" replace />} />
+                        <Route path=":step" element={<Onboarding />} />
+                    </Route>
                 </Route>
 
                 {/* ROUTES ΓΙΑ ΧΡΗΣΤΕΣ ΠΟΥ ΕΧΟΥΝ ΟΛΟΚΛΗΡΩΣΕΙ ΤΟ ONBOARDING */}
@@ -45,8 +49,8 @@ export default function App() {
                     {/* άλλα protected routes εδώ */}
                 </Route>
 
-                {/* Catch-all για logged-in χρήστες -> redirect στο "/" */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                {/* LOGGED-IN catch-all (smart) */}
+                <Route path="*" element={<ProtectedCatchAll />} />
             </Route>
 
             {/* Catch-all για NOT logged-in χρήστες -> redirect στο "/auth" */}

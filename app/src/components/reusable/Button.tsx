@@ -6,9 +6,10 @@ interface ButtonProps {
     children: ReactNode;
     onClick?: (() => void) | ((e: React.MouseEvent<HTMLButtonElement>) => void);
     type?: "button" | "submit" | "reset";
-    variant?: "primary" | "secondary" | "outline";
+    variant?: "primary" | "secondary" | "dark" | "outline" | "current";
     disabled?: boolean;
     loading?: boolean;
+    widthFull?: boolean;
 }
 
 const Button: React.FC<ButtonProps> = ({
@@ -17,7 +18,8 @@ const Button: React.FC<ButtonProps> = ({
     type = "button",
     variant = "primary",
     disabled = false,
-    loading = false
+    loading = false,
+    widthFull = false
 }) => {
     return (
         <button
@@ -27,6 +29,7 @@ const Button: React.FC<ButtonProps> = ({
             className={`${styles.button} ${styles[variant]} ${
               disabled ? styles.disabled : ""
             }`}
+            style={{width: widthFull ? "100%" : ""}}
         >
             {loading && <Spinner />}
             {children}

@@ -1,0 +1,29 @@
+.toggleWrapper {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 2rem;
+    background: #f7f7f9;
+    padding: 6px;
+    border-radius: 12px;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.toggleBtn {
+    padding: 6px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.toggleActive {
+    background: white;
+    font-weight: 600;
+}
+
+.cards {
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+}

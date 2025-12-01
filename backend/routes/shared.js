@@ -1,466 +1,471 @@
 // shared.js
 require('dotenv').config();
 const express = require('express');
-const router = express.Router();
-
-const bcrypt = require('bcryptjs')
-const { v4: uuidv4 } = require('uuid'); // Generate unique subscription codes
-const jwt = require('jsonwebtoken')
-
-// const sgMail = require('@sendgrid/mail');
-const { Resend } = require('resend');
 const supabase = require('../supabaseConfig');
+const { requireAuth } = require('../middlewares/authMiddleware');
+const Stripe = require('stripe');
 
-// Set up SendGrid API Key
-// sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const router = express.Router();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// ### Onboarding ###
+router.get("/onboarding-data", requireAuth, async (req, res) => {
 
-// Routes
-router.post('/signup', async (req, res) => {
+    const userId = req.user.id;
+
     try {
-        const { email, first_name, last_name, password } = req.body;
+        // 1. Get industries
+        const { data: industries, error: industriesError } = await supabase
+            .from("industries")
+            .select("*");
 
-        // Check if email already exists
-        const { data: existingUser, error: emailCheckError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', email)
-            .maybeSingle();
-
-        if (emailCheckError) {
-            return res.status(500).json({ success: false, message: 'Error checking existing email' });
+        if (industriesError) {
+            console.error("INDUSTRIES SELECT ERROR:", industriesError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση των industries",
+                code: "DB_ERROR",
+            });
         }
 
-        if (existingUser) {
-            return res.status(400).json({ success: false, message: 'Το email είναι ήδη κατοχυρωμένο.' });
+        // 2. Get plans
+        const { data: plansData, error: plansError } = await supabase
+            .from("plans")
+            .select("id, name, description, max_users_per_station, features, stripe_price_id_monthly, stripe_price_id_yearly, stripe_extra_station_price_id")
+            .eq("is_public", true)
+            .order("id", {ascending: true});
+
+        if (plansError) {
+            console.error("PLANS SELECT ERROR:", plansError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση των plans",
+                code: "DB_ERROR",
+            });
         }
 
-        // Generate a random subscription code (UUID)
-        const subscriptionCode = uuidv4(); 
+        const plans = await Promise.all(
+            plansData.map(async (plan) => {
+                const {
+                    id,
+                    name,
+                    description,
+                    max_users_per_station,
+                    features,
+                    stripe_price_id_monthly,
+                    stripe_price_id_yearly,
+                    stripe_extra_station_price_id,
+                } = plan;
 
-        // 1. Create Subscription with subscription_code directly
-        const { data: subscription, error: subscriptionError } = await supabase
-            .from('subscriptions')
-            .insert([{ subscription_code: subscriptionCode }])
-            .select('id')
-            .single();
+                const stripe_base_price_per_month = stripe_price_id_monthly ? await stripe.prices.retrieve(stripe_price_id_monthly) : stripe_price_id_monthly;
+                const base_price_per_month = stripe_base_price_per_month ? stripe_base_price_per_month.unit_amount / 100 : 0;
 
-        if (subscriptionError || !subscription) {
-            return res.status(500).json({ success: false, message: 'Error inserting subscription data' });
-        }
+                const stripe_base_price_per_year = stripe_price_id_yearly ? await stripe.prices.retrieve(stripe_price_id_yearly): stripe_price_id_yearly;
+                const base_price_per_year = stripe_base_price_per_year ? (stripe_base_price_per_year.unit_amount / 100) / 12 : 0;
 
-        const subscriptionId = subscription.id;
+                const stripe_extra_station_price = stripe_extra_station_price_id ? await stripe.prices.retrieve(stripe_extra_station_price_id) : null;
+                const extra_station_price = stripe_extra_station_price ? stripe_extra_station_price.unit_amount / 100 : null;
 
-        // Generate JWT Token for email verification
-        const verificationToken = jwt.sign(
-            { email, subscriptionId },
-            process.env.JWT_SECRET,
-            { expiresIn: '24h' } // Token expires in 24 hours
+                return {
+                    id,
+                    name,
+                    description,
+                    base_price_per_month,
+                    base_price_per_year,
+                    extra_station_price,
+                    max_users_per_station,
+                    features,
+                    // currency
+                    // annual_discount
+                    // vat
+                };
+            })
         );
 
-        // Send verification email with Resend
-        const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-
-        const msg = {
-            from: `Logistok <${process.env.RESEND_EMAIL}>`,
-            to: email,
-            subject: 'Your Logistok Account - Verify Your Email Address',
-            html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                <p>Click the button below to verify your email address for your Logistok account:</p>
-                <a href="${verificationLink}" 
-                    style="
-                    display: inline-block;
-                    background-color: #1e40af;
-                    color: #ffffff;
-                    padding: 12px 20px;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    ">
-                    Verify Email
-                </a>
-                <p style="margin-top: 20px;">This link will expire in 24 hours.</p>
-                <p>If the button doesn’t work, copy and paste this link into your browser:</p>
-                <p><a href="${verificationLink}">${verificationLink}</a></p>
-                </div>
-            `,
-        };
-
-        // 2. Hash the password
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        // 3. Create User
-        const { error: usersError } = await supabase
-            .from('users')
-            .insert([
-                {
-                    email,
-                    email_verified: false,
-                    password_hash: hashedPassword,
-                    first_name,
-                    last_name,
-                    role: "Admin",
-                    subscription_id: subscriptionId
-                }
-            ]);
-
-        if (usersError) {
-            // Rollback: Delete subscription if user creation fails
-            // await supabase.from('subscriptions').delete().eq('id', subscriptionId);
-            return res.status(500).json({ success: false, message: 'Error inserting user data' });
-        }
-
-        try {
-            // await sgMail.send(msg);
-            await resend.emails.send(msg);
-            res.json({ success: true, message: 'Επιτυχής δημιουργία λογαριασμού! Παρακαλώ ελέγξτε το email σας για επιβεβαίωση.' });
-        } catch (emailError) {
-            console.error('Error sending email:', emailError);
-            res.status(500).json({ success: false, message: 'Failed to send email. Please try again.' });
-        }
-
-
-    } catch (error) {
-        console.error('Error creating account:', error);
-        res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
-    }
-});
-
-router.post('/resend-verification-link', async (req, res) => {
-    try {
-        const { email } = req.body;
-
-        // Check if email already exists
-        const { data: existingUser, error: emailCheckError } = await supabase
-            .from('users')
-            .select('id, subscription_id, email_verified')
-            .eq('email', email)
-            .maybeSingle();
-
-        if (emailCheckError) {
-            return res.status(500).json({ success: false, message: 'Error checking existing email' });
-        }
-
-        if (!existingUser) {
-            return res.status(400).json({ success: false, message: 'Το email δεν είναι κατοχυρωμένο.' });
-        }
-
-        if (existingUser.email_verified) {
-            return res.status(400).json({ success: false, message: 'Το email έχει ήδη επαληθευτεί.' });
-        }
-
-        // Generate JWT Token for email verification
-        const verificationToken = jwt.sign(
-            { email, subscriptionId: existingUser.subscription_id },
-            process.env.JWT_SECRET,
-            { expiresIn: '24h' } // Token expires in 24 hours
-        );
-
-        // Send verification email with Resend
-        const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-
-        const msg = {
-            from: `Logistok <${process.env.RESEND_EMAIL}>`,
-            to: email,
-            subject: 'Your Logistok Account - Verify Your Email Address',
-            html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                <p>Click the button below to verify your email address for your Logistok account:</p>
-                <a href="${verificationLink}" 
-                    style="
-                    display: inline-block;
-                    background-color: #1e40af;
-                    color: #ffffff;
-                    padding: 12px 20px;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    ">
-                    Verify Email
-                </a>
-                <p style="margin-top: 20px;">This link will expire in 24 hours.</p>
-                <p>If the button doesn’t work, copy and paste this link into your browser:</p>
-                <p><a href="${verificationLink}">${verificationLink}</a></p>
-                </div>
-            `,
-        };
-
-
-        try {
-            // await sgMail.send(msg);
-            await resend.emails.send(msg);
-            res.json({ success: true, message: 'Ο σύνδεσμος επαλήθευσης email στάλθηκε με επιτυχία. Παρακαλώ ελέγξτε το email σας.' });
-        } catch (emailError) {
-            console.error('Error sending email:', emailError);
-            res.status(500).json({ success: false, message: 'Failed to send email. Please try again.' });
-        }
-
-    } catch (error) {
-        console.error('Error sending email:', error);
-        res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
-    }
-});
-
-router.get('/verify-email', async (req, res) => {
-    try {
-        const { token } = req.query;
-        // const token = req.headers.authorization?.split(' ')[1];
-
-        if (!token) {
-            return res.status(400).json({ success: false, message: 'Missing token' });
-        }
-
-        // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const { email, subscriptionId } = decoded;
-
-        // Check if the user exists
-        const { data: user, error: userCheckError } = await supabase
-            .from('users')
-            .select('id, email_verified')
-            .eq('email', email)
-            .eq('subscription_id', subscriptionId)
+        // 3. Get subscription (step1 + step2 data)
+        const { data: subData, error: subError } = await supabase
+            .from("subscriptions")
+            .select("company_name, managers_phone, industry_id")
+            .eq("owner_id", userId)
             .single();
 
-        if (!user || userCheckError) {
-            return res.status(400).json({ success: false, message: 'Invalid verification link' });
+        if (subError) {
+            console.error("SUBSCRIPTION SELECT ERROR:", subError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση του subscription",
+                code: "DB_ERROR",
+            });
         }
 
-        // Check if email is already verified
-        if (user.email_verified) {
-            return res.status(200).json({ success: true, message: 'Το email έχει ήδη επαληθευτεί.' });
+        if (!subData) {
+            console.log("SUBSCRIPTION NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε subscription",
+                code: "SUB_NOT_FOUND",
+            });
         }
 
-        // const supabase2 = createClient(SUPABASE_URL, SUPABASE_KEY, {
-        //     global: {
-        //       headers: {
-        //         Authorization: `Bearer ${req.token}`,  // Pass the token here
-        //       },
-        //     },
-        // });
-
-        // Update email_verified status
-        const { data, error: updateError } = await supabase
-            .from('users')
-            .update({ email_verified: true })
-            .eq('id', user.id)
-            .eq('subscription_id', subscriptionId);
-
-        if (updateError) {
-            return res.status(500).json({ success: false, message: 'Error verifying email' });
-        }
-
-        res.status(200).json({ success: true, message: 'Το email επαληθεύτηκε επιτυχώς. Μπορείτε τώρα να συνδεθείτε.' });
-
-    } catch (error) {
-        // console.error('Email verification error:', error);
-        res.status(500).json({ success: false, message: 'Invalid or expired token' });
-    }
-});
-
-
-router.post('/forgot-password', async (req, res) => {
-    try {
-        const { email } = req.body;
-
-        // Check if email already exists
-        const { data: existingUser, error: emailCheckError } = await supabase
-            .from('users')
-            .select('id, subscription_id')
-            .eq('email', email)
-            .maybeSingle();
-
-        if (emailCheckError) {
-            return res.status(500).json({ success: false, message: 'Error checking existing email' });
-        }
-
-        if (!existingUser) {
-            return res.status(400).json({ success: false, message: 'Το email δεν είναι κατοχυρωμένο.' });
-        }
-
-        const subscriptionId = existingUser.subscription_id;
-
-        // Generate JWT Token for reset password
-        const tokenId = crypto.randomUUID();
-        const resetToken = jwt.sign(
-            { 
-                email, 
-                subscriptionId,
-                // action: 'password-reset',
-                tokenId
+        // 4. Return everything
+        return res.json({
+            success: true,
+            message: "",
+            data: {
+                industries,
+                plans,
+                step1: {
+                    companyName: subData.company_name ?? "",
+                    managersPhone: subData.managers_phone ?? "",
+                },
+                step2: {
+                    industryId: subData.industry_id ?? null,
+                },
             },
-            process.env.JWT_SECRET,
-            { expiresIn: '15m' }
-        );
-
-        // TODO: Store in database
-        // await db.resetTokens.create({
-        //     tokenId,
-        //     email: user.email,
-        //     subscriptionId: user.subscriptionId,
-        //     used: false,
-        //     createdAt: new Date()
-        // });
-
-        // Send reset password email with Resend
-        const resetLink = `${process.env.FRONTEND_URL}/recover-access?token=${resetToken}`;
-
-        const msg = { 
-            from: `Logistok <${process.env.RESEND_EMAIL}>`,
-            to: email,
-            subject: 'Reset Your Logistok Account Password',
-            html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <p>We received a request to reset your password. Click the button below to set a new password:</p>
-                    <a href="${resetLink}" 
-                        style="
-                        display: inline-block;
-                        background-color: #1e40af;
-                        color: #ffffff;
-                        padding: 12px 20px;
-                        text-decoration: none;
-                        border-radius: 6px;
-                        font-weight: bold;
-                        ">
-                        Reset Password
-                    </a>
-                    <p style="margin-top: 20px;">If you didn’t request this, you can safely ignore this email.</p>
-                    <p>This link will expire in <b>1 hour</b> for security reasons.</p>
-                    <p>If the button doesn’t work, copy and paste this link into your browser:</p>
-                    <p><a href="${resetLink}">${resetLink}</a></p>
-                </div>
-            `,
-        };
-
-        try {
-            // await sgMail.send(msg);
-            await resend.emails.send(msg);
-            res.json({ success: true, message: 'Το email επαναφοράς κωδικού στάλθηκε με επιτυχία. Παρακαλώ ελέγξτε το email σας.' });
-        } catch (emailError) {
-            console.error('Error sending reset email:', emailError);
-            res.status(500).json({ success: false, message: 'Failed to send reset email. Please try again.' });
-        }
-
+        });
     } catch (error) {
-        console.error('Error creating account:', error);
-        res.status(500).json({ error: 'Σφάλμα κατά την εισαγωγή δεδομένων' });
+        console.error("Onboarding data error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Αποτυχία διακομιστή. Προσπαθήστε ξανά.",
+            code: "SERVER_ERROR",
+        });
     }
 });
 
-router.get('/reset-password', async (req, res) => {
+
+router.post('/submit-step-one', requireAuth, async (req, res) => {
+
+    const userId = req.user.id;
+    const { companyName, managersPhone } = req.body;
+
+    // ---- Inputs Validation
+    if (!companyName) {
+        return res.status(400).json({
+            success: false,
+            message: "Το όνομα εταιρείας είναι υποχρεωτικό",
+            code: "MISSING_COMPANY_NAME"
+        });
+    }
+
+    if (!managersPhone) {
+        return res.status(400).json({
+            success: false,
+            message: "Το τηλέφωνο υπεύθυνου είναι υποχρεωτικό",
+            code: "MISSING_MANAGERS_PHONE"
+        });
+    }
+
+    // Company name validation
+    if (typeof companyName !== "string" || companyName.trim().length < 3) {
+        return res.status(400).json({
+            success: false,
+            message: "Το όνομα εταιρείας πρέπει να έχει τουλάχιστον 3 χαρακτήρες",
+            code: "INVALID_COMPANY_NAME"
+        });
+    }
+
+    // Managers phone validation
+    const cleanedPhone = managersPhone.replace(/\D/g, ""); // κρατάει μόνο αριθμούς
+
+    if (cleanedPhone.length !== 10) {
+        return res.status(400).json({
+            success: false,
+            message: "Το τηλέφωνο υπεύθυνου πρέπει να αποτελείται από 10 ψηφία",
+            code: "INVALID_PHONE"
+        });
+    }
+
+    if (!/^\d+$/.test(cleanedPhone)) {
+        return res.status(400).json({
+            success: false,
+            message: "Το τηλέφωνο πρέπει να περιέχει μόνο αριθμούς",
+            code: "INVALID_PHONE_FORMAT"
+        });
+    }
+    // ---
+
     try {
-        const { token } = req.query;
-        // const token = req.headers.authorization?.split(' ')[1];
-
-        if (!token) {
-            return res.status(400).json({ success: false, message: 'Missing token' });
-        }
-
-        // TODO: Check if token exists and not used
-        // const tokenRecord = await db.resetTokens.findOne({ 
-        //     tokenId: decoded.tokenId 
-        // });
-        
-        // if (!tokenRecord) {
-        //     return res.status(401).json({ 
-        //         success: false, 
-        //         message: 'Invalid token' 
-        //     });
-        // }
-        
-        // if (tokenRecord.used) {
-        //     return res.status(403).json({ 
-        //         success: false, 
-        //         message: 'This reset link has already been used. Please request a new one.' 
-        //     });
-        // }
-
-        // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const { email, subscriptionId } = decoded;
-
-        // Check if the user exists
-        const { data: user, error: userCheckError } = await supabase
-            .from('users')
-            .select('id, email_verified')
-            .eq('email', email)
-            .eq('subscription_id', subscriptionId)
+        // 1. Update subscription
+        const { data: subData, error: updateSubError } = await supabase
+            .from("subscriptions")
+            .update({
+                company_name: companyName,
+                managers_phone: managersPhone
+            })
+            .eq("owner_id", userId)
+            .select("id")
             .single();
 
-        if (!user || userCheckError) {
-            return res.status(400).json({ success: false, message: 'Invalid verification link' });
+        // 1a. Database update error
+        if (updateSubError) {
+            console.error("DB UPDATE ERROR:", updateSubError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση subscription",
+                code: "DB_ERROR"
+            });
         }
 
-        if(!user.email_verified){
-            return res.status(400).json({ success: false, message: 'Email is not verified.' });
+        // 1b. Subscription not found
+        if (!subData) {
+            console.log("SUBSCRIPTION NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε subscription",
+                code: "SUB_NOT_FOUND"
+            });
         }
 
-        res.status(200).json({ success: true, message: 'Μπορείτε να αλλάξετε τον κωδικό σας.' });
+        const subscriptionId = subData.id;
+
+        // 2. Update onboarding step (max step pattern)
+        const { error: updateOnboardingError } = await supabase
+            .from("onboarding")
+            .update({ step: 2 })
+            .eq("subscription_id", subscriptionId)
+            .lte("step", 2); // prevents step overriding backwards if already > 2
+
+        // 2a. Database error
+        if (updateOnboardingError) {
+            console.error("ONBOARDING UPDATE ERROR:", updateOnboardingError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση του onboarding",
+                code: "DB_ERROR"
+            });
+        }
+
+        // 3. All good
+        return res.json({
+            success: true,
+            message: "Το βήμα 1 ολοκληρώθηκε",
+        });
 
     } catch (error) {
-        // console.error('Email verification error:', error);
-        return res.status(500).json({ success: false, message: 'Invalid or expired token' });
+        console.error("Step 1 error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Αποτυχία διακομιστή. Προσπαθήστε ξανά.",
+            code: "SERVER_ERROR"
+        });
     }
-});
+})
 
-router.post('/create-new-password', async (req, res) => {
+router.post('/submit-step-two', requireAuth, async (req, res) => {
+
+    const userId = req.user.id;
+    const { selectedIndustryId } = req.body;
+
+    // VALIDATION
+    if (!selectedIndustryId) {
+        return res.status(400).json({
+            success: false,
+            message: "Η επιλογή κλάδου είναι υποχρεωτική",
+            code: "MISSING_INDUSTRY"
+        });
+    }
+
     try {
-        const { token } = req.query;
-        // const token = req.headers.authorization?.split(' ')[1];
-        const { password, confirmPassword } = req.body;
-
-        if (!token) {
-            return res.status(400).json({ success: false, password_not_match: false, message: 'Missing token' });
-        }
-
-        // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const { email, subscriptionId } = decoded;
-
-        // Check if the user exists
-        const { data: user, error: userCheckError } = await supabase
-            .from('users')
-            .select('id, email_verified')
-            .eq('email', email)
-            .eq('subscription_id', subscriptionId)
+        // CHECK INDUSTRY EXISTS
+        const { data: industryData, error: industryError } = await supabase
+            .from("industries")
+            .select("*")
+            .eq("id", selectedIndustryId)
             .single();
 
-        if (!user || userCheckError) {
-            return res.status(400).json({ success: false, password_not_match: false, message: 'Invalid verification link.' });
+        if (industryError) {
+            console.error("INDUSTRY SELECT ERROR:", industryError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση του industry",
+                code: "DB_ERROR",
+            });
         }
 
-        if(!user.email_verified){
-            return res.status(400).json({ success: false, password_not_match: false, message: 'Email is not verified.' });
+        if (!industryData) {
+            console.log("INDUSTRY NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε industry",
+                code: "INDUSTRY_NOT_FOUND",
+            });
         }
 
-        if (password !== confirmPassword) {
-            return res.status(400).json({ success: false, password_not_match: true, message: "Passwords do not match." });
+        // UPDATE SUBSCRIPTION
+        const { data: subData, error: updateSubError } = await supabase
+            .from("subscriptions")
+            .update({
+                industry_id: selectedIndustryId,
+            })
+            .eq("owner_id", userId)
+            .select("id")
+            .single();
+
+        if (updateSubError) {
+            console.error("DB UPDATE ERROR:", updateSubError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση subscription",
+                code: "DB_ERROR"
+            });
         }
 
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        const { data, error: updateError } = await supabase
-            .from('users')
-            .update({ password_hash: hashedPassword })
-            .eq('id', user.id)
-            .eq('subscription_id', subscriptionId);
-            
-        if (updateError) {
-            return res.status(500).json({ success: false, password_not_match: false, message: 'Error updating password.' });
+        if (!subData) {
+            console.log("SUBSCRIPTION NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε subscription",
+                code: "SUB_NOT_FOUND"
+            });
         }
 
-        res.status(200).json({ success: true, password_not_match: false, message: 'Επιτυχής αλλαγή κωδικού πρόσβασης. Συνδεθείτε ξανά.' });
+        const subscriptionId = subData.id;
+
+        // Update onboarding step (max step pattern)
+        const { error: updateOnboardingError } = await supabase
+            .from("onboarding")
+            .update({ step: 3 })
+            .eq("subscription_id", subscriptionId)
+            .lte("step", 3); // prevents step overriding backwards if already > 3
+
+        if (updateOnboardingError) {
+            console.error("ONBOARDING UPDATE ERROR:", updateOnboardingError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση του onboarding",
+                code: "DB_ERROR"
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "Το βήμα 2 ολοκληρώθηκε",
+        });
 
     } catch (error) {
-        // console.error('Email verification error:', error);
-        return res.status(500).json({ success: false, password_not_match: false, message: 'Invalid or expired token.' });
+        console.error("Step 2 error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Αποτυχία διακομιστή. Προσπαθήστε ξανά.",
+            code: "SERVER_ERROR"
+        });
     }
-});
+})
 
+router.post('/submit-step-three', requireAuth, async (req, res) => {
+    
+    const userId = req.user.id;
+
+    try {
+        const { data: subData, error: updateSubError } = await supabase
+            .from("subscriptions")
+            .update({
+                billing_status: "free",
+                plan_id: 1,
+                stripe_customer_id: null,
+                stripe_subscription_id: null
+            })
+            .eq("owner_id", userId)
+            .select("id")
+            .single();
+
+        if (updateSubError) {
+            console.error("DB UPDATE ERROR:", updateSubError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση subscription",
+                code: "DB_ERROR"
+            });
+        }
+
+        if (!subData) {
+            console.log("SUBSCRIPTION NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε subscription",
+                code: "SUB_NOT_FOUND"
+            });
+        }
+
+        const { error: updateOnboardingError } = await supabase
+            .from("onboarding")
+            .update({
+                step: null,
+                is_completed: true
+            })
+            .eq("subscription_id", subData.id)
+
+        if (updateOnboardingError) {
+            console.error("DB UPDATE ERROR:", updateOnboardingError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση onboarding",
+                code: "DB_ERROR"
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "Επιτυχής ολοκλήρωση των βημάτων στο onboarding"
+        })
+        
+    } catch (error) {
+        console.error("Step 3 error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Αποτυχία διακομιστή. Προσπαθήστε ξανά.",
+            code: "SERVER_ERROR"
+        });
+    }
+})
+
+router.get('/get-company', requireAuth, async (req, res) => {
+    
+    const userId = req.user.id;
+
+    try {
+        const { data: subData, error: subError } = await supabase
+            .from("subscriptions")
+            .select("company_name")
+            .eq("owner_id", userId)
+            .single();
+
+        if (subError) {
+            console.error("DB SELECT ERROR:", subError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση subscription",
+                code: "DB_ERROR"
+            });
+        }
+
+        if (!subData) {
+            console.log("SUBSCRIPTION NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε subscription",
+                code: "SUB_NOT_FOUND"
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "Επιτυχής ανάγνωση εταιρείας",
+            data: {
+                companyName: subData.company_name
+            }
+        })
+        
+    } catch (error) {
+        console.error("Get company error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Αποτυχία διακομιστή. Προσπαθήστε ξανά.",
+            code: "SERVER_ERROR"
+        });
+    }
+})
 
 
 module.exports = router;

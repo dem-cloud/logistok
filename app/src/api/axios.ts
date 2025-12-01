@@ -54,7 +54,9 @@ axiosPrivate.interceptors.response.use(
             if (!refresh) return Promise.reject(error);
 
             try {
-                const newToken = await refresh();
+                const { access_token } = await refresh();
+
+                const newToken = access_token;
 
                 original.headers.Authorization = `Bearer ${newToken}`;
                 

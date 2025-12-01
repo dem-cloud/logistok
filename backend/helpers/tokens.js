@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-import { randomUUID } from "crypto";
+import crypto from "crypto";
 
 export function generateAccessToken(userId) {
     return jwt.sign(
@@ -15,16 +14,12 @@ export function verifyAccessToken(token) {
 }
 
 export function generateRefreshToken() {
-    // 256-bit περίπου (2x UUID) — αρκετό entropy
-    return `${randomUUID()}${randomUUID()}`;
+    // 512 bits of randomness
+    return crypto.randomBytes(64).toString("hex");
 }
 
 export function hashRefreshToken(token) {
-    return bcrypt.hashSync(token, 12);
-}
-
-export function verifyRefreshToken(rawToken, hashedToken) {
-    return bcrypt.compareSync(rawToken, hashedToken);
+    return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 // cookie options για refresh

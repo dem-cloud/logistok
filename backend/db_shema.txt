@@ -4,7 +4,7 @@ plan_industry_features: id, features, created_at, plan_id, industry_id
 roles: id, name, created_at
 permissions: id, name, created_at
 role_permissions: role_id, permission_id
-subscriptions: id, subscription_code, company_name, managers_phone, created_at, plan_id, indusry_id, owner_id, billing_status, stripe_customer_id, stripe_subscription_id
+subscriptions: id, subscription_code, company_name, managers_phone, created_at, plan_id, industry_id, owner_id, billing_status, stripe_customer_id, stripe_subscription_id
 stations: id, name, subscription_id, created_at
 users: id, first_name, last_name, email, password_hash, phone, email_verified, created_at, subscription_id
 user_roles: user_id, subscription_id, role_id

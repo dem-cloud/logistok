@@ -32,16 +32,31 @@
     transform: scale(1.02);
 }
 
+.dark {
+    background-color: #333;
+    color: var(--text-on-primary);
+}
+
+.dark:hover {
+    background-color: #111;
+}
+
 .outline {
     background-color: transparent;
-    border: 2px solid #007bff;
-    color: #007bff;
+    border: 2px solid var(--primary-color);
+    color: var(--primary-color);
 }
 
 .outline:hover {
-    background-color: #007bff;
+    background-color: var(--primary-color);
     color: white;
     transform: scale(1.02);
+}
+
+.current {
+    background-color: transparent;
+    border: 2px solid var(--primary-color);
+    color: var(--primary-color);
 }
 
 .disabled {
