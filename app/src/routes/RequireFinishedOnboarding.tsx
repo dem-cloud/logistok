@@ -1,18 +1,27 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import AppLayout from "../AppLayout";
+import { OnboardingStepNumber } from "../onboarding/types";
+import { STEP_ROUTES } from "../onboarding/steps";
+import { useAuth } from "@/context/AuthContext";
 
 export default function RequireFinishedOnboarding() {
-    const { user } = useAuth();
+    const { activeCompany } = useAuth();
 
-    // Αν δεν υπάρχει user -> redirect σε login
-    if (!user) {
+    if (!activeCompany) {
+        return <Navigate to="/select-company" replace />;
+    }
+
+    if(!activeCompany.onboarding.is_completed && !activeCompany.membership.is_owner){
+        // κάποιος παγαπόντης
+        // forceLogout()
         return <Navigate to="/auth" replace />;
     }
 
     // Αν ο χρήστης είναι σε onboarding mode force onboarding
-    if (user.needsOnboarding) {
-        return <Navigate to={`/onboarding/${user.onboardingStep}`} replace />;
+    if (!activeCompany.onboarding.is_completed) {
+        const currentStepNumber = (activeCompany.onboarding.current_step) as OnboardingStepNumber;
+        const currentStepRoute = STEP_ROUTES[currentStepNumber];
+        return <Navigate to={`/onboarding/${currentStepRoute}`} replace />;
     }
 
     return (

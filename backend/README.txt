@@ -8,3 +8,11 @@ CRUD
 Ανάγνωση (Read / SELECT)
 Ενημέρωση (Update / UPDATE)
 Διαγραφή (Delete / DELETE)
+
+
+# FRONTEND
+Golden Rule
+
+Ό,τι μπαίνει σε setTimeout / setInterval / event listeners
+
+ΠΡΕΠΕΙ να διαβάζεται από useRef

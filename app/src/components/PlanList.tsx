@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import PlanCard from "./PlanCard";
 import styles from "./PlanList.module.css";
-import { useAuth } from "../context/AuthContext";
 import SidePopup from "./reusable/SidePopup";
 import StripeCheckoutForm from "./StripeCheckoutForm";
 import { useNavigate } from "react-router-dom";
@@ -9,19 +8,12 @@ import { useNavigate } from "react-router-dom";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe, PaymentIntent } from "@stripe/stripe-js";
 import { axiosPrivate } from "../api/axios";
+import { useAuth } from "@/context/AuthContext";
+import { Plan, OnboardingData } from "@/onboarding/types";
+import { useOnboarding } from "@/onboarding/OnboardingContext";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
-interface Plan {
-    id: number;
-    name: string;
-    description: string;
-    base_price_per_month: number;
-    base_price_per_year: number;
-    extra_station_price: number;
-    max_users_per_station: number;
-    features: string[];
-}
 
 interface PreviewDetails {
     vatPercentage: number;
@@ -33,12 +25,13 @@ interface PreviewDetails {
 }
 
 interface PlanListProps {
-    plans: Plan[];
+    mode: "onboarding" | "admin";
 }
 
-export default function PlanList ({ plans }: PlanListProps) {
+export default function PlanList({ mode }: PlanListProps) {
 
-    const { user, setUser, showToast } = useAuth();
+    const { activeCompany, showToast } = useAuth();
+    const { plans, nextStep } = useOnboarding();
     const navigate = useNavigate();
 
     const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("yearly");
@@ -69,31 +62,6 @@ export default function PlanList ({ plans }: PlanListProps) {
         setPreviewDetails(null);
         setCompanyNameError("");
     };
-
-    // Initialize company name in popup
-    useEffect(() => {
-        const getCompanyName = async () =>{
-            try {
-                const response = await axiosPrivate.get('/api/shared/get-company')
-                const { success, data={} } = response.data;
-
-                if(!success){
-                    showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-                    return;
-                }
-
-                setCompanyName(data.companyName)
-                setCompanyNameDB(data.companyName);
-                // set afm
-            } catch (error) {
-                console.error("error:", error);
-                showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-            }
-        }
-        
-        getCompanyName();
-
-    }, []);
 
 
     // Δημιουργεί νέο PaymentIntent όταν ανοίγει το popup
@@ -189,69 +157,72 @@ export default function PlanList ({ plans }: PlanListProps) {
     const handlePlanClick = async (plan: Plan) => {
 
         try {
-            // Ρώτα backend τι είδους αλλαγή είναι
-            const response = await axiosPrivate.post("/api/stripe/check-plan-change", {
-                newPlanId: plan.id
-            });
-
-            const { success, data = {} } = response.data;
-
-            const { type } = data;
-
-            if(!success) {
-                showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-                return;
+            const values = {
+                id: plan.id,
+                billing: billingPeriod
             }
 
-            setChangeType(type);
-            setSelectedPlan(plan);
+            await nextStep({ plan: values });
 
-            // ---------------------------------------------------------
-            // SAME PLAN -> ignore
-            // ---------------------------------------------------------
-            if (type === "same-plan") return;
+            // // Ρώτα backend τι είδους αλλαγή είναι
+            // const response = await axiosPrivate.post("/api/stripe/check-plan-change", {
+            //     newPlanId: plan.id
+            // });
 
-            // ---------------------------------------------------------
-            // FREE ONBOARDING (Basic στο onboarding)
-            // ---------------------------------------------------------
-            if (type === "free-onboarding") {
+            // const { success, data = {} } = response.data;
 
-                const response = await axiosPrivate.post('/api/shared/submit-step-three', {})
-                const { success } = response.data;
+            // const { type } = data;
 
-                if(!success) {
-                    showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-                    return;
-                }
+            // if(!success) {
+            //     showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            //     return;
+            // }
+
+            // setChangeType(type);
+            // setSelectedPlan(plan);
+
+            // // ---------------------------------------------------------
+            // // SAME PLAN -> ignore
+            // // ---------------------------------------------------------
+            // if (type === "same-plan") return;
+
+            // // ---------------------------------------------------------
+            // // FREE ONBOARDING (Basic στο onboarding)
+            // // ---------------------------------------------------------
+            // if (type === "free-onboarding") {
+
+            //     const response = await axiosPrivate.post('/api/shared/submit-step-three', {})
+            //     const { success } = response.data;
+
+            //     if(!success) {
+            //         showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            //         return;
+            //     }
                 
-                setUser(prev => {
-                    if (!prev) return prev;
-                    return {
-                        ...prev,
-                        needsOnboarding: false,
-                        onboardingStep: null
-                    };
-                });
+            //     // setOnboarding({
+            //     //     is_completed: true,
+            //     //     step: null
+            //     // });
 
-                navigate('/');
-                return;
-            }
+            //     navigate('/');
+            //     return;
+            // }
 
-            // ---------------------------------------------------------
-            // FIRST PAYMENT (onboarding paid plan) ή UPGRADE (settings)
-            // ---------------------------------------------------------
-            if (type === "first-payment" || type === "upgrade") {
-                setPopupOpen(true);  // Stripe popup
-                return;
-            }
+            // // ---------------------------------------------------------
+            // // FIRST PAYMENT (onboarding paid plan) ή UPGRADE (settings)
+            // // ---------------------------------------------------------
+            // if (type === "first-payment" || type === "upgrade") {
+            //     setPopupOpen(true);  // Stripe popup
+            //     return;
+            // }
 
-            // ---------------------------------------------------------
-            // DOWNGRADE ή CANCEL
-            // ---------------------------------------------------------
-            if (type === "downgrade" || type === "cancel") {
-                setDowngradePopupOpen(true); // custom δικό σου confirm popup
-                return;
-            }
+            // // ---------------------------------------------------------
+            // // DOWNGRADE ή CANCEL
+            // // ---------------------------------------------------------
+            // if (type === "downgrade" || type === "cancel") {
+            //     setDowngradePopupOpen(true); // custom δικό σου confirm popup
+            //     return;
+            // }
 
         } catch (error) {
             console.error("error:", error);
@@ -298,14 +269,10 @@ export default function PlanList ({ plans }: PlanListProps) {
             }
 
             // 3. Success!
-            setUser(prev => {
-                if (!prev) return prev;
-                return {
-                    ...prev,
-                    needsOnboarding: false,
-                    onboardingStep: null
-                };
-            });
+            // setOnboarding({
+            //     is_completed: true,
+            //     step: null
+            // });
 
             if(changeType === "first-payment"){
                 navigate("/");
@@ -379,7 +346,7 @@ export default function PlanList ({ plans }: PlanListProps) {
                         plan={plan}
                         billingPeriod={billingPeriod}
                         isPopular={plan.name === "Pro"}
-                        onboarding={user?.needsOnboarding}
+                        onboarding={!activeCompany?.onboarding.is_completed}
                         currentPlan={null}
                         onSelectPlan={handlePlanClick}
                     />
@@ -387,7 +354,7 @@ export default function PlanList ({ plans }: PlanListProps) {
             </div>
 
 
-            <SidePopup
+            {/* <SidePopup
                 isOpen={popupOpen}
                 onClose={handleClosePopup}
                 title="Ολοκλήρωση Πληρωμής"
@@ -501,7 +468,7 @@ export default function PlanList ({ plans }: PlanListProps) {
                 : // changeType === "cancel"
                     <p>Είστε σίγουροι ότι θέλετε να ακυρώσετε την συνδρομή σας;</p>
                 }
-            </SidePopup>
+            </SidePopup> */}
         </div>
     );
 };

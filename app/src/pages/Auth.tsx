@@ -3,7 +3,7 @@ import styles from './Auth.module.css'
 import LogoIcon from '../assets/logo_icon.png'
 import AuthForm from "../components/AuthForm";
 import GoogleButton from "../components/GoogleButton.js"
-import { useAuth } from "../context/AuthContext.js";
+import { useAuth } from "@/context/AuthContext";
 
 const WEBSITE_URL = import.meta.env.VITE_WEBSITE_URL;
 
@@ -40,7 +40,7 @@ export default function Auth() {
 
                 {/* Login/Signup Form */}
                 <AuthForm 
-                    type = "email_verify"
+                    verificationType = "signup"
                 />
 
                 <div className={styles.footer}>

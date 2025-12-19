@@ -18,9 +18,10 @@ interface SignupFormProps {
     onChange: (code: string) => void;
     onResend: () => Promise<void>;
     remainingSec: number;
+    isResending: boolean;
 }
 
-export default function SignupForm({code, codeError, onChange, onResend, remainingSec, password, passwordError, onChangeP, confirmPassword, confirmPasswordError, onChangeCP }: SignupFormProps) {
+export default function SignupForm({code, codeError, onChange, onResend, remainingSec, password, passwordError, onChangeP, confirmPassword, confirmPasswordError, onChangeCP, isResending }: SignupFormProps) {
 
     return (
         <div className={styles.signupForm}>
@@ -50,25 +51,26 @@ export default function SignupForm({code, codeError, onChange, onResend, remaini
                 error = {codeError}
                 remainingSec = {remainingSec}
                 onResend = {onResend}
+                isResending = {isResending}
             />
            
            <div className={styles.terms}>
-                By signing up, you agree to our 
+                Με την εγγραφή σας αποδέχεστε τους
                 <span 
                     className={styles.link}
                     onClick={()=> window.location.href = `${WEBSITE_URL}/terms`}
                 >
-                    Terms of Use
+                    Όρους Χρήσης
                 </span> 
-                and 
+                και την
                 <span 
                     className={styles.link} 
-                    style={{marginRight:"0"}}
+                    style={{marginLeft:"0"}}
                     onClick={()=> window.location.href = `${WEBSITE_URL}/privacy-policy`}
                 >
-                    Privacy Policy
+                    Πολιτική Απορρήτου
                 </span>
-                . 
+                μας. 
             </div>
 
         </div>

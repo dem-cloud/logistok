@@ -1,50 +1,44 @@
-import { createContext, useState, useEffect, ReactNode, useContext, useRef, useCallback } from 'react';
-import { axiosPublic } from '../api/axios';
+import { createContext, useState, useEffect, useContext, useRef, useCallback } from 'react';
+import { axiosPrivate, axiosPublic } from '../api/axios';
 import { getExp } from '../auth/getExp';
-import { getToken, setToken } from '../auth/tokenStore';
+import { setToken as storeSetToken } from '../auth/tokenStore';
 import { registerLogout } from '../auth/logoutHandler';
 import { useNavigate } from 'react-router-dom';
 import { registerRefresh } from '../auth/refreshHandler';
 import Toast from '../components/Toast';
+import { AuthResponseData, CompanySessionInfo, MeResponse, RefreshResponseData, User } from '../types/auth.types';
+import { ToastData } from '../types/toast.types';
+import { OnboardingStepNumber } from '../onboarding/types';
+import { STEP_ROUTES } from '../onboarding/steps';
 
-// Define types for the user and context
-interface User {
-    email: string;
-    first_name: string;
-    last_name: string;
-    needsOnboarding: boolean;
-    onboardingStep: number | null;
-}
 
-interface RefreshResponse {
-    access_token: string;
-    user: User;
-}
+const REFRESH_MARGIN_SEC = Number(import.meta.env.VITE_REFRESH_MARGIN_SEC) || 60;
 
 interface AuthContextType {
+    token: string | null;
+
     user: User | null;
     setUser: React.Dispatch<React.SetStateAction<User | null>>;
-    login: (token: string, user: User) => void;
-    refresh: () => Promise<RefreshResponse>; // Επιστρέφει access token
-    logout: () => Promise<void>; // Async function
-    forceLogout: () => void; // Sync function
+    companies: CompanySessionInfo[];
+    setCompanies: React.Dispatch<React.SetStateAction<CompanySessionInfo[]>>;
+    activeCompany: CompanySessionInfo | null;
+    setActiveCompany: (company: CompanySessionInfo | null) => void;
+
+    createCompany: () => Promise<void>;
+    selectCompany: (companyId: string) => Promise<void>;
+
+    login: (data: AuthResponseData) => void;
+    logout: () => Promise<void>;
+    refresh: () => Promise<RefreshResponseData>;
+    me: () => Promise<MeResponse>
+
     loading: boolean;
     showToast: (data: ToastData) => void;
 }
 
 interface AuthProviderProps {
-    children: ReactNode;
+    children: React.ReactNode;
 }
-
-type ToastType = "success" | "error" | "info";
-
-interface ToastData {
-    message: string;
-    type?: ToastType;
-    duration?: number;
-}
-
-const REFRESH_MARGIN_SEC = Number(import.meta.env.VITE_REFRESH_MARGIN_SEC) || 60;
 
 // Create the AuthContext
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,13 +47,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const navigate = useNavigate();
 
-    const [loading, setLoading] = useState(true);
+    const [token, setTokenState] = useState<string | null>(null);
+
     const [user, setUser] = useState<User | null>(null);
+    const [companies, setCompanies] = useState<CompanySessionInfo[]>([]);
+    const [activeCompany, setActiveCompanyState] = useState<CompanySessionInfo | null>(null);
+    
+    const tokenRef = useRef<string | null>(null);
+    const activeCompanyRef = useRef<CompanySessionInfo | null>(null);
+
+    const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState<ToastData | null>(null);
 
-    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+    const timer = useRef<number | null>(null);
     
+    const setToken = (newToken: string | null) => {
+        tokenRef.current = newToken;
+        setTokenState(newToken);
+        storeSetToken(newToken); // sync with tokenStore
+    };
+
+    const setActiveCompany = (company: CompanySessionInfo | null) => {
+        activeCompanyRef.current = company;
+        setActiveCompanyState(company);
+    };
+
+    useEffect(() => {
+        tokenRef.current = token;
+    }, [token]);
+
+    useEffect(() => {
+        activeCompanyRef.current = activeCompany;
+    }, [activeCompany]);
 
     const showToast = ({ message, type = "info", duration = 3000 }: ToastData) => {
         setToast({ message, type });
@@ -72,10 +91,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Κράτα τον χρήστη μέσα, μην λήξει το access token
     const schedule = () => {
         
-        const token = getToken();
-        if (!token) return;
+        const currentToken = tokenRef.current;
+        if (!currentToken) return;
 
-        const exp = getExp(token);
+        const exp = getExp(currentToken);
         if (!exp) return;
 
         const now = Math.floor(Date.now() / 1000);
@@ -93,7 +112,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         timer.current = window.setTimeout(async () => {
             try {
-                await refresh();
+                const { access_token } = await refresh();
+                tokenRef.current = access_token;
                 schedule();
             } catch {
                 forceLogout();
@@ -101,17 +121,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }, delayMs);
     };
 
-
     useEffect(() => {
         const initAuth = async () => {
             try {
-                
-                const { user } = await refresh();
+                // 1) Πάρε νέο naked access token (μόνο sub)
+                await refresh();
+
+                // 2) Φέρε user + companies
+                const { user, companies } = await me();
 
                 setUser(user);
-                schedule();
+                setCompanies(companies);
 
-            } catch {
+                // 3) Προσπάθησε να ανακτήσεις την τελευταία active company από localStorage
+                const savedCompanyId = localStorage.getItem("activeCompanyId");
+
+                if(companies.length === 0) {
+                    setActiveCompany(null);
+                    localStorage.removeItem("activeCompanyId");
+                    return;
+                }
+
+                // Πρώτα προσπαθούμε restore
+                if (savedCompanyId && companies.length > 0) {
+                    const match = companies.find(c => c.id === savedCompanyId);
+                    if (match) {
+                        // Κάνουμε switchCompany ΧΩΡΙΣ redirect,
+                        // για να μείνει ο χρήστης στο path που ήταν στο reload
+                        await switchCompanyLogic(savedCompanyId, match);
+
+                        return;
+                    } else {
+                        localStorage.removeItem("activeCompanyId");
+                    }
+                }
+
+            } catch (err) {
+                // console.error("initAuth error:", err);
                 forceLogout();
             } finally {
                 setLoading(false);
@@ -122,33 +168,163 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         return () => {
             if (timer.current) {
-                window.clearTimeout(timer.current);
+                clearTimeout(timer.current);
                 timer.current = null;
             }
         };
     }, []);
 
-    const login = (token: string, userData: User) => {
-        setToken(token);
-        setUser(userData);
+
+    const login = (data: AuthResponseData) => {
+
+        const { access_token, user, companies } = data;
+        
+        setToken(access_token);
+        setUser(user);
+        setCompanies(companies);
+
         schedule();
+
+        navigate('/select-company');
     };
 
     const refresh = useCallback(async () => {
 
-        const response = await axiosPublic.post("/api/auth/refresh", {}, { withCredentials: true });
-        const { success, message, data } = response.data;
-        const { access_token, user } = data;
+        const company = activeCompanyRef.current;
 
-        if(!success || !access_token || !user){
+        // console.log(company);
+
+        const payload = company
+            ? { companyId: company.id }   // Contextual refresh
+            : {};                         // Naked refresh
+
+        const response = await axiosPublic.post("/api/auth/refresh", payload, { withCredentials: true });
+        const { success, message, data } = response.data;
+
+        if(!success){
             console.log(message)
             throw new Error("invalid_refresh_response");
         }
 
+        const { access_token } = data;
+        
         setToken(access_token);
 
-        return { access_token, user };
-    }, []);
+        return { access_token }
+
+    }, [activeCompany]);
+
+    const me = async (): Promise<MeResponse> => {
+
+        const response = await axiosPrivate.get("/api/auth/me"); //μπορει να θελει post για να παιρναει το τοκεν
+        const { success, message, data } = response.data;
+
+        if(!success){
+            console.log(message)
+            throw new Error("invalid_me_response");
+        }
+
+        return data;
+    }
+
+    const createCompany = async () => {
+
+        try {
+
+            const response = await axiosPrivate.post("/api/auth/create-company", {})
+            const { success, message, code, data } = response.data;
+            
+            if(!success){
+                if (code === "ONBOARDING_INCOMPLETE") {
+                    // Redirect στο incomplete onboarding
+                    showToast({ 
+                        message, 
+                        type: "warning" 
+                    });
+                    return;
+                }
+                
+                showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+                return;
+            }
+
+            const { access_token, active_company } = data;
+
+            // 1) Βάλε το contextual access token
+            setToken(access_token);
+            // 2) Ορισμός active company
+            setActiveCompany(active_company);
+
+            // 4) Προσθήκη νέας εταιρείας
+            setCompanies(prev=>[...prev, active_company])
+            
+            // 5) Αποθήκευση για restore στο reload
+            localStorage.setItem("activeCompanyId", active_company.id);
+
+            // 6) Νέο token → νέο schedule
+            schedule();
+
+            // 7) Redirect ΣΙΓΟΥΡΑ σε onboarding
+            const currentStepNumber = (activeCompany?.onboarding.current_step ?? 1) as OnboardingStepNumber;
+            const currentStepRoute = STEP_ROUTES[currentStepNumber];
+            navigate(`/onboarding/${currentStepRoute}`, { replace: true } );
+
+        } catch (error) {
+            console.error("error:", error);
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            // Αν αποτύχει, cleanup
+            localStorage.removeItem("activeCompanyId");
+        }
+    }
+    
+    const switchCompanyLogic = async ( companyId: string, company: CompanySessionInfo ) => {
+
+        try {
+            const response = await axiosPrivate.post('/api/auth/switch-company', { companyId });
+            const { success, data } = response.data;
+
+            if(!success){
+                showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+                return null;
+            }
+
+            const { access_token } = data;
+            
+            setToken(access_token);
+            setActiveCompany(company);
+            localStorage.setItem("activeCompanyId", companyId);
+
+            schedule();
+
+
+        } catch (error) {
+            console.error("error:", error);
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            localStorage.removeItem("activeCompanyId");
+            return null;
+        }
+
+    };
+
+    const selectCompany = async (companyId: string) => {
+
+        const company = companies.find(c => c.id === companyId);
+        if (!company) {
+            showToast({ message: "Η εταιρεία δεν βρέθηκε", type: "error" });
+            return;
+        }
+
+        await switchCompanyLogic(companyId, company);
+
+        if(!company.onboarding.is_completed){
+            const currentStepNumber = (activeCompany?.onboarding.current_step ?? 1) as OnboardingStepNumber;
+            const currentStepRoute = STEP_ROUTES[currentStepNumber];
+            navigate(`/onboarding/${currentStepRoute}`, { replace: true } );
+        }
+        else
+            navigate('/')
+
+    };
 
     // Graceful logout - Όταν ο χρήστης πατάει "Logout"
     const logout = async () => {
@@ -168,6 +344,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
             setToken(null);
             setUser(null);
+            setCompanies([]);
+            setActiveCompany(null);
+            localStorage.removeItem("activeCompanyId");
+
             navigate("/auth", { replace: true });
         }
     };
@@ -183,6 +363,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // window.location.href = "/auth";
         setToken(null);
         setUser(null);
+        setCompanies([]);
+        setActiveCompany(null);
+        // remove localstorage
         
         // Αν ο χρήστης βρίσκεται ήδη σε /auth paths, μην κάνεις redirect
         if (!window.location.pathname.startsWith("/auth")) {
@@ -190,7 +373,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
     }, []);
-
 
     //--- Χρησιμοποιούνται για να ενημερώνουμε τους helpers ώστε να παίρνουμε τις μεταβλητές στο axios interceptor
     useEffect(() => {
@@ -202,8 +384,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }, [refresh]);
     //---
 
+
     return (
-        <AuthContext.Provider value={{ user, setUser, login, refresh, logout, forceLogout, loading, showToast }}>
+        <AuthContext.Provider value={{ token, user, setUser, companies, setCompanies, activeCompany, setActiveCompany, createCompany, selectCompany, login, logout, refresh, me, loading, showToast }}>
             {children}
             {toast && <Toast message={toast.message} type={toast.type ?? "info"} />}
         </AuthContext.Provider>
@@ -216,6 +399,33 @@ export const useAuth = () => {
     const context = useContext(AuthContext);
     // Handle case where context is undefined
     if (!context) {
+
+        /* =================== TODO: Delete it on production =================== */
+        // During HMR/Fast Refresh, context might temporarily be undefined
+        // Return a safe default to prevent crashes during development
+        if (import.meta.env.DEV) {
+            // Return a minimal safe default during development HMR
+            const defaultUser: User = { email: null, phone: null };
+            return {
+                token: null,
+                user: null,
+                setUser: () => {},
+                companies: [],
+                setCompanies: () => {},
+                activeCompany: null,
+                setActiveCompany: () => {},
+                createCompany: async () => {},
+                selectCompany: async () => {},
+                login: () => {},
+                logout: async () => {},
+                refresh: async () => ({ access_token: '' }),
+                me: async () => ({ user: defaultUser, companies: [] }),
+                loading: true,
+                showToast: () => {},
+            } as AuthContextType;
+        }
+        /* =================== TODO: Delete it on production =================== */
+
         throw new Error('useAuth must be used within an AuthProvider');
     }
     

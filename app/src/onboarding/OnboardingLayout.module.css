@@ -1,0 +1,136 @@
+.onboarding {
+    display: flex;
+    flex-direction: column;
+    /* justify-content: center; */
+    align-items: center;
+    position: relative;
+    min-height: 100vh;
+    width: 100%;
+    /* background-color: rgb(148, 177, 177); */
+}
+
+.header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    /* background-color: aqua; */
+}
+
+.content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 500px;
+    transition: transform 0.3s ease-in-out, width 0.3s ease-in-out, height 0.3s ease-in-out;
+    margin: 5rem 0;
+}
+
+.content form {
+    margin-top: 1rem;
+    width: 100%;
+    
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.industriesBtn {
+    width: 500px;
+}
+
+.pluginsBtn {
+    width: 100%;
+}
+
+.industriesBtn button,
+.pluginsBtn button {
+    width: 100%;
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 600;
+    width: max-content;
+}
+
+.tagline {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-secondary-color);
+    margin-bottom: 2rem;
+    width: max-content;
+}
+
+.backButton,
+.exitButton,
+.skipButton {
+    background: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+
+    color: var(--text-secondary-color);
+    padding: 0;
+}
+
+.exitButton {
+    margin-left: auto;
+}
+
+.skipButton {
+    font-size: 14px;
+    margin-top: 1rem;
+    text-decoration: underline;
+}
+
+.backButton:hover,
+.exitButton:hover
+.skipButton:hover {
+    opacity: 0.7;
+}
+
+.backIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 6px;
+}
+
+.industries {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    width: 100%;
+    margin-bottom: 2rem;
+}
+
+/* Make content wider when it contains industries grid */
+.content:has(.industries) {
+    width: min(900px, 100%);
+    max-width: 100%;
+}
+
+.content:has(.pluginList) {
+    width: min(1000px, 100%);
+    max-width: 100%;
+}
+
+@media (max-width: 640px) {
+    .industries {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .content:has(.industries),
+    .content:has(.pluginList) {
+        width: 100%;
+        padding: 0 20px;
+    }
+}
+/* TODO: Fix error margins in all files, maybe place error css in index.css to be global */

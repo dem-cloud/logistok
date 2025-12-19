@@ -1,0 +1,362 @@
+.sidebar {
+  width: 230px;
+  height: 100vh;
+  background: #fafbfd;
+  border-right: 1px solid #eef1f7;
+  padding: 18px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 1px 0 12px rgba(0, 0, 0, 0.02);
+  overflow: hidden;
+  position: sticky;
+  top: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 13px;
+}
+
+.brandCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brandName {
+  font-weight: 700;
+  font-size: 14px;
+  color: #111827;
+}
+
+.brandPlan {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.chevron {
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid #9ca3af;
+  border-bottom: 2px solid #9ca3af;
+  transform: rotate(45deg);
+  opacity: 0.7;
+  transition: transform 0.2s ease;
+}
+
+.chevronOpen {
+  transform: rotate(225deg);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fixedTop {
+  flex-shrink: 0;
+}
+
+.scrollableSection {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 70px;
+  margin: 0 -18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scrollableSectionHeader {
+  position: sticky;
+  top: 0;
+  background: #fafbfd;
+  z-index: 10;
+  padding: 0 18px;
+  padding-bottom: 10px;
+}
+
+.scrollableSectionContent {
+  padding: 0 18px;
+  flex: 1;
+}
+
+.scrollableSection::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollableSection::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollableSection::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.scrollableSection::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.fixedBottom {
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.sectionTitle {
+  margin: 0;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+  font-weight: 700;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: #4b5563;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  min-width: 0;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.item:hover {
+  background: #eef2f7;
+  color: #1f2937;
+}
+
+.active {
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.18);
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  display: inline-block;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bell::after,
+.calendar::after,
+.pulse::after,
+.card::after,
+.transfer::after,
+.user::after,
+.doc::after,
+.settings::after,
+.flash::after,
+.gear::after,
+.help::after,
+.home::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 2px;
+  border: 2px solid currentColor;
+  opacity: 0.6;
+}
+
+.badge {
+  margin-left: auto;
+  background: #f0f4ff;
+  color: #3b82f6;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.label {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.others {
+  margin-top: auto;
+}
+
+.storeSelector {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.storeButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.storeButton:hover {
+  border-color: #d1d5db;
+  background: #fafbfd;
+}
+
+.storeInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.storeName {
+  font-weight: 500;
+  font-size: 13px;
+  color: #111827;
+}
+
+.storeAddress {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.storeDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 100;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.storeOption {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+}
+
+.storeOption:hover {
+  background: #f4f6fb;
+}
+
+.storeOptionActive {
+  background: #eef2f7;
+}
+
+.storeOptionInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.storeOptionName {
+  font-weight: 500;
+  font-size: 13px;
+  color: #111827;
+}
+
+.storeOptionAddress {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.accountInfo {
+  padding: 12px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.accountIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.accountDetails {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.accountName {
+  font-weight: 600;
+  font-size: 13px;
+  color: #111827;
+  text-align: left;
+}
+
+.accountPlan {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: left;
+}
+

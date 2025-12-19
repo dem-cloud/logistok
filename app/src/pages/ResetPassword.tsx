@@ -26,7 +26,7 @@ export default function ResetPassword() {
                 <div className={styles.tagline}>{tagline}</div>
 
                 <AuthForm 
-                    type = "password_reset"
+                    verificationType = "password_reset"
                     setTagline={setTagline}
                 />
 

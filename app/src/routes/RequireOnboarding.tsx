@@ -1,31 +1,38 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { ONBOARDING_STEPS, STEP_ROUTES } from "../onboarding/steps";
+import { OnboardingStepKey, OnboardingStepNumber } from "../onboarding/types";
+import { useAuth } from "@/context/AuthContext";
 
 export default function RequireOnboarding() {
-    const { user } = useAuth();
+    const { activeCompany } = useAuth();
     const location = useLocation();
 
-    // Αν δεν υπάρχει user -> redirect σε login
-    if (!user) {
+    if (!activeCompany) {
+        return <Navigate to="/select-company" replace />;
+    }
+
+    // Μόνο ο owner μπορεί να δει το onboarding
+    if(!activeCompany.onboarding.is_completed && !activeCompany.membership.is_owner){
+        // κάποιος παγαπόντης
+        // forceLogout()
         return <Navigate to="/auth" replace />;
     }
 
-    // Αν έχει ολοκληρώσει το onboarding -> δεν πρέπει να είναι εδώ
-    if (!user.needsOnboarding || !user.onboardingStep) {
+    // Αν έχει ολοκληρώσει το onboarding
+    if (activeCompany.onboarding.is_completed) {
         return <Navigate to="/" replace />;
     }
 
-    const step = Number(location.pathname.split("/").pop());
-    const allowedStep = user.onboardingStep; // Μέγιστο επιτρεπόμενο
+    const currentStepNumber = (activeCompany.onboarding.current_step) as OnboardingStepNumber;
+    const maxStepNumber = (activeCompany.onboarding.max_step_reached) as OnboardingStepNumber;
+    const currentStepRoute = STEP_ROUTES[currentStepNumber];
 
-    // Αν /onboarding -> πήγαινε στο *μεγιστο* επιτρεπόμενο
-    if (location.pathname === "/onboarding") {
-        return <Navigate to={`/onboarding/${allowedStep}`} replace />;
-    }
+    const urlStep = location.pathname.split("/")[2] as OnboardingStepKey; // /onboarding/:step
 
-    // Αν ο χρήστης ζητάει βήμα μεγαλύτερο από αυτό που έχει φτάσει -> μπλοκ
-    if (step > allowedStep) {
-        return <Navigate to={`/onboarding/${allowedStep}`} replace />;
+    const requestedStepNumber = ONBOARDING_STEPS[urlStep];
+
+    if (!requestedStepNumber || requestedStepNumber > maxStepNumber) {
+        return <Navigate to={`/onboarding/${currentStepRoute}`} replace />;
     }
 
     return <Outlet />;

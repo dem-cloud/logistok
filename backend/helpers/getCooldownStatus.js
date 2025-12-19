@@ -1,24 +1,23 @@
 const supabase = require("../supabaseConfig");
+const { VERIFICATION_TYPES } = require("./verificationTypes");
 
 async function getCooldownStatus(email, type) {
     // Διαφορετικά cooldowns ανά type
     const COOLDOWNS = {
-        email_verify: 59 * 1000,      // 59 δευτερόλεπτα
-        password_reset: 59 * 1000     // 59 δευτερόλεπτα
+        [VERIFICATION_TYPES.SIGNUP]: 60 * 1000,          // 60 δευτερόλεπτα
+        [VERIFICATION_TYPES.PASSWORD_RESET]: 60 * 1000   // 60 δευτερόλεπτα
     };
 
-    const COOLDOWN_MS = COOLDOWNS[type] || 59 * 1000;
+    const COOLDOWN_MS = COOLDOWNS[type] || 60 * 1000;
 
     try {
         const now = Date.now();
 
-        const { data: recentCode, error } = await supabase
+        const { data: verificationCode, error } = await supabase
             .from("verification_codes")
-            .select("created_at")
+            .select("updated_at")
             .eq("email", email)
             .eq("type", type)
-            .order("created_at", { ascending: false })
-            .limit(1)
             .maybeSingle();
 
         if (error) {
@@ -26,19 +25,19 @@ async function getCooldownStatus(email, type) {
             return { error: true, isCoolingDown: false, remaining: 0 };
         }
 
-        if (!recentCode) {
-            return { isCoolingDown: false, remaining: 0, error: false };
+        if (!verificationCode) {
+            return { existedCode: false, isCoolingDown: false, remaining: 0, error: false };
         }
 
-        const createdAt = new Date(recentCode.created_at).getTime();
-        const diff = now - createdAt;
+        const updatedAt = new Date(verificationCode.updated_at).getTime();
+        const diff = now - updatedAt;
 
         if (diff < COOLDOWN_MS) {
             const remaining = Math.ceil((COOLDOWN_MS - diff) / 1000);
-            return { isCoolingDown: true, remaining, error: false };
+            return { existedCode: true, isCoolingDown: true, remaining, error: false };
         }
-
-        return { isCoolingDown: false, remaining: 0, error: false };
+        
+        return { existedCode: true, isCoolingDown: false, remaining: 0, error: false };
 
     } catch (err) {
         console.error("getCooldownStatus runtime error:", err);

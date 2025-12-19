@@ -2,7 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const router = express.Router();
-const authenticateToken = require('../middlewares/authMiddleware');
+const authenticateToken = require('../middlewares/authRequired');
 
 const supabase = require('../supabaseConfig');
 

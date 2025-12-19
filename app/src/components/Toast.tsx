@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import styles from "./Toast.module.css";
-
-type ToastType = "success" | "error" | "info";
+import { ToastType } from "../types/toast.types";
 
 interface Props {
-  message: string;
-  type: ToastType;
+    message: string;
+    type: ToastType;
 }
 
 export default function Toast({ message, type }: Props) {

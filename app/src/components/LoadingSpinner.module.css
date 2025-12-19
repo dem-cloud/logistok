@@ -1,0 +1,23 @@
+.container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.spinner {
+    height: 3rem;        /* 12 * 0.25rem */
+    width: 3rem;
+    border-radius: 9999px;
+    border-bottom: 2px solid #2563eb; /* blue-600 */
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}

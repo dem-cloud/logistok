@@ -5,20 +5,24 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import Dashboard from './pages/protected/Dashboard'
 import Auth from './pages/Auth'
-import { useAuth } from './context/AuthContext'
 import ResetPassword from './pages/ResetPassword'
 import RequireLoggedOut from './routes/RequireLoggedOut'
-import Onboarding from './pages/protected/Onboarding'
 import RequireOnboarding from './routes/RequireOnboarding'
 import RequireFinishedOnboarding from './routes/RequireFinishedOnboarding'
 import ProtectedCatchAll from './routes/ProtectedCatchAll'
+import CompanySelector from './pages/protected/CompanySelector'
+import InviteSetPassword from './pages/InviteSetPassword'
+import RequireSelectCompany from './routes/RequireSelectCompany'
+import LoadingSpinner from './components/LoadingSpinner'
+import { useAuth } from './context/AuthContext'
+import { OnboardingLayout } from './onboarding/OnboardingLayout'
 
 export default function App() {
 
     const { loading } = useAuth()
 
     if (loading) {
-        return <div>Loading...</div> // μπορείς να βάλεις skeleton
+        return <LoadingSpinner />
     }
 
     return (
@@ -32,15 +36,18 @@ export default function App() {
                 </Route>
             </Route>
 
+            <Route path="/invite/:token" element={<InviteSetPassword />} />
+
             {/* PROTECTED ROUTES - APP */}
             <Route element={<ProtectedRoute />}>
 
+                <Route element={<RequireSelectCompany />}>
+                    <Route path="/select-company" element={<CompanySelector />} />
+                </Route>
+
                 {/* ROUTES ΓΙΑ ΧΡΗΣΤΕΣ ΠΟΥ ΕΙΝΑΙ ΣΕ ONBOARDING */}
                 <Route element={<RequireOnboarding />}>
-                    <Route path="/onboarding">
-                        <Route index element={<Navigate to="/onboarding/1" replace />} />
-                        <Route path=":step" element={<Onboarding />} />
-                    </Route>
+                    <Route path="/onboarding/:step" element={<OnboardingLayout />} />
                 </Route>
 
                 {/* ROUTES ΓΙΑ ΧΡΗΣΤΕΣ ΠΟΥ ΕΧΟΥΝ ΟΛΟΚΛΗΡΩΣΕΙ ΤΟ ONBOARDING */}

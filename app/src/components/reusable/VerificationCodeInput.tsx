@@ -8,9 +8,10 @@ interface VerificationCodeInputProps {
     error?: string;
     onResend?: () => void;
     remainingSec: number;
+    isResending?: boolean;
 }
 
-export default function VerificationCodeInput({ label, value, onChange, error, onResend, remainingSec }: VerificationCodeInputProps) {
+export default function VerificationCodeInput({ label, value, onChange, error, onResend, remainingSec, isResending = false  }: VerificationCodeInputProps) {
     const [internalValue, setInternalValue] = useState<string>('');
     const inputsRef = useRef<HTMLInputElement[]>([]);
     // console.log(values)
@@ -81,33 +82,43 @@ export default function VerificationCodeInput({ label, value, onChange, error, o
                             <button
                                 type="button"
                                 onClick={onResend}
-                                className={styles.resendBtn}
-                                disabled={remainingSec > 0}
+                                className={`${styles.resendBtn} ${isResending ? styles.loading : ''}`}
+                                disabled={remainingSec > 0 || isResending}
                             >
-                                {remainingSec > 0 ? `Resend in ${remainingSec}s` : "Resend code"}
+                                { isResending ? (
+                                    <>
+                                        <span className={styles.spinner}></span>
+                                        Αποστολή ...
+                                    </>
+                                ) :
+                                    remainingSec > 0 ? 
+                                        `Αποστολή σε ${remainingSec}s` 
+                                    : 
+                                        "Αποστολή κωδικού"
+                                }
                             </button>
                         )
                     }
                 </div>
             )}
             <div className={styles.boxContainer}>
-            {values.map((val, i) => (
-                <input
-                    key={i}
-                    ref={(el) => {
-                        inputsRef.current[i] = el!;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={val.trim()}
-                    onChange={(e) => handleInput(i, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(i, e)}
-                    onClick={() => handleInputClick(i)}
-                    onPaste={handlePaste}
-                    className={`${styles.box} ${error ? styles.errorInput : ""}`}
-                />
-            ))}
+                {values.map((val, i) => (
+                    <input
+                        key={i}
+                        ref={(el) => {
+                            inputsRef.current[i] = el!;
+                        }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={val.trim()}
+                        onChange={(e) => handleInput(i, e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(i, e)}
+                        onClick={() => handleInputClick(i)}
+                        onPaste={handlePaste}
+                        className={`${styles.box} ${error ? styles.errorInput : ""}`}
+                    />
+                ))}
             </div>
             <span className={`${styles.error} ${!error ? styles.hiddenError : ""}`}>
                 {error || "placeholder"}

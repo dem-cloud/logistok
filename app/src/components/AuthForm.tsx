@@ -2,30 +2,28 @@
 import React, { useEffect, useState } from 'react'
 import styles from './AuthForm.module.css'
 import { axiosPublic } from '../api/axios';
-import { useNavigate } from 'react-router-dom';
 import Button from './reusable/Button';
 import Input from './reusable/Input';
 import LoginForm from './LoginForm';
 import SignupForm from './SignupForm';
 import { getFingerprint } from '../auth/getFingerprint';
-import { useAuth } from '../context/AuthContext';
 import ResetPasswordForm from './ResetPasswordForm';
+import { useAuth } from '@/context/AuthContext';
 
-type VerificationType = 'email_verify' | 'password_reset';
+type VerificationType = 'signup' | 'password_reset';
+type VerificationDeliveryMethod = 'email' | 'sms';
 
 interface AuthFormProps {
-    type: VerificationType;
+    verificationType: VerificationType;
     setTagline?: React.Dispatch<React.SetStateAction<string>>;
 }
 
-// TODO: change general codes like MISSING_VALUES to specific codes like MISSING_EMAIL. Make errors more specific
+export default function AuthForm({ verificationType, setTagline }: AuthFormProps) {
 
-export default function AuthForm({ type, setTagline }: AuthFormProps) {
-
-    const navigate = useNavigate();
     const { login, showToast } = useAuth();
 
     const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
@@ -40,6 +38,7 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
     const [loadingSubmitRequest, setLoadingSubmitRequest] = useState(false); // login/signup
 
     const [secondsLeft, setSecondsLeft] = useState(0);
+    const [isResending, setIsResending] = useState(false);
 
     const [isUserChecked, setIsUserChecked] = useState(false)
     const [showLoginForm, setShowLoginForm] = useState(false)
@@ -101,34 +100,30 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
     }
 
     
-    const handleResend = async (email: string, type: VerificationType) => {
-        const response = await axiosPublic.post("/api/auth/send-code", { email, type })
-        const { success, message, code, data = {} } = response.data;
-        const { remaining = 0 } = data;
+    const handleResend = async (delivery_method: VerificationDeliveryMethod, email: string, phone: string, type: VerificationType) => {
+        try {
+            setIsResending(true);
 
-        const COOLDOWNS = {
-            email_verify: 59 * 1000,    // 59 δευτερόλεπτα
-            password_reset: 59 * 1000   // 59 δευτερόλεπτα
-        };
+            const response = await axiosPublic.post("/api/auth/send-code", { delivery_method, email, phone, type })
+            const { success, message, code, data = {} } = response.data;
+            const { remaining = 0 } = data;
 
-        const COOLDOWN_MS = COOLDOWNS[type] || 59 * 1000;
+            if(!success){
+                throw new Error(message);
+                // if(code === "MISSING_VALUES" || code === "INVALID_TYPE")
+                //     showToast({ message: message, type: "error" });
+                // else
+                //     showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            } 
+            
+            setSecondsLeft(remaining);
 
-        if(!success){
-            throw new Error(message);
-            // if(code === "MISSING_VALUES" || code === "INVALID_TYPE")
-            //     showToast({ message: message, type: "error" });
-            // else
-            //     showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-
-        } else {
-
-            if (code === "ACTIVE_VERIFICATION_CODE") {
-                setSecondsLeft(remaining); // πρακτικα εδω δεν θα μπει γιατι το κουμπι ειναι disabled μεχρι να τελειωσει το countdown
-            } else if (code === "VERIFICATION_CODE_SENT") {
-                setSecondsLeft(COOLDOWN_MS / 1000);
-            }
+        } catch (error) {
+            console.error("error:", error);
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+        } finally {
+            setIsResending(false);
         }
-
     }
 
     const handleCheckUser = async () => {
@@ -138,11 +133,11 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
             setEmailError("Μη έγκυρο email");
             return;
         }
-
+        
         try {
             setLoadingCheckUser(true);
              // 1) Check user
-            const response = await axiosPublic.post("/api/auth/check-user", { email, type })
+            const response = await axiosPublic.post("/api/auth/check-user", { email, type: verificationType })
             const { success, message, code, data = {} } = response.data;
             const { isCoolingDown, remaining } = data;
 
@@ -151,11 +146,14 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
                     showToast({ message: message, type: "error" });
                 else if(code === "PR_USER_NOT_FOUND")
                     setEmailError(message)
-                else
+                else // INVALID_TYPES
                     showToast({ message: "Κάτι πήγε στραβά", type: "error" });
 
                 return;
             }
+
+            // 2) Ορίζουμε τις κατάστασης ανάλογα με το code
+            let shouldSendCode = false;
 
             switch (code) {
                 case "USER_FOUND":
@@ -169,6 +167,7 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
                     setShowResetPasswordForm(false);
 
                     setShowSignupForm(true);
+                    shouldSendCode = true;
                     isCoolingDown && setSecondsLeft(remaining);
                     break;
                 case "PR_USER_FOUND":
@@ -177,17 +176,18 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
                     setTagline?.("Διάλεξε τον νέο σου κωδικό πρόσβασης και συμπλήρωσε τον 6ψήφιο κωδικό επαλήθευσης.");
                     setShowResetPasswordForm(true);
+                    shouldSendCode = true;
                     isCoolingDown && setSecondsLeft(remaining);
                     break;
             }
 
-            // 2) Προχωράμε στις φόρμες (Login | Signup):
-            setIsUserChecked(true);
-
-            if(code === "USER_NOT_FOUND" || code === "PR_USER_FOUND"){
-                // 3) Send code
-                !isCoolingDown && await handleResend(email, type);
+            // 3) Send code ΠΡΙΝ το setIsUserChecked αν χρειάζεται
+            if(shouldSendCode && !isCoolingDown) {
+                await handleResend("email", email, phone, verificationType);
             }
+
+            // 4) Τώρα προχωράμε στις φόρμες (Login | Signup) αφού έχει ήδη γίνει το send-code
+            setIsUserChecked(true);
 
         } catch (error) {
             console.error("error:", error);
@@ -211,11 +211,10 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
             
             const fingerprint = await getFingerprint();
     
-            console.log("Log In", email, password, fingerprint)
+            console.log("Log In", email, phone, password, fingerprint)
 
-            const response = await axiosPublic.post("/api/auth/login", { email, password, fingerprint }, { withCredentials: true })
+            const response = await axiosPublic.post("/api/auth/login", { email, phone, password, fingerprint }, { withCredentials: true })
             const { success, message, data = {}, code } = response.data;
-            const { access_token, user } = data;
             
             if(!success){
                 // MISSING_VALUES
@@ -231,12 +230,7 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
             // showToast({ message: "Επιτυχής σύνδεση!", type: "success" });
 
-            login(access_token, user)
-
-            if(user.needsOnboarding)
-                navigate(`/onboarding/${user.onboardingStep}`)
-            else
-                navigate('/')
+            login(data);
 
         } catch (error) {
             console.error("error:", error);
@@ -293,14 +287,10 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
             console.log("Sign Up", email, password, confirmPassword, verificationCode, fingerprint)
 
-            const response = await axiosPublic.post("/api/auth/signup", { email, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
+            const response = await axiosPublic.post("/api/auth/signup", { email, phone: null, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
             const { success, message, data = {}, code } = response.data;
-            const { access_token, user } = data;
 
             if(!success){
-                // MISSING_VALUES
-                // USER_FOUND
-                // DB_NO_DATA
                 // INVALID_PASSWORD
                 // PASSWORD_MISMATCH
                 // OTP_NOT_FOUND
@@ -326,8 +316,7 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
             // showToast({ message, type: "success" });
 
-            login(access_token, user);
-            navigate(`/onboarding/${user.onboardingStep}`);
+            login(data);
 
         } catch (error) {
             console.error("error:", error);
@@ -353,7 +342,6 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
             const response = await axiosPublic.post("/api/auth/password-reset", { email, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
             const { success, message, data = {}, code } = response.data;
-            const { access_token, user } = data;
 
             if(!success){
                 // MISSING_VALUES
@@ -383,12 +371,7 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
 
             // showToast({ message, type: "success" });
 
-            login(access_token, user);
-
-            if(user.needsOnboarding)
-                navigate(`/onboarding/${user.onboardingStep}`)
-            else
-                navigate('/')
+            login(data);
 
         } catch (error) {
             console.error("error:", error);
@@ -453,8 +436,9 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
                             codeError = {codeError}
                             onChange = {handleChangeVerificationCode}
 
-                            onResend = {()=>handleResend(email, type)}
+                            onResend = {()=>handleResend("email", email, phone, verificationType)}
                             remainingSec = {secondsLeft}
+                            isResending = {isResending}
                         />
                     )}
                     
@@ -472,8 +456,9 @@ export default function AuthForm({ type, setTagline }: AuthFormProps) {
                             codeError = {codeError}
                             onChange = {handleChangeVerificationCode}
 
-                            onResend = {()=>handleResend(email, type)}
+                            onResend = {()=>handleResend("email", email, phone, verificationType)}
                             remainingSec = {secondsLeft}
+                            isResending = {isResending}
                         />
                     )}
 

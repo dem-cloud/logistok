@@ -1,11 +1,29 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-export function generateAccessToken(userId) {
+export function generateAccessToken(userId, companyId = null, role = null, permissions = []) {
+
+    const payload = { sub: userId };
+
+    // Αν υπάρχει ενεργή εταιρεία → contextual token
+    if (companyId) {
+        payload.companyId = companyId;
+    }
+
+    // Role = metadata (όχι security source of truth)
+    if (role) {
+        payload.role = role;
+    }
+
+    // Permissions = authorization snapshot
+    if (Array.isArray(permissions) && permissions.length > 0) {
+        payload.permissions = permissions;
+    }
+    
     return jwt.sign(
-        { sub: userId },
+        payload,
         process.env.ACCESS_TOKEN_SECRET,
-        { expiresIn: "15m" } // short-lived token
+        { expiresIn: "15m" }
     );
 }
 

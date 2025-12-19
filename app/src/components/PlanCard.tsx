@@ -1,16 +1,6 @@
+import { Plan } from "@/onboarding/types";
 import styles from "./PlanCard.module.css";
 import Button from "./reusable/Button";
-
-interface Plan {
-    id: number;
-    name: string;
-    description: string;
-    base_price_per_month: number;
-    base_price_per_year: number;
-    extra_station_price: number;
-    max_users_per_station: number;
-    features: string[];
-}
 
 interface PlanCardProps {
     plan: Plan;

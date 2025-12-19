@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth, requireOwnerAuth } = require('../middlewares/authMiddleware');
+const { requireAuth } = require('../middlewares/authRequired');
 const Stripe = require('stripe');
 const supabase = require('../supabaseConfig');
 
@@ -199,7 +199,7 @@ router.post("/check-plan-change", requireAuth, async (req, res) => {
     }
 });
 
-// router.post("/create-subscription-intent", requireOwnerAuth, async (req, res) => {
+// router.post("/create-subscription-intent", requireAuth, async (req, res) => {
 //     const { planId, billingPeriod, companyName, vatNumber } = req.body;
 //     const userId = req.user.id;
 
@@ -264,7 +264,7 @@ router.post("/check-plan-change", requireAuth, async (req, res) => {
 
 
 
-// router.post("/subscription/apply", requireOwnerAuth, async (req, res) => {
+// router.post("/subscription/apply", requireAuth, async (req, res) => {
 
 //     const userId = req.user.id;
 //     const subId = req.user.subId;
@@ -379,7 +379,7 @@ router.post("/check-plan-change", requireAuth, async (req, res) => {
 //     return res.json({ success: true });
 // });
 
-router.post("/create-payment-intent", requireOwnerAuth, async (req, res) => {
+router.post("/create-payment-intent", requireAuth, async (req, res) => {
 
     const userId = req.user.id;
     const subId = req.user.subId;
@@ -540,7 +540,7 @@ router.post("/create-payment-intent", requireOwnerAuth, async (req, res) => {
     }
 });
 
-router.post("/update-payment-intent", requireOwnerAuth, async (req, res) => {
+router.post("/update-payment-intent", requireAuth, async (req, res) => {
 
     const userId = req.user.id;
     const subId = req.user.subId;
@@ -633,7 +633,7 @@ router.post("/update-payment-intent", requireOwnerAuth, async (req, res) => {
     }
 });
 
-router.post("/confirm-and-subscribe", requireOwnerAuth, async (req, res) => {
+router.post("/confirm-and-subscribe", requireAuth, async (req, res) => {
 
     const userId = req.user.id;
     const subId = req.user.subId;

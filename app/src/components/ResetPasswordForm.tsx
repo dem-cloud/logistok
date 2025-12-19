@@ -16,9 +16,10 @@ interface ResetPasswordFormProps {
     onChange: (code: string) => void;
     onResend: () => Promise<void>;
     remainingSec: number;
+    isResending: boolean;
 }
 
-export default function ResetPasswordForm({code, codeError, onChange, onResend, remainingSec, password, passwordError, onChangeP, confirmPassword, confirmPasswordError, onChangeCP }: ResetPasswordFormProps) {
+export default function ResetPasswordForm({code, codeError, onChange, onResend, remainingSec, password, passwordError, onChangeP, confirmPassword, confirmPasswordError, onChangeCP, isResending }: ResetPasswordFormProps) {
 
     return (
         <div className={styles.resetPasswordForm}>
@@ -48,6 +49,7 @@ export default function ResetPasswordForm({code, codeError, onChange, onResend, 
                 error = {codeError}
                 remainingSec = {remainingSec}
                 onResend = {onResend}
+                isResending = {isResending}
             />
         </div>
     )

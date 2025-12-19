@@ -1,19 +1,8 @@
-interface User {
-    email: string;
-    first_name: string;
-    last_name: string;
-    needsOnboarding: boolean;
-    onboardingStep: number;
-}
+import { RefreshResponseData } from "../types/auth.types";
 
-interface RefreshResponse {
-    access_token: string;
-    user: User;
-}
+let externalRefresh: (() => Promise<RefreshResponseData>) | null = null;
 
-let externalRefresh: (() => Promise<RefreshResponse>) | null = null;
-
-export function registerRefresh(fn: () => Promise<RefreshResponse>) {
+export function registerRefresh(fn: () => Promise<RefreshResponseData>) {
     externalRefresh = fn;
 }
 

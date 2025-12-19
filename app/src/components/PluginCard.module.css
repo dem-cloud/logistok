@@ -1,0 +1,214 @@
+.card {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 20px;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    width: 100%;
+    min-height: auto;
+}
+
+.card:hover {
+    border-color: #dbeafe;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08);
+    transform: translateY(-2px);
+}
+
+.card.selected {
+    border-color: var(--primary-color, #3b82f6);
+    background: #f0f7ff;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.12);
+}
+
+.card.selected:hover {
+    border-color: var(--primary-color, #3b82f6);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.16);
+}
+
+.imageWrapper {
+    width: 60px;
+    height: 60px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    align-self: flex-start;
+}
+
+.image {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding-right: 36px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.name {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.4;
+    flex: 1;
+    min-width: 0;
+}
+
+.version {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 4px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.description {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+    line-height: 1.5;
+}
+
+.priceContainer {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.price {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.priceLabel {
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.checkbox {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 24px;
+    height: 24px;
+    border: 2px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.card.selected .checkbox {
+    border-color: var(--primary-color, #3b82f6);
+    background: var(--primary-color, #3b82f6);
+}
+
+.checkIcon {
+    color: #fff;
+    stroke-width: 2.5;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    .card {
+        padding: 16px;
+        gap: 12px;
+    }
+
+    .imageWrapper {
+        width: 50px;
+        height: 50px;
+    }
+
+    .image {
+        width: 34px;
+        height: 34px;
+    }
+
+    .content {
+        padding-right: 32px;
+        gap: 6px;
+    }
+
+    .name {
+        font-size: 15px;
+    }
+
+    .description {
+        font-size: 12px;
+    }
+
+    .price {
+        font-size: 16px;
+    }
+
+    .priceLabel {
+        font-size: 12px;
+    }
+}
+
+
+/* ===== Locked state ===== */
+
+.locked {
+    opacity: 0.6;
+    /* cursor: not-allowed; */
+    cursor: default;
+}
+
+.locked:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: #e5e7eb;
+}
+
+/* Override hover effects when locked */
+.locked.card:hover {
+    background: #fff;
+}
+
+/* Lock icon styling */
+.lockIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+    /* cursor: help; */
+}
+
+/* When locked, checkbox looks neutral */
+.locked .checkbox {
+    border-color: #d1d5db;
+    background: #f3f4f6;
+}
