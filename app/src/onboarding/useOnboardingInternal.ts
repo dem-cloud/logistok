@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { axiosPrivate } from "../api/axios";
-import { Industry, OnboardingBackResponse, OnboardingData, OnboardingMeta, OnboardingNextResponse, Plan, Plugin } from "./types";
+import { OnboardingBackResponse, OnboardingData, OnboardingMeta, OnboardingNextResponse } from "./types";
 import { useNavigate } from "react-router-dom";
 import { STEP_ROUTES } from "./steps";
 import { useAuth } from "@/context/AuthContext";
 
 export function useOnboardingInternal() {
 
-    const { activeCompany, setActiveCompany, setCompanies, refresh, me, showToast } = useAuth();
+    const { activeCompany, setActiveCompany, updateActiveCompany, setCompanies, refresh, me, showToast } = useAuth();
     const navigate = useNavigate();
 
     const [onboardingData, setOnboardingData] = useState<OnboardingData>({
@@ -20,14 +20,6 @@ export function useOnboardingInternal() {
         plugins: []
     });
     const [onboardingMeta, setOnboardingDataMeta] = useState<OnboardingMeta>({})
-
-    // State for options data (industries, plans, plugins)
-    const [industries, setIndustries] = useState<Industry[]>([]);
-    const [plans, setPlans] = useState<Plan[]>([]);
-    const [plugins, setPlugins] = useState<Plugin[]>([]);
-
-    const [optionsLoading, setOptionsLoading] = useState(true);
-    const [pluginsLoading, setPluginsLoading] = useState(false);
 
     const [onboardingDataLoading, setOnboardingDataLoading] = useState(true);
 
@@ -67,47 +59,6 @@ export function useOnboardingInternal() {
         }
     }
 
-    const fetchBaseOptions = async () => {
-        try {
-            setOptionsLoading(true);
-
-            const [industriesRes, plansRes] = await Promise.all([
-                axiosPrivate.get("/api/shared/industries"),
-                axiosPrivate.get("/api/shared/plans")
-            ]);
-            
-            setIndustries(industriesRes.data.data);
-            setPlans(plansRes.data.data);
-        } catch (error) {
-            console.error("Error fetching base options:", error);
-        } finally {
-            setOptionsLoading(false);
-        }
-    };
-
-    const fetchPlugins = async () => {
-        
-        try {
-            setPluginsLoading(true);
-
-            const selectedIndustryKeys = onboardingData?.industries || [];
-            const res = await axiosPrivate.get("/api/shared/plugins", {
-                params: {
-                    scope: "onboarding",
-                    industries: selectedIndustryKeys.length > 0
-                        ? selectedIndustryKeys.join(",")
-                        : undefined
-                }
-            });
-            setPlugins(res.data.data);
-        } catch (error) {
-            console.error("Error fetching plugins:", error);
-        } finally {
-            setPluginsLoading(false);
-        }
-    };
-
-
     const nextStep = async (updates: Partial<OnboardingData>) => {
         const response = await axiosPrivate.post<OnboardingNextResponse>(`/api/shared/${activeCompany?.id}/onboarding/next`, { updates });
         const { success, data } = response.data;
@@ -122,7 +73,7 @@ export function useOnboardingInternal() {
         setOnboardingData(draft_data);
         setOnboardingDataMeta(meta_data);
 
-        setActiveCompany(prev => {
+        updateActiveCompany(prev => {
             if (!prev) return prev;
             return {
                 ...prev,
@@ -156,7 +107,7 @@ export function useOnboardingInternal() {
 
         const { back_step } = data;
 
-        setActiveCompany(prev => {
+        updateActiveCompany(prev => {
             if (!prev) return prev;
             return {
                 ...prev,
@@ -191,7 +142,7 @@ export function useOnboardingInternal() {
 
         const { is_completed } = data;
 
-        setActiveCompany(prev => {
+        updateActiveCompany(prev => {
             if (!prev) return prev;
 
             return {
@@ -244,14 +195,6 @@ export function useOnboardingInternal() {
 
         // INTERNAL only
         syncCurrentStep,
-        fetchOnboardingData,
-        fetchBaseOptions,
-        fetchPlugins,
-
-        industries,
-        plans,
-        plugins,
-        optionsLoading,
-        pluginsLoading
+        fetchOnboardingData
     }
 }

@@ -79,6 +79,9 @@ CREATE TABLE plans (
   is_free boolean not null default false,
   allows_paid_plugins boolean not null default true,
 
+  rank INTEGER NOT NULL,
+  is_popular BOOLEAN DEFAULT false,
+
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 

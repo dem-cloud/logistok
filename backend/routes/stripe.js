@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth } = require('../middlewares/authRequired');
+const { requireAuth, requireOwner, requireActiveCompany } = require('../middlewares/authRequired');
 const Stripe = require('stripe');
 const supabase = require('../supabaseConfig');
 
@@ -379,24 +379,39 @@ router.post("/check-plan-change", requireAuth, async (req, res) => {
 //     return res.json({ success: true });
 // });
 
-router.post("/create-payment-intent", requireAuth, async (req, res) => {
+router.post("/create-payment-intent", requireAuth, requireOwner, async (req, res) => {
 
-    const userId = req.user.id;
-    const subId = req.user.subId;
+    const { id: userId, companyId } = req.user;
 
-    const { planId, billingPeriod, companyName, vatNumber } = req.body;
+    const {
+        mode,                // "onboarding" | "admin"
+        planId,
+        billingPeriod,
+        companyName,
+        vatNumber
+    } = req.body
 
-    if (!planId || !billingPeriod || !companyName) {
+    if (!mode || !planId || !billingPeriod || !companyName) {
         console.log("NO DATA RECEIVED");
         return res.status(400).json({
             success: false,
-            message: "Δεν δόθηκαν τιμές",
+            message: "Λείπουν υποχρεωτικά πεδία",
             code: "MISSING_VALUES"
         });
     }
 
+    if (!["onboarding", "admin"].includes(mode)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid mode",
+            code: "INVALID_MODE"
+        });
+    }
+
     try {
-        // 🔹 1. Βρες ή δημιούργησε Stripe Customer
+        /* ------------------------------------------------------------------ */
+        /* 1. Φέρε user (email για Stripe)                                    */
+        /* ------------------------------------------------------------------ */
         const { data: user, error: userError } = await supabase
             .from("users")
             .select("email, first_name, last_name")
@@ -407,76 +422,33 @@ router.post("/create-payment-intent", requireAuth, async (req, res) => {
             return res.status(400).json({ 
                 success: false, 
                 message: "User not found",
-                code: "DB_ERROR"
+                code: "USER_NOT_FOUND"
             });
         }
 
-        const { data: subscriptionData, error: subscriptionError } = await supabase
-            .from("subscriptions")
-            .select("*")
-            .eq("id", subId)
-            .single();
-
-        if (subscriptionError || !subscriptionData) {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Subscription not found",
-                code: "DB_ERROR"
-            });
-        }
-
-        let stripeCustomerId = subscriptionData.stripe_customer_id;
-
-        // Αν δεν υπάρχει Stripe customer -> δημιουργία
-        if (!stripeCustomerId) {
-            const customer = await stripe.customers.create({
-                email: user.email,
-                name: `${user.first_name} ${user.last_name}`,
-                metadata: {
-                    userId,
-                    companyName: companyName,
-                    vatNumber: vatNumber || ""
-                }
-            });
-
-            stripeCustomerId = customer.id;
-
-            const { error: updateSubscriptionError } = await supabase
-                .from("subscriptions")
-                .update({ stripe_customer_id: stripeCustomerId })
-                .eq("id", subId);
-
-            if (updateSubscriptionError) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: "Failed to update subscription",
-                    code: "DB_ERROR"
-                });
-            }
-        }
-
-        // 🔹 2. Φέρε τα στοιχεία του επιλεγμένου πακέτου
-        const { data: selectedPlan, error: planError } = await supabase
+        /* ------------------------------------------------------------------ */
+        /* 2. Φέρε plan & Stripe prices                                       */
+        /* ------------------------------------------------------------------ */
+        const { data: plan, error: planError } = await supabase
             .from("plans")
-            .select("stripe_price_id_monthly, stripe_price_id_yearly, stripe_extra_station_price_id")
+            .select("stripe_price_id_monthly, stripe_price_id_yearly")
             .eq("id", planId)
             .single();
 
-        if (planError || !selectedPlan) {
-            return res.status(400).json({ 
-                success: false, 
+        if (planError || !plan) {
+            return res.status(400).json({
+                success: false,
                 message: "Plan not found",
-                code: "DB_ERROR"
+                code: "PLAN_NOT_FOUND"
             });
         }
 
-        const selectedPriceId = billingPeriod === "monthly" 
-            ? selectedPlan.stripe_price_id_monthly 
-            : selectedPlan.stripe_price_id_yearly;
 
-        // 🔹 3. Πάρε το price για να υπολογίσεις το ποσό
-        const monthlyPrice = await stripe.prices.retrieve(selectedPlan.stripe_price_id_monthly);
-        const yearlyPrice = await stripe.prices.retrieve(selectedPlan.stripe_price_id_yearly);
+        /* ------------------------------------------------------------------ */
+        /* 3. Υπολογισμός ποσών                                               */
+        /* ------------------------------------------------------------------ */
+        const monthlyPrice = await stripe.prices.retrieve(plan.stripe_price_id_monthly);
+        const yearlyPrice = await stripe.prices.retrieve(plan.stripe_price_id_yearly);
 
         const unitMonthlyAmount = monthlyPrice.unit_amount / 100; // σε ευρώ
         const unitYearlyAmount = yearlyPrice.unit_amount / 100; // σε ευρώ
@@ -489,42 +461,108 @@ router.post("/create-payment-intent", requireAuth, async (req, res) => {
         const originalAnnualPrice = unitMonthlyAmount * 12 * 1.24;
         const discount = ((originalAnnualPrice - (unitYearlyAmount * 1.24)) / originalAnnualPrice * 100).toFixed(0);
 
-        // 🔹 4. Δημιουργία PaymentIntent
+
+        /* ------------------------------------------------------------------ */
+        /* 4. Stripe Customer                                                 */
+        /* ------------------------------------------------------------------ */
+        let stripeCustomerId;
+
+        if (mode === "admin") {
+            // ΥΠΑΡΧΕΙ subscription
+            const { data: subscription, error: subError } = await supabase
+                .from("subscriptions")
+                .select("stripe_customer_id")
+                .eq("company_id", companyId)
+                .single();
+
+            if (subError || !subscription) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Subscription not found",
+                    code: "SUBSCRIPTION_NOT_FOUND"
+                });
+            }
+
+            stripeCustomerId = subscription.stripe_customer_id;
+
+            // Αν δεν υπάρχει Stripe customer → δημιουργία & update
+            if (!stripeCustomerId) {
+                const customer = await stripe.customers.create({
+                    email: user.email,
+                    name: companyName,
+                    metadata: {
+                        userId,
+                        companyId,
+                        vatNumber: vatNumber || ""
+                    }
+                });
+
+                stripeCustomerId = customer.id;
+
+                const { error } = await supabase
+                    .from("subscriptions")
+                    .update({ stripe_customer_id: stripeCustomerId })
+                    .eq("company_id", companyId);
+
+                if(error) {
+                    console.error("SUBSCRIPTIONS ERROR:", error);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Failed to update subscriptions",
+                        code: "DB_ERROR"
+                    });
+                }
+            }
+        }
+
+        if (mode === "onboarding") {
+            // ΔΕΝ υπάρχει subscription
+            const customer = await stripe.customers.create({
+                email: user.email,
+                name: companyName,
+                metadata: {
+                    userId,
+                    companyId,
+                }
+            });
+
+            stripeCustomerId = customer.id;
+        }
+
+
+        /* ------------------------------------------------------------------ */
+        /* 5. Δημιουργία PaymentIntent                                        */
+        /* ------------------------------------------------------------------ */
         const paymentIntent = await stripe.paymentIntents.create({
             amount: Math.round(total * 100), // σε cents, με ΦΠΑ
             currency: 'eur',
             customer: stripeCustomerId,
             payment_method_types: ['card'],
-            // automatic_payment_methods: {
-            //     enabled: true,
-            // },
             metadata: {
+                mode,
                 userId,
-                subscriptionId: subId,
+                companyId,
                 planId,
-                billingPeriod,
-                companyName,
-                vatNumber: vatNumber || "",
-                priceId: selectedPriceId
+                billingPeriod
             }
         });
 
-        console.log("✅ PaymentIntent created:", paymentIntent.id);
+        console.log("PaymentIntent created:", paymentIntent.id);
 
-        // 🔹 5. Επιστροφή
+        /* ------------------------------------------------------------------ */
+        /* 6. Response                                                        */
+        /* ------------------------------------------------------------------ */
         return res.json({
             success: true,
             message: "Payment intent created",
             data: {
                 clientSecret: paymentIntent.client_secret,
-                paymentIntentId: paymentIntent.id,
-                stripeCustomerId,
                 priceInfo: {
                     vatPercentage: 24,
-                    vatAmount: parseFloat(vatAmount.toFixed(2)),
-                    subTotal: parseFloat(subTotal.toFixed(2)),
-                    total: parseFloat(total.toFixed(2)),
-                    originalAnnualPrice: parseFloat(originalAnnualPrice.toFixed(2)),
+                    vatAmount: Number(vatAmount.toFixed(2)),
+                    subTotal: Number(subTotal.toFixed(2)),
+                    total: Number(total.toFixed(2)),
+                    originalAnnualPrice: Number(originalAnnualPrice.toFixed(2)),
                     discount: discount
                 }
             }
@@ -532,99 +570,6 @@ router.post("/create-payment-intent", requireAuth, async (req, res) => {
 
     } catch (error) {
         console.error("Create payment intent error:", error);
-        return res.status(500).json({ 
-            success: false, 
-            message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
-            code: "SERVER_ERROR"
-        });
-    }
-});
-
-router.post("/update-payment-intent", requireAuth, async (req, res) => {
-
-    const userId = req.user.id;
-    const subId = req.user.subId;
-
-    const { planId, billingPeriod, companyName, vatNumber, paymentIntentId } = req.body;
-
-    if (!planId || !billingPeriod || !companyName || !paymentIntentId) {
-        console.log("NO DATA RECEIVED");
-        return res.status(400).json({
-            success: false,
-            message: "Δεν δόθηκαν τιμές",
-            code: "MISSING_VALUES"
-        });
-    }
-
-    try {
-        // 🔹 1. Φέρε τα στοιχεία του επιλεγμένου πακέτου
-        const { data: selectedPlan, error: planError } = await supabase
-            .from("plans")
-            .select("stripe_price_id_monthly, stripe_price_id_yearly, stripe_extra_station_price_id")
-            .eq("id", planId)
-            .single();
-
-        if (planError || !selectedPlan) {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Plan not found",
-                code: "DB_ERROR"
-            });
-        }
-
-        const selectedPriceId = billingPeriod === "monthly" 
-            ? selectedPlan.stripe_price_id_monthly 
-            : selectedPlan.stripe_price_id_yearly;
-
-        // 🔹 2. Πάρε το price για να υπολογίσεις το ποσό
-        const monthlyPrice = await stripe.prices.retrieve(selectedPlan.stripe_price_id_monthly);
-        const yearlyPrice = await stripe.prices.retrieve(selectedPlan.stripe_price_id_yearly);
-
-        const unitMonthlyAmount = monthlyPrice.unit_amount / 100; // σε ευρώ
-        const unitYearlyAmount = yearlyPrice.unit_amount / 100; // σε ευρώ
-        
-        // Υπολογισμός summary
-        const subTotal = billingPeriod === "monthly" ? unitMonthlyAmount : unitYearlyAmount;
-        const vatAmount = subTotal * 0.24;
-        const total = subTotal + vatAmount;
-        
-        const originalAnnualPrice = unitMonthlyAmount * 12 * 1.24;
-        const discount = ((originalAnnualPrice - (unitYearlyAmount * 1.24)) / originalAnnualPrice * 100).toFixed(0);
-
-        // 🔹 3. Ενημέρωση PaymentIntent
-        const paymentIntent = await stripe.paymentIntents.update(paymentIntentId, {
-            amount: Math.round(total * 100),
-            metadata: {
-                userId,
-                subscriptionId: subId,
-                planId,
-                billingPeriod,
-                companyName,
-                vatNumber: vatNumber || "",
-                priceId: selectedPriceId
-            }
-        });
-
-        console.log("✅ PaymentIntent updated:", paymentIntent.id);
-
-        // 🔹 4. Επιστροφή
-        return res.json({
-            success: true,
-            message: "Payment intent updated",
-            data: {
-                priceInfo: {
-                    vatPercentage: 24,
-                    vatAmount: parseFloat(vatAmount.toFixed(2)),
-                    subTotal: parseFloat(subTotal.toFixed(2)),
-                    total: parseFloat(total.toFixed(2)),
-                    originalAnnualPrice: parseFloat(originalAnnualPrice.toFixed(2)),
-                    discount: discount
-                }
-            }
-        });
-
-    } catch (error) {
-        console.error("Update payment intent error:", error);
         return res.status(500).json({ 
             success: false, 
             message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 

@@ -48,6 +48,8 @@ export interface Plan {
     extra_store_price: number;
     max_users_per_store: number;
     features: string[];
+    rank: number;
+    is_popular: boolean;
 }
 
 export interface Plugin {

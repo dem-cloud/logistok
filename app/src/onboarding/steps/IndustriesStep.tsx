@@ -4,11 +4,13 @@ import Button from "../../components/reusable/Button";
 import IndustryCard from "../../components/IndustryCard";
 import { useAuth } from "@/context/AuthContext";
 import { useOnboarding } from "../OnboardingContext";
+import { useIndustries } from "@/hooks/useIndustries";
 
 export function IndustriesStep() {
     
     const { showToast } = useAuth();
-    const { onboardingData, industries, nextStep } = useOnboarding();
+    const { onboardingData, nextStep } = useOnboarding();
+    const { data: industries } = useIndustries();
 
     const [selectedIndustries, setSelectedIndustries] = useState<string[]>(onboardingData.industries)
     const [loadingSubmitRequest, setLoadingSubmitRequest] = useState(false)
@@ -52,15 +54,22 @@ export function IndustriesStep() {
             >
 
                 <div className={styles.industries}>
-                    {industries.map((industry) => {
-                        const isSelected = selectedIndustries.includes(industry.key)
-                        return <IndustryCard
-                                    key={industry.key}
-                                    item={industry}
-                                    selected={isSelected}
-                                    onSelect={() => handleSelect(industry.key)}
-                                />
-                    })}
+                    {
+                    (!industries || industries.length === 0) ?
+                        <div>
+                            <p>Δεν υπάρχουν διαθέσιμα plugins</p>
+                        </div>
+                        :
+                        industries.map((industry) => {
+                            const isSelected = selectedIndustries.includes(industry.key)
+                            return <IndustryCard
+                                        key={industry.key}
+                                        item={industry}
+                                        selected={isSelected}
+                                        onSelect={() => handleSelect(industry.key)}
+                                    />
+                        })
+                    }
                 </div>
 
                 <div className={styles.industriesBtn}>
@@ -78,7 +87,7 @@ export function IndustriesStep() {
                     className={styles.skipButton}
                     onClick={(e)=>handleNext(e, [])}
                 >
-                    Παράληψη
+                    Παράλειψη
                 </button>
             </form>
 

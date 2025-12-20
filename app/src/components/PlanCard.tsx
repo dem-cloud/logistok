@@ -2,76 +2,36 @@ import { Plan } from "@/onboarding/types";
 import styles from "./PlanCard.module.css";
 import Button from "./reusable/Button";
 
+type ButtonVariant = "outline" | "primary" | "secondary" | "dark" | "current";
+
 interface PlanCardProps {
     plan: Plan;
     billingPeriod: "monthly" | "yearly";
     isPopular?: boolean;
-    onboarding?: boolean;
-    currentPlan: Plan | null
-    onSelectPlan: (plan: Plan) => void;
+
+    actionLabel: string;
+    actionVariant?: ButtonVariant;
+    actionDisabled?: boolean;
+
+    onAction: (plan: Plan) => void;
 }
 
-type ButtonVariant = "outline" | "primary" | "secondary" | "dark" | "current";
+export default function PlanCard ({ 
+    plan,
+    billingPeriod,
+    isPopular = false,
+    actionLabel,
+    actionVariant = "primary",
+    actionDisabled = false,
+    onAction
+ }: PlanCardProps) {
 
-interface ButtonProps {
-    label: string;
-    variant?: ButtonVariant;
-}
-
-export default function PlanCard ({ plan, billingPeriod, isPopular = false, onboarding = false, currentPlan, onSelectPlan }: PlanCardProps) {
-
-    const price = billingPeriod === "monthly" ? plan.base_price_per_month : plan.base_price_per_year;
-    const isCurrent = plan.id === currentPlan?.id;
+    const price =
+    billingPeriod === "monthly"
+      ? plan.base_price_per_month
+      : plan.base_price_per_year;
+      
     
-
-    const getButtonProps = (): ButtonProps => {
-        if (onboarding) {
-            return {
-                label: "Συνέχεια",
-            };
-        }
-
-        if (isCurrent) {
-            return {
-                label: "Τρέχον Πλάνο",
-                variant: "current",
-            };
-        }
-
-        // Not current → upgrade/downgrade rules
-        if (plan.name === "Basic") {
-            return {
-                label: `Υποβάθμιση σε ${plan.name}`,
-            };
-        }
-
-        if (plan.name === "Pro") {
-            if (currentPlan?.name === "Basic") {
-                return {
-                    label: `Αναβάθμιση σε ${plan.name}`,
-                };
-            }
-            if (currentPlan?.name === "Business") {
-                return {
-                    label: `Υποβάθμιση σε ${plan.name}`,
-                };
-            }
-        }
-
-        if (plan.name === "Business") {
-            return {
-                label: `Αναβάθμιση σε ${plan.name}`,
-            };
-        }
-
-        // fallback
-        return {
-            label: plan.name,
-        };
-    };
-
-    const { label, variant = "primary" } = getButtonProps();
-
     return (
         <div className={`${styles.card} ${isPopular ? styles.popular : ""}`}>
             {
@@ -101,10 +61,11 @@ export default function PlanCard ({ plan, billingPeriod, isPopular = false, onbo
             </div>
 
             <Button
-                onClick={() => onSelectPlan(plan)}
-                variant={variant}
+                variant={actionVariant}
+                disabled={actionDisabled}
+                onClick={() => onAction(plan)}
             >
-                {label}
+                {actionLabel}
             </Button>
 
             

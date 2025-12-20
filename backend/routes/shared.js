@@ -303,7 +303,7 @@ router.get('/plans', requireAuth, async (req, res) => {
     try {
         const { data: plansData, error: plansError } = await supabase
             .from("plans")
-            .select("id, key, name, description, max_users_per_store, features, stripe_price_id_monthly, stripe_price_id_yearly, stripe_extra_store_price_id")
+            .select("id, key, name, description, max_users_per_store, features, stripe_price_id_monthly, stripe_price_id_yearly, stripe_extra_store_price_id, rank, is_popular")
             .eq("is_public", true)
             .order("priority", {ascending: true});
 
@@ -327,6 +327,8 @@ router.get('/plans', requireAuth, async (req, res) => {
                     stripe_price_id_monthly,
                     stripe_price_id_yearly,
                     stripe_extra_store_price_id,
+                    rank,
+                    is_popular
                 } = plan;
 
                 const stripe_base_price_per_month = stripe_price_id_monthly ? await stripe.prices.retrieve(stripe_price_id_monthly) : stripe_price_id_monthly;
@@ -347,6 +349,8 @@ router.get('/plans', requireAuth, async (req, res) => {
                     extra_store_price,
                     max_users_per_store,
                     features,
+                    rank,
+                    is_popular,
                     // currency
                     // annual_discount
                     // vat
@@ -369,7 +373,7 @@ router.get('/plans', requireAuth, async (req, res) => {
     }
 });
 
-router.get('/plugins', requireAuth, async (req, res) => {
+router.get('/plugins-recommendations', requireAuth, async (req, res) => {
 
     try {
         const industriesParam = req.query.industries;

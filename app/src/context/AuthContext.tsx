@@ -23,6 +23,7 @@ interface AuthContextType {
     setCompanies: React.Dispatch<React.SetStateAction<CompanySessionInfo[]>>;
     activeCompany: CompanySessionInfo | null;
     setActiveCompany: (company: CompanySessionInfo | null) => void;
+    updateActiveCompany: ( updater: (prev: CompanySessionInfo) => CompanySessionInfo ) => void;
 
     createCompany: () => Promise<void>;
     selectCompany: (companyId: string) => Promise<void>;
@@ -71,6 +72,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         activeCompanyRef.current = company;
         setActiveCompanyState(company);
     };
+
+    const updateActiveCompany = (updater: (prev: CompanySessionInfo) => CompanySessionInfo) => {
+
+        if (!activeCompanyRef.current) return;
+
+        const updated = updater(activeCompanyRef.current);
+
+        activeCompanyRef.current = updated;
+        setActiveCompanyState(updated);
+    };
+
 
     useEffect(() => {
         tokenRef.current = token;
@@ -386,7 +398,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 
     return (
-        <AuthContext.Provider value={{ token, user, setUser, companies, setCompanies, activeCompany, setActiveCompany, createCompany, selectCompany, login, logout, refresh, me, loading, showToast }}>
+        <AuthContext.Provider value={{ token, user, setUser, companies, setCompanies, activeCompany, setActiveCompany, updateActiveCompany, createCompany, selectCompany, login, logout, refresh, me, loading, showToast }}>
             {children}
             {toast && <Toast message={toast.message} type={toast.type ?? "info"} />}
         </AuthContext.Provider>
@@ -414,6 +426,7 @@ export const useAuth = () => {
                 setCompanies: () => {},
                 activeCompany: null,
                 setActiveCompany: () => {},
+                updateActiveCompany: () => {},
                 createCompany: async () => {},
                 selectCompany: async () => {},
                 login: () => {},

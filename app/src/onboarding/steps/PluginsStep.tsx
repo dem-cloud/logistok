@@ -5,11 +5,13 @@ import React, { useEffect, useState } from 'react';
 import Button from '@/components/reusable/Button';
 import { PluginList } from '@/components/PluginList';
 import { useOnboarding } from '../OnboardingContext';
+import { usePluginsRecommendations } from '@/hooks/usePlugins';
 
 export function PluginsStep() {
     
     const { showToast } = useAuth();
-    const { onboardingData, plugins, pluginsLoading, nextStep } = useOnboarding();
+    const { onboardingData, nextStep } = useOnboarding();
+    const { data: pluginRecommendations, isPending: pluginsLoading } = usePluginsRecommendations({scope: "onboarding", industries: onboardingData.industries})
 
     const [selectedPlugins, setSelectedPlugins] = useState(onboardingData.plugins || [])
     const [loadingSubmitRequest, setLoadingSubmitRequest] = useState(false)
@@ -54,7 +56,7 @@ export function PluginsStep() {
                     <div>Φόρτωση plugins...</div>
                 ) : (
                     <PluginList
-                        plugins={plugins}
+                        plugins={pluginRecommendations}
                         selectedPlugins={selectedPlugins}
                         onSelect={handleSelect}
                     />
@@ -75,7 +77,7 @@ export function PluginsStep() {
                     className={styles.skipButton}
                     onClick={(e)=>handleNext(e, [])}
                 >
-                    Παράληψη
+                    Παράλειψη
                 </button>
             </form>
 

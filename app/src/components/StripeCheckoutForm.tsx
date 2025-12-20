@@ -1,21 +1,19 @@
-import { useEffect, useState } from "react";
-import { PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import Input from "./reusable/Input";
-import styles from "./StripeCheckoutForm.module.css";
-import { PaymentIntent } from "@stripe/stripe-js";
+import { forwardRef, useEffect, useState } from "react";
+import { Elements } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
+import { useAuth } from "@/context/AuthContext";
+import { Plan } from "@/onboarding/types";
+import { axiosPrivate } from "@/api/axios";
+import InnerCheckoutForm from "./InnerCheckoutForm";
+import LoadingSpinner from "./LoadingSpinner";
 
-interface Plan {
-    id: number;
-    name: string;
-    description: string;
-    base_price_per_month: number;
-    base_price_per_year: number;
-    extra_station_price: number;
-    max_users_per_station: number;
-    features: string[];
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+
+export interface StripeCheckoutFormHandle {
+    submit: () => void;
 }
 
-interface PreviewDetails {
+export interface PreviewDetails {
     vatPercentage: number,
     vatAmount: number;
     subTotal: number;
@@ -25,254 +23,157 @@ interface PreviewDetails {
 }
 
 interface Props {
-    selectedPlan: Plan | null;
+    plan: Plan;
     billingPeriod: "monthly" | "yearly";
-    setBillingPeriod: React.Dispatch<React.SetStateAction<"monthly" | "yearly">>;
-    previewDetails: PreviewDetails | null;
 
-    companyName: string;
-    setCompanyName: React.Dispatch<React.SetStateAction<string>>;
-    companyNameError: string;
-    setCompanyNameError: React.Dispatch<React.SetStateAction<string>>;
-    vatNumber: string;
-    setVatNumber: React.Dispatch<React.SetStateAction<string>>;
+    onBillingPeriodChange: (period: "monthly" | "yearly") => void;
 
-    loading: boolean;
-    onReady: (fn: () => Promise<PaymentIntent | undefined>) => void; 
+    mode: "onboarding" | "admin";
+    onSuccess: () => void;
 }
 
-export default function StripeCheckoutForm({
-    selectedPlan,
-    companyName, setCompanyName, companyNameError, setCompanyNameError,
-    vatNumber, setVatNumber,
-    billingPeriod, setBillingPeriod, previewDetails,
-    loading,
-    onReady
-}: Props) {
+const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
+    plan,
+    billingPeriod,
+    onBillingPeriodChange,
+    mode,
+    onSuccess
+}, ref) => {
 
-    const stripe = useStripe();
-    const elements = useElements();
-    const [stripeReady, setStripeReady] = useState(false);
+    const { activeCompany, showToast } = useAuth();
+    
+    const [clientSecret, setClientSecret] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [previewDetails, setPreviewDetails] = useState<PreviewDetails | null>(null);
+    
+    const [companyName, setCompanyName] = useState(activeCompany?.name || "");
+    const [companyNameError, setCompanyNameError] = useState<string | undefined>(undefined);
+    const [vatNumber, setVatNumber] = useState(""); // TODO: initiate vatNumber
 
-    const {
-        vatPercentage,
-        vatAmount,
-        subTotal,
-        total,
-        originalAnnualPrice,
-        discount,
-    } = previewDetails || {};
-
-    const {
-        base_price_per_month,
-        base_price_per_year
-    } = selectedPlan || {};
-
-    // Reset stripeReady όταν αλλάζει το loading
-    useEffect(() => {
-        if (loading) {
-            setStripeReady(false);
+    const validate = () => {
+        if (!companyName.trim()) {
+            setCompanyNameError("Το όνομα εταιρείας είναι υποχρεωτικό");
+            return false;
         }
-    }, [loading]);
+
+        setCompanyNameError(undefined);
+        return true;
+    };
 
     useEffect(() => {
-        if (!stripe || !elements) return;
+        if (!plan) return;
 
-        const confirmFn = async () => {
+        const createIntent  = async () => {
             try {
-                // 1. Validate form πριν το submit
-                const { error: submitError } = await elements.submit();
-                if (submitError) {
-                    console.error("Form validation error:", submitError);
-                    return;
-                }
+                setLoading(true);
 
-                // 2. Confirm payment χωρίς redirect
-                const { error, paymentIntent } = await stripe.confirmPayment({
-                    elements,
-                    redirect: 'if_required', // 👈 Δεν κάνει redirect αν δεν χρειάζεται
-                    // confirmParams: {
-                    //     return_url: `${window.location.origin}/payment-success`, // fallback
-                    // },
+                const response = await axiosPrivate.post("/api/stripe/create-payment-intent", {
+                    mode: mode,
+                    planId: plan.id,
+                    billingPeriod,
+                    companyName,
+                    vatNumber
                 });
 
-                if (error) {
-                    console.error("Payment confirmation error:", error);
+                const { success, data = {} } = response.data;
+                const { clientSecret, priceInfo } = data;
+
+                if(!success){
+                    showToast({ message: "Κάτι πήγε στραβά", type: "error" });
                     return;
                 }
 
-                // 3. Έλεγξε αν η πληρωμή ολοκληρώθηκε
-                if (!paymentIntent || paymentIntent.status !== "succeeded") {
-                    console.error("Η πληρωμή δεν ολοκληρώθηκε");
-                    return;
-                }
-
-                console.log("✅ Payment succeeded:", paymentIntent.id);
-                return paymentIntent; // 👈 Επιστρέφει το paymentIntent
+                setClientSecret(clientSecret);
+                setPreviewDetails(priceInfo);
 
             } catch (error) {
-                console.error("Payment confirmation error:", error);
+                console.error("error:", error);
+                showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            } finally {
+                setLoading(false);
             }
-        };
+        }
 
-        onReady(confirmFn);
-    }, [stripe, elements]);
+        createIntent ();
 
-    const showPaymentSkeleton = loading || !stripeReady;
+    }, [plan.id, billingPeriod]);
+
+    if (!clientSecret) 
+        return <LoadingSpinner />
 
     return (
-        <div className={styles.wrapper}>
-
-            {/* INPUTS */}
-            <div className={styles.row}>
-                <Input
-                    label="Όνομα εταιρείας"
-                    name="companyName"
-                    placeholder="Όνομα εταιρείας"
-                    value={companyName}
-                    onChange={(e) => {setCompanyName(e.target.value); setCompanyNameError("");}}
-                    error={companyNameError}
-                />
-                <Input
-                    label="ΑΦΜ (προαιρετικό)"
-                    name="vat"
-                    placeholder="ΑΦΜ"
-                    value={vatNumber}
-                    onChange={(e) => setVatNumber(e.target.value)}
-                />
-            </div>
-
-            <div className={styles.gapWrapper}>
-                {/* BILLING SELECTOR */}
-                <div className={styles.section}>
-                    <div className={styles.sectionTitle}>Επιλογές Χρέωσης</div>
-                    <div className={styles.billingOptions}>
-                        <div
-                            className={`${styles.option} ${billingPeriod === "monthly" ? styles.active : ""}`}
-                            onClick={() => setBillingPeriod("monthly")}
-                        >
-                            <div className={styles.radioOuter}>
-                                {billingPeriod === "monthly" && <div className={styles.radioInner} />}
-                            </div>
-
-                            <div className={styles.optionInfo}>
-                                <strong>Μηνιαία πληρωμή</strong>
-                                <span>{base_price_per_month}€ / μήνα</span>
-                            </div>
-                        </div>
-
-                        <div
-                            className={`${styles.option} ${billingPeriod === "yearly" ? styles.active : ""}`}
-                            onClick={() => setBillingPeriod("yearly")}
-                        >
-                            <div className={styles.radioOuter}>
-                                {billingPeriod === "yearly" && <div className={styles.radioInner} />}
-                            </div>
-
-                            <div className={styles.optionInfo}>
-                                <strong>Ετήσια πληρωμή</strong>
-                                <span>
-                                    {base_price_per_year}€ / μήνα
-                                    <span className={styles.saveTag}>
-                                        Εξοικονομήστε {discount}%
-                                    </span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* STRIPE UI */}
-                <div className={styles.section}>
-                    <div className={styles.sectionTitle}>Τρόπος Πληρωμής</div>
-                    {/* {showPaymentSkeleton && (
-                        <div className={styles.paymentSkeleton}>
-                            <div className={styles.skeletonHeader}>
-                                <div className={styles.skeletonIcon} />
-                                <div className={styles.skeletonTitle} />
-                            </div>
-                            <div className={styles.skeletonCardNumber} />
-                            <div className={styles.skeletonRow}>
-                                <div className={styles.skeletonInput} />
-                                <div className={styles.skeletonInput} />
-                            </div>
-                            <div className={styles.skeletonDropdown} />
-                        </div>
-                    )} */}
-                    
-                    {/* <div 
-                        className={styles.paymentElementWrapper}
-                        style={{ display: showPaymentSkeleton ? 'none' : 'block' }}
-                    > */}
-                        <PaymentElement 
-                            onReady={() => setStripeReady(true)}
-                        />
-                    {/* </div> */}
-                    
-                </div>
-
-                {/* PRICE SUMMARY */}
-                <div className={styles.section}>
-                    <div className={styles.sectionTitle}>Σύνοψη</div>
-                    { loading ?
-                        <div className={styles.summarySkeleton}>
-                            <div className={styles.skeletonDetailRow}>
-                                <div className={`${styles.skeletonText} ${styles.skeletonTextShort}`} />
-                                <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
-                            </div>
-                            <div className={styles.skeletonDetailRow}>
-                                <div className={`${styles.skeletonText} ${styles.skeletonTextShort}`} />
-                                <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
-                            </div>
-                            <div className={styles.skeletonSeparator} />
-                            <div className={styles.skeletonTotalRow}>
-                                <div className={styles.skeletonTextLarge} />
-                                <div className={styles.skeletonTextLarge} />
-                            </div>
-                        </div>
-                    :
-                        <div className={styles.summaryCard}>
-
-                            {/* DETAILS */}
-                            <div className={styles.detailRow}>
-                                <span>
-                                    {billingPeriod === "monthly" ? (
-                                            <>1x {base_price_per_month}€ / μήνα</>
-                                        ) : (
-                                            <>12x {base_price_per_year}€ / μήνα</>
-                                        )}
-                                </span>
-                                <span>
-                                    {`${subTotal}€`}
-                                </span>
-                            </div>
-
-                            <div className={styles.detailRow}>
-                                <span>ΦΠΑ {vatPercentage}%</span>
-                                <span>{vatAmount}€</span>
-                            </div>
-
-                            <hr className={styles.separator} />
-
-                            {/* FINAL TOTAL */}
-                            <div className={styles.totalRow}>
-                                <span>Σύνολο</span>
-                                <div className={styles.totalRowRight}>
-                                    <span>{total}€</span>
-                                    {/* ORIGINAL ANNUAL PRICE (STRIKETHROUGH) */}
-                                    {billingPeriod === "yearly" && (
-                                        <div className={styles.originalPrice}>
-                                            {originalAnnualPrice}€
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                        </div>
+        <Elements
+            stripe={stripePromise}
+            options={{ 
+                clientSecret,
+                locale: 'el',
+                appearance: {
+                    theme: 'stripe',   // ξεκινάμε από το default theme
+                    variables: {
+                        colorPrimary: '#3F72E7',
+                        colorBackground: '#ffffff',
+                        colorText: '#1a1a1a',
+                        colorDanger: '#e74c3c',
+                        fontFamily: 'Inter, system-ui, sans-serif',
+                        borderRadius: '10px',
+                        spacingUnit: '6px'
+                    },
+                    rules: {
+                        '.Input': {
+                            border: '1px solid #d1d5db',
+                            padding: '12px',
+                            borderRadius: '10px',
+                            fontSize: '15px',
+                            color: '#1a1a1a',
+                            backgroundColor: '#fff'
+                        },
+                        '.Input:focus': {
+                            borderColor: '#3F72E7',
+                            boxShadow: '0 0 0 1.5px #3F72E7'
+                        },
+                        '.Error': {
+                            fontSize: "0.8rem"
+                        },
+                        '.Label': {
+                            color: '#374151',
+                            fontWeight: '500',
+                            marginBottom: '4px'
+                        },
+                        '.Block': {
+                            backgroundColor: '#fff',
+                            borderRadius: '10px',
+                            padding: '10px'
+                        },
+                        '.Tab': {
+                            borderRadius: '8px'
+                        }
                     }
-                </div>
-            </div>
+                }
+            }}
+        >
+            <InnerCheckoutForm
+                ref={ref}
+                plan={plan}
+                billingPeriod={billingPeriod}
+                onBillingPeriodChange={onBillingPeriodChange}
+                mode={mode}
+                previewDetails={previewDetails}
+                loading={loading}
 
-        </div>
+                companyName={companyName}
+                companyNameError={companyNameError}
+                onCompanyNameChange={(v) => {
+                    setCompanyName(v);
+                    setCompanyNameError(undefined);
+                }}
+                vatNumber = {vatNumber}
+                onVatNumberChange={setVatNumber}
+                validate={validate}
+
+                onSuccess={onSuccess}
+            />
+        </Elements>
     );
-}
+});
+
+export default StripeCheckoutForm;

@@ -1,19 +1,13 @@
-import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { useOnboardingInternal } from "./useOnboardingInternal";
-import { Industry, OnboardingData, OnboardingMeta, OnboardingProviderProps, Plan, Plugin } from "./types";
+import { OnboardingData, OnboardingMeta, OnboardingProviderProps } from "./types";
 import { useAuth } from "@/context/AuthContext";
 
 interface OnboardingContextValue {
     onboardingData: OnboardingData;
     onboardingMeta: OnboardingMeta;
-    
-    industries: Industry[];
-    plans: Plan[];
-    plugins: Plugin[];
 
     onboardingDataLoading: boolean;
-    optionsLoading: boolean;
-    pluginsLoading: boolean;
 
     nextStep: (updates: Partial<OnboardingData>) => Promise<void>;
     backStep: () => Promise<void>;
@@ -23,8 +17,6 @@ interface OnboardingContextValue {
     __internal: {
         fetchOnboardingData: () => Promise<void>;
         syncCurrentStep: (step: number) => Promise<void>;
-        fetchBaseOptions: () => Promise<void>;
-        fetchPlugins: () => Promise<void>;
         /** routing intent flag (read-only for layout) */
         isAppNavigationRef: { current: boolean };
     };
@@ -44,27 +36,13 @@ export const OnboardingProvider = ({ children }: OnboardingProviderProps) => {
         !activeCompany.onboarding.is_completed &&
         activeCompany.membership.is_owner;
 
-    // Μονο οταν αλλαξουν τα keys στον πινακα industries κανω κληση για plugins
-    const industriesKey = useMemo(() => {
-        return internal.onboardingData.industries
-            ?.slice()
-            .sort()
-            .join("|") ?? "";
-    }, [internal.onboardingData.industries]);
-
 
     // Κανουμε API call στο context για να γινονται μια φορα στο mount
     useEffect(() => {
         if (!canRunOnboarding) return;
 
         internal.fetchOnboardingData();
-        internal.fetchBaseOptions();
     }, [canRunOnboarding]);
-
-    useEffect(() => {
-        if (!canRunOnboarding) return;
-        internal.fetchPlugins();
-    }, [canRunOnboarding, industriesKey]);
 
     // Βαζουμε ref για να αποφυγουμε περισια api calls οταν ο χρηστης χρησιμοποιει το browser navigation
     const nextStep = async (updates: Partial<OnboardingData>) => {
@@ -78,20 +56,11 @@ export const OnboardingProvider = ({ children }: OnboardingProviderProps) => {
     };
 
 
-
-
-
     const publicApi: OnboardingContextValue = {
         onboardingData: internal.onboardingData,
         onboardingMeta: internal.onboardingMeta,
 
-        industries: internal.industries,
-        plans: internal.plans,
-        plugins: internal.plugins,
-
         onboardingDataLoading: internal.onboardingDataLoading,
-        optionsLoading: internal.optionsLoading,
-        pluginsLoading: internal.pluginsLoading,
 
         nextStep,
         backStep,
@@ -101,8 +70,6 @@ export const OnboardingProvider = ({ children }: OnboardingProviderProps) => {
         __internal: {
             fetchOnboardingData: internal.fetchOnboardingData,
             syncCurrentStep: internal.syncCurrentStep,
-            fetchBaseOptions: internal.fetchBaseOptions,
-            fetchPlugins: internal.fetchPlugins,
             isAppNavigationRef
         }
     };
