@@ -86,20 +86,36 @@ CREATE TABLE subscriptions (
 
   subscription_code TEXT NOT NULL UNIQUE,
 
-  stripe_customer_id TEXT NULL UNIQUE,
+  currency TEXT NOT NULL DEFAULT 'eur', -- 🆕 ΕΔΩ (το currency που χρεώθηκε)
+
   stripe_subscription_id TEXT NULL UNIQUE,
 
   billing_period TEXT NULL DEFAULT 'monthly'
     CHECK (billing_period IN ('monthly', 'yearly')),
 
-  billing_status TEXT NOT NULL DEFAULT 'active' CHECK (billing_status IN ('active', 'past_due', 'canceled', 'incomplete', 'trialing')),
+  billing_status TEXT NOT NULL DEFAULT 'incomplete' CHECK (billing_status IN (
+    'incomplete',        -- Αρχική κατάσταση
+    'incomplete_expired',-- Αποτυχία πληρωμής
+    'active', 
+    'past_due', 
+    'canceled', '
+    incomplete', 
+    'trialing'
+  )),
 
   current_period_start TIMESTAMP NULL,
   current_period_end TIMESTAMP NULL,
 
+  -- 🆕 ΠΡΟΣΘΗΚΗ: Trial tracking
+  trial_start TIMESTAMP NULL,
+  trial_end TIMESTAMP NULL,
+
   cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
   cancel_at TIMESTAMP NULL,
   canceled_at TIMESTAMP NULL,
+
+  -- 🆕 ΠΡΟΣΘΗΚΗ: Audit fields
+  metadata JSONB NULL, -- Για extra info (promo codes, notes, etc.)
 
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()

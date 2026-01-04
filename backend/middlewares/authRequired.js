@@ -19,7 +19,7 @@ function requireAuth(req, res, next) {
 
         // sub → user ID
         const userId = payload.sub;
-
+        
         // Δημιουργούμε το req.user ανάλογα με το τι υπάρχει στο token
         req.user = {
             id: userId,
@@ -54,7 +54,7 @@ async function requireOwner(req, res, next) {
                 code: "NOT_AUTHENTICATED"
             });
         }
-
+        
         const userId = req.user.id;
 
         // Η ενεργή εταιρεία ΠΑΝΤΑ από token

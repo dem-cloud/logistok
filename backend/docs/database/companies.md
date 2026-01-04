@@ -78,10 +78,10 @@ CREATE TABLE companies (
   country TEXT NULL,
   phone TEXT NULL,
   email TEXT NULL,
-  subscription_id UUID NULL REFERENCES subscriptions(id) ON DELETE SET NULL,
   logo_url TEXT NULL,
   settings JSONB NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  stripe_customer_id TEXT NULL UNIQUE,
 );
 
 CREATE UNIQUE INDEX companies_unique_tax_id

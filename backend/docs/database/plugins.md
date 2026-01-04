@@ -130,22 +130,33 @@ VALUES ('inventory.stock.edit', 'inventory', 'Edit stock');
 ```sql
 CREATE TABLE plugins (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  key TEXT NOT NULL UNIQUE,
+
+  key TEXT NOT NULL UNIQUE, -- stable identifier (π.χ. "inventory", "reports")
 
   name TEXT NOT NULL,
   description TEXT NULL,
 
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  is_active BOOLEAN NOT NULL DEFAULT FALSE,
+
   default_settings JSONB NULL,
 
+  -- Stripe = source of truth
   stripe_price_id_monthly TEXT NULL,
   stripe_price_id_yearly TEXT NULL,
+
+  -- Cache for UI ONLY (not billing)
+  cached_price_monthly DECIMAL(10,2) NULL,
+  cached_price_yearly DECIMAL(10,2) NULL,
+  cached_currency TEXT NOT NULL DEFAULT 'EUR',
+  cached_updated_at TIMESTAMP NULL,
 
   photo_url TEXT NULL,
   current_version TEXT NULL,
 
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
 
 CREATE INDEX idx_plugins_is_active ON plugins(is_active);
 CREATE INDEX idx_plugins_key ON plugins(key);

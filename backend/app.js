@@ -6,7 +6,8 @@ const cookieParser = require('cookie-parser');
 
 const authRoutes = require('./routes/auth');
 const sharedRoutes = require('./routes/shared');
-const stripeRoutes = require('./routes/stripe');
+const billingRoutes = require('./routes/billing');
+const webhookRoutes = require('./routes/webhook');
 //const clothingRoutes = require('./routes/clothing');
 //const constructionRoutes = require('./routes/construction');
 
@@ -21,6 +22,11 @@ const corsOptions = {
 
 // Middleware
 app.use(cors(corsOptions));
+
+// ΣΗΜΑΝΤΙΚΟ: Το Stripe webhook πρέπει να μπει ΠΡΙΝ το express.json()
+// γιατί χρειάζεται το raw body για verification
+app.use('/api/webhooks', express.raw({type: 'application/json'}), webhookRoutes);
+
 app.use(express.json()); // To parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // To parse URL-encoded bodies
 app.use(cookieParser());
@@ -28,7 +34,7 @@ app.use(cookieParser());
 // Use the routes
 app.use('/api/auth', authRoutes); // Mount the auth routes
 app.use('/api/shared', sharedRoutes); // Mount the shared routes
-app.use('/api/stripe', stripeRoutes);
+app.use('/api/billing', billingRoutes);
 
 //app.use('/api/clothing', clothingRoutes); // Mount the clothing routes
 //app.use('/api/construction', constructionRoutes); // Mount the construction routes

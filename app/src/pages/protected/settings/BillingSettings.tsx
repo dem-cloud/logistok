@@ -5,6 +5,7 @@ import StripeCheckoutForm, { StripeCheckoutFormHandle } from "@/components/Strip
 import { usePlans } from "@/hooks/usePlans";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Plan } from "@/onboarding/types";
+import { BillingPeriod } from "@/types/billing.types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
@@ -31,7 +32,7 @@ export default function BillingSettings() {
     // }
     
     const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
-    const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
+    const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("yearly");
     const [popupOpen, setPopupOpen] = useState(false);
 
     if(!subscription)
@@ -42,6 +43,10 @@ export default function BillingSettings() {
     const handleSelectPlan = (plan: Plan) => {
         setSelectedPlan(plan);
         setPopupOpen(true);
+    }
+
+    const handleBillingChange = async (period: BillingPeriod) => {
+        setBillingPeriod(period);
     }
 
     const handleClosePopup = () => {
@@ -83,9 +88,11 @@ export default function BillingSettings() {
                 >
                     <StripeCheckoutForm
                         ref={paymentFormRef}
-                        plan={selectedPlan}
+                        planId={selectedPlan.id}
+
                         billingPeriod={billingPeriod}
-                        onBillingPeriodChange={setBillingPeriod}
+                        onBillingPeriodChange={handleBillingChange}
+
                         mode="admin"
                         onSuccess={() => {
                             queryClient.invalidateQueries({ queryKey: ["subscription"] });

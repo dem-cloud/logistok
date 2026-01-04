@@ -14,7 +14,8 @@ function sanitizeOnboardingUpdates(updates, currentData = {}) {
         },
         industries: Array.isArray(currentData.industries) ? currentData.industries : [],
         plan: currentData.plan || null,
-        plugins: Array.isArray(currentData.plugins) ? currentData.plugins : []
+        plugins: Array.isArray(currentData.plugins) ? currentData.plugins : [],
+        branches: typeof currentData.branches === 'number' ? currentData.branches : 0
     };
 
     if (!updates || typeof updates !== 'object') {
@@ -90,6 +91,21 @@ function sanitizeOnboardingUpdates(updates, currentData = {}) {
             .filter(item => item.length > 0);
     }
 
+    // Update branches if provided
+    if (updates.branches !== undefined) {
+        const branchesNum = Number(updates.branches);
+        
+        if (isNaN(branchesNum) || !Number.isInteger(branchesNum)) {
+            throw new Error('INVALID_DATA_TYPE: branches must be an integer');
+        }
+        
+        if (branchesNum < 0 || branchesNum > 9) {
+            throw new Error('INVALID_RANGE: branches must be between 0 and 9');
+        }
+        
+        sanitized.branches = branchesNum;
+    }
+
     return sanitized;
 }
 
@@ -138,6 +154,15 @@ function validateNextOnboardingData(data) {
         errors.push('Το πεδίο plugins πρέπει να είναι array');
     }
 
+    // Branches must be a number between 0 and 9
+    if (data.branches === undefined) {
+        errors.push('Το πεδίο branches είναι υποχρεωτικό');
+    } else if (typeof data.branches !== 'number' || !Number.isInteger(data.branches)) {
+        errors.push('Το πεδίο branches πρέπει να είναι ακέραιος αριθμός');
+    } else if (data.branches < 0 || data.branches > 9) {
+        errors.push('Το πεδίο branches πρέπει να είναι μεταξύ 0 και 9');
+    }
+
     return {
         valid: errors.length === 0,
         errors
@@ -183,6 +208,15 @@ function validateCompleteOnboardingData(data) {
     // Plugins must be array (can be empty)
     if (!Array.isArray(data.plugins)) {
         errors.push('Το πεδίο plugins πρέπει να είναι array');
+    }
+
+    // Branches must be a number between 0 and 9
+    if (data.branches === undefined) {
+        errors.push('Το πεδίο branches είναι υποχρεωτικό');
+    } else if (typeof data.branches !== 'number' || !Number.isInteger(data.branches)) {
+        errors.push('Το πεδίο branches πρέπει να είναι ακέραιος αριθμός');
+    } else if (data.branches < 0 || data.branches > 9) {
+        errors.push('Το πεδίο branches πρέπει να είναι μεταξύ 0 και 9');
     }
 
     return {

@@ -28,8 +28,8 @@ export default function PlanCard ({
 
     const price =
     billingPeriod === "monthly"
-      ? plan.base_price_per_month
-      : plan.base_price_per_year;
+      ? plan.pricing.monthly
+      : plan.pricing.display_monthly_from_yearly;
       
     
     return (
@@ -47,9 +47,9 @@ export default function PlanCard ({
             <div className={styles.priceRow}>
                 <span className={styles.price}>{price}€</span>
 
-                {(billingPeriod === "yearly" && plan.base_price_per_year !== 0) && (
+                {(billingPeriod === "yearly" && plan.pricing.display_monthly_from_yearly !== 0) && (
                     <span className={styles.oldPrice}>
-                        {plan.base_price_per_month}€
+                        {plan.pricing.monthly}€
                     </span>
                 )}
             </div>

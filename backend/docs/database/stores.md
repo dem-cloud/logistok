@@ -93,8 +93,14 @@ CREATE TABLE stores (
   phone TEXT NULL,
   email TEXT NULL,
 
+  is_main BOOLEAN NOT NULL DEFAULT FALSE,
+
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX one_main_store_per_company
+ON stores(company_id)
+WHERE is_main = true;
+
 
 CREATE UNIQUE INDEX stores_unique_company_name
 ON stores (company_id, name);

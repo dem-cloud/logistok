@@ -10,10 +10,10 @@ import { Plan } from "../types";
 export function PlanStep() {
 
     const { showToast } = useAuth();
-    const { nextStep } = useOnboarding();
+    const { onboardingData, nextStep } = useOnboarding();
     const { data: plans = [] } = usePlans();
 
-    const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
+    const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(onboardingData.plan?.billing || "yearly");
 
     const handleSelectPlan = async (plan: Plan) => {
 

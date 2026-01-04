@@ -11,7 +11,8 @@ interface OnboardingContextValue {
 
     nextStep: (updates: Partial<OnboardingData>) => Promise<void>;
     backStep: () => Promise<void>;
-    completeOnboarding: (final_updates: Partial<OnboardingData>) => Promise<void>;
+    completeOnboarding: (final_updates: OnboardingData) => Promise<void>;
+    updateDraft: (updates: Partial<OnboardingData>) => Promise<void>;
     exitSetup: () => void;
 
     __internal: {
@@ -65,6 +66,7 @@ export const OnboardingProvider = ({ children }: OnboardingProviderProps) => {
         nextStep,
         backStep,
         completeOnboarding: internal.completeOnboarding,
+        updateDraft: internal.updateDraft,
         exitSetup: internal.exitSetup,
 
         __internal: {

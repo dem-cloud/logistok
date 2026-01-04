@@ -162,7 +162,8 @@ CREATE TABLE onboarding (
       },
       "industries": [],
       "plan": null,
-      "plugins": []
+      "plugins": [],
+      "branches": 0
   }',
 
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),

@@ -1121,13 +1121,55 @@ router.post("/create-company", requireAuth, async (req, res) => {
 
         console.log("COMPANY CREATED:", companyCreated.id);
 
+        // Find user email
+        const { data: user, error: userError } = await supabase
+            .from("users")
+            .select("email")
+            .eq("id", userId);
+
+        if (userError) {
+            console.error("DB SELECT ERROR (users):", userError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση users",
+                code: "DB_ERROR",
+            });
+        }
+
+        // Create stripe customer id
+        const customer = await stripe.customers.create({
+            name: companyCreated.name,
+            email: user.email,
+            metadata: {
+                company_id: companyCreated.id
+            }
+        });
+
+        // Update company with new customer id
+        const { error: companyUpdErr } = await supabase
+            .from("companies")
+            .update([{
+                stripe_customer_id: customer.id
+            }])
+            .eq("id", companyCreated.id);
+
+        if (companyUpdErr) {
+            console.error("DB UPDATE ERROR (companies):", companyUpdErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά τη ενημέρωση της εταιρείας",
+                code: "DB_ERROR",
+            });
+        }
+
         // ---------------------------------------------
         // 2. CREATE STORE
         // ---------------------------------------------
         const { data: storeCreated, error: storeErr } = await supabase
             .from("stores")
             .insert([{
-                company_id: companyCreated.id
+                company_id: companyCreated.id,
+                is_main: true
             }])
             .select()
             .single();
@@ -1258,7 +1300,7 @@ router.post("/create-company", requireAuth, async (req, res) => {
 
         const { data: permissions, error: permErr } = await supabase
             .from("permissions")
-            .select("id, key")
+            .select("key")
             .in("key", permissionKeys);
 
         if (permErr) {
@@ -1284,7 +1326,7 @@ router.post("/create-company", requireAuth, async (req, res) => {
         // ---------------------------------------------
         const rolePermissionsData = permissions.map(p => ({
             role_id: roleCreated.id,
-            permission_id: p.id,
+            permission_key: p.key,
             source: "default_role"
         }));
 
@@ -1366,8 +1408,8 @@ router.post("/create-company", requireAuth, async (req, res) => {
                 // Contextual token με permissions
                 access_token: generateAccessToken(
                     userId, 
-                    roleCreated.key, 
                     companyCreated.id, 
+                    roleCreated.key, 
                     perms
                 ),
 
@@ -1992,7 +2034,7 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
         return res.json({
             success: true,
             data: {
-                access_token: generateAccessToken(userId, role.key, companyId, permissions)
+                access_token: generateAccessToken(userId, companyId, role.key, permissions)
             }
         });
 

@@ -25,6 +25,7 @@ export interface OnboardingData {
         billing: "monthly" | "yearly";
     } | null;
     plugins: string[];
+    branches: number;
 }
 
 export interface OnboardingMeta {
@@ -43,13 +44,29 @@ export interface Plan {
     key: string;
     name: string;
     description: string;
-    base_price_per_month: number;
-    base_price_per_year: number;
-    extra_store_price: number;
+
     max_users_per_store: number;
     features: string[];
-    rank: number;
+    included_stores: number;
+
+    pricing: {
+        monthly: number;
+        yearly: number;
+        display_monthly_from_yearly: number;
+        yearly_discount_percent: number;
+    },
+
+    extra_store_pricing: {
+        monthly: number;
+        yearly: number;
+        display_monthly_from_yearly: number;
+        yearly_discount_percent: number;
+    },
+
+    is_free: boolean;
     is_popular: boolean;
+    allows_paid_plugins: boolean;
+    rank: number;
 }
 
 export interface Plugin {

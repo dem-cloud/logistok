@@ -2,10 +2,10 @@ import { forwardRef, useEffect, useState } from "react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { useAuth } from "@/context/AuthContext";
-import { Plan } from "@/onboarding/types";
 import { axiosPrivate } from "@/api/axios";
 import InnerCheckoutForm from "./InnerCheckoutForm";
 import LoadingSpinner from "./LoadingSpinner";
+import { PricePreviewResponse } from "@/types/billing.types";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
@@ -13,30 +13,34 @@ export interface StripeCheckoutFormHandle {
     submit: () => void;
 }
 
-export interface PreviewDetails {
-    vatPercentage: number,
-    vatAmount: number;
-    subTotal: number;
-    total: number;
-    originalAnnualPrice: number;
-    discount: number;
-}
-
 interface Props {
-    plan: Plan;
-    billingPeriod: "monthly" | "yearly";
+    planId: string;
 
+    billingPeriod: "monthly" | "yearly";
     onBillingPeriodChange: (period: "monthly" | "yearly") => void;
+    totalBranches?: number;
+    handleIncreaseTotalBranches?: () => void;
+    handleDecreaseTotalBranches?: () => void;
+    selectedPlugins?: string[];
+    onRemovePlugin?: (pluginKey: string) => void;
 
     mode: "onboarding" | "admin";
+    pricePreview?: PricePreviewResponse;
+
     onSuccess: () => void;
 }
 
 const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
-    plan,
+    // planId,
     billingPeriod,
     onBillingPeriodChange,
+    totalBranches,
+    handleIncreaseTotalBranches,
+    handleDecreaseTotalBranches,
+    selectedPlugins,
+    onRemovePlugin,
     mode,
+    pricePreview,
     onSuccess
 }, ref) => {
 
@@ -44,7 +48,6 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     
     const [clientSecret, setClientSecret] = useState("");
     const [loading, setLoading] = useState(false);
-    const [previewDetails, setPreviewDetails] = useState<PreviewDetails | null>(null);
     
     const [companyName, setCompanyName] = useState(activeCompany?.name || "");
     const [companyNameError, setCompanyNameError] = useState<string | undefined>(undefined);
@@ -61,30 +64,21 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     };
 
     useEffect(() => {
-        if (!plan) return;
-
-        const createIntent  = async () => {
+        const fetchSetupIntent = async () => {
             try {
                 setLoading(true);
 
-                const response = await axiosPrivate.post("/api/stripe/create-payment-intent", {
-                    mode: mode,
-                    planId: plan.id,
-                    billingPeriod,
-                    companyName,
-                    vatNumber
-                });
+                const response = await axiosPrivate.post('/api/billing/create-setup-intent');
 
-                const { success, data = {} } = response.data;
-                const { clientSecret, priceInfo } = data;
+                const { success, data } = response.data;
 
-                if(!success){
+                if (!success) {
                     showToast({ message: "Κάτι πήγε στραβά", type: "error" });
                     return;
                 }
+                const { clientSecret } = data;
 
                 setClientSecret(clientSecret);
-                setPreviewDetails(priceInfo);
 
             } catch (error) {
                 console.error("error:", error);
@@ -92,17 +86,17 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
             } finally {
                 setLoading(false);
             }
-        }
+        };
 
-        createIntent ();
-
-    }, [plan.id, billingPeriod]);
+        fetchSetupIntent();
+    }, []);
 
     if (!clientSecret) 
         return <LoadingSpinner />
 
     return (
         <Elements
+            key={clientSecret}
             stripe={stripePromise}
             options={{ 
                 clientSecret,
@@ -151,27 +145,35 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                 }
             }}
         >
-            <InnerCheckoutForm
-                ref={ref}
-                plan={plan}
-                billingPeriod={billingPeriod}
-                onBillingPeriodChange={onBillingPeriodChange}
-                mode={mode}
-                previewDetails={previewDetails}
-                loading={loading}
+        {   
+            pricePreview &&
+                <InnerCheckoutForm
+                    ref={ref}
+                    billingPeriod={billingPeriod}
+                    onBillingPeriodChange={onBillingPeriodChange}
+                    totalBranches={totalBranches}
+                    handleIncreaseTotalBranches={handleIncreaseTotalBranches}
+                    handleDecreaseTotalBranches={handleDecreaseTotalBranches}
+                    selectedPlugins={selectedPlugins}
+                    onRemovePlugin={onRemovePlugin}
 
-                companyName={companyName}
-                companyNameError={companyNameError}
-                onCompanyNameChange={(v) => {
-                    setCompanyName(v);
-                    setCompanyNameError(undefined);
-                }}
-                vatNumber = {vatNumber}
-                onVatNumberChange={setVatNumber}
-                validate={validate}
+                    mode={mode}
+                    pricePreview={pricePreview}
+                    loading={loading}
 
-                onSuccess={onSuccess}
-            />
+                    companyName={companyName}
+                    companyNameError={companyNameError}
+                    onCompanyNameChange={(v) => {
+                        setCompanyName(v);
+                        setCompanyNameError(undefined);
+                    }}
+                    vatNumber = {vatNumber}
+                    onVatNumberChange={setVatNumber}
+                    validate={validate}
+
+                    onSuccess={onSuccess}
+                />
+        }
         </Elements>
     );
 });

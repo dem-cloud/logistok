@@ -1,7 +1,11 @@
+import { useOnboarding } from "../OnboardingContext";
 import styles from "./FreeFinalize.module.css";
 import { CheckCircle } from "lucide-react";
 
 export default function FreeFinalize() {
+
+    const { onboardingData, completeOnboarding } = useOnboarding();
+    
     return (
         <div className={styles.content}>
             <div className={styles.container}>
@@ -23,7 +27,10 @@ export default function FreeFinalize() {
                     <span>✔ Μπορείς να αναβαθμίσεις οποιαδήποτε στιγμή</span>
                 </div>
 
-                <button className={styles.cta} onClick={()=>{}}>
+                <button 
+                    className={styles.cta} 
+                    onClick={()=>completeOnboarding(onboardingData)}
+                >
                     Ολοκλήρωση & Μετάβαση στο Dashboard
                 </button>
             </div>

@@ -104,13 +104,20 @@ CREATE TABLE subscription_items (
 
   subscription_id UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
 
-  item_type TEXT NOT NULL CHECK (item_type IN ('plan', 'addon', 'extra_store')),
+  item_type TEXT NOT NULL CHECK (item_type IN ('plan', 'plugin', 'extra_store')),
   stripe_subscription_item_id TEXT NOT NULL UNIQUE,
   stripe_price_id TEXT NOT NULL,
 
   plugin_key TEXT NULL REFERENCES plugins(key) ON DELETE SET NULL,
 
   quantity INT NOT NULL DEFAULT 1 CHECK (quantity > 0),
+
+  -- 🆕 ΠΡΟΣΘΗΚΗ: Price tracking
+  unit_amount DECIMAL(10,2) NULL, -- Το ποσό που χρεώθηκε (για history)
+  currency TEXT NULL DEFAULT 'eur',
+  
+  -- 🆕 ΠΡΟΣΘΗΚΗ: Status
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'canceled')),
 
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()

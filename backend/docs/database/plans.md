@@ -65,25 +65,38 @@ CREATE TABLE plans (
   name TEXT NOT NULL,
   description TEXT NULL,
 
-  max_users_per_store INT NULL CHECK (max_users_per_store > 0),
-
   features JSONB NULL,
 
+  -- Business logic
+  included_branches INT NOT NULL DEFAULT 0,
+  max_users_per_store INT NULL CHECK (max_users_per_store > 0),
+  allows_paid_plugins BOOLEAN NOT NULL DEFAULT TRUE,
+  is_free BOOLEAN NOT NULL DEFAULT FALSE,
+
+  -- Stripe = source of truth
   stripe_price_id_monthly TEXT NULL,
   stripe_price_id_yearly TEXT NULL,
-  stripe_extra_store_price_id TEXT NULL,
+  stripe_extra_store_price_id_monthly TEXT NULL,
+  stripe_extra_store_price_id_yearly TEXT NULL,
 
+  -- Cache for UI only (NOT billing)
+  cached_price_monthly DECIMAL(10,2) NULL,
+  cached_price_yearly DECIMAL(10,2) NULL,
+  cached_extra_store_price_monthly DECIMAL(10,2) NULL,
+  cached_extra_store_price_yealry DECIMAL(10,2) NULL,
+  cached_currency TEXT NOT NULL DEFAULT 'EUR',
+  cached_updated_at TIMESTAMP NULL,
+
+  -- UI / ordering
   is_public BOOLEAN NOT NULL DEFAULT FALSE,
   priority INT NOT NULL DEFAULT 100,
+  rank INT NOT NULL DEFAULT 1,
+  is_popular BOOLEAN NOT NULL DEFAULT FALSE,
 
-  is_free boolean not null default false,
-  allows_paid_plugins boolean not null default true,
-
-  rank INTEGER NOT NULL,
-  is_popular BOOLEAN DEFAULT false,
-
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  created_at TIMESTAMP NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP NOT NULL DEFAULT now()
 );
+
 
 CREATE INDEX idx_plans_is_public ON plans(is_public, priority);
 ```

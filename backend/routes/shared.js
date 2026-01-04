@@ -301,9 +301,9 @@ router.get('/industries', requireAuth, requireOwner, async (req, res) => {
 
 router.get('/plans', requireAuth, async (req, res) => {
     try {
-        const { data: plansData, error: plansError } = await supabase
+        const { data: plans, error: plansError } = await supabase
             .from("plans")
-            .select("id, key, name, description, max_users_per_store, features, stripe_price_id_monthly, stripe_price_id_yearly, stripe_extra_store_price_id, rank, is_popular")
+            .select("*")
             .eq("is_public", true)
             .order("priority", {ascending: true});
 
@@ -316,52 +316,66 @@ router.get('/plans', requireAuth, async (req, res) => {
             });
         }
 
-        const plans = await Promise.all(
-            plansData.map(async (plan) => {
-                const {
-                    id,
-                    name,
-                    description,
-                    max_users_per_store,
-                    features,
-                    stripe_price_id_monthly,
-                    stripe_price_id_yearly,
-                    stripe_extra_store_price_id,
-                    rank,
-                    is_popular
-                } = plan;
+        const normalizedPlans = (plans ?? []).map(plan => {
+        /* ---------------- Base plan pricing ---------------- */
+        const baseMonthly = plan.cached_price_monthly ?? 0;
+        const baseYearly = plan.cached_price_yearly ?? 0;
 
-                const stripe_base_price_per_month = stripe_price_id_monthly ? await stripe.prices.retrieve(stripe_price_id_monthly) : stripe_price_id_monthly;
-                const base_price_per_month = stripe_base_price_per_month ? stripe_base_price_per_month.unit_amount / 100 : 0;
+        const baseMonthlyFromYearly =
+            baseYearly > 0 ? Number((baseYearly / 12).toFixed(2)) : 0;
 
-                const stripe_base_price_per_year = stripe_price_id_yearly ? await stripe.prices.retrieve(stripe_price_id_yearly): stripe_price_id_yearly;
-                const base_price_per_year = stripe_base_price_per_year ? (stripe_base_price_per_year.unit_amount / 100) / 12 : 0;
+        const baseDiscountPercent =
+            baseMonthly > 0 && baseYearly > 0
+                ? Math.round((1 - baseYearly / (baseMonthly * 12)) * 100)
+                : null;
 
-                const stripe_extra_store_price = stripe_extra_store_price_id ? await stripe.prices.retrieve(stripe_extra_store_price_id) : null;
-                const extra_store_price = stripe_extra_store_price ? stripe_extra_store_price.unit_amount / 100 : null;
+        /* ---------------- Extra store pricing ---------------- */
+        const extraMonthly = plan.cached_extra_store_price_monthly ?? 0;
+        const extraYearly = plan.cached_extra_store_price_yearly ?? 0;
 
-                return {
-                    id,
-                    name,
-                    description,
-                    base_price_per_month,
-                    base_price_per_year,
-                    extra_store_price,
-                    max_users_per_store,
-                    features,
-                    rank,
-                    is_popular,
-                    // currency
-                    // annual_discount
-                    // vat
-                };
-            })
-        );
+        const extraMonthlyFromYearly =
+            extraYearly > 0 ? Number((extraYearly / 12).toFixed(2)) : null;
 
-        return res.json({
-            success: true,
-            data: plans || []
-        });
+        const extraDiscountPercent =
+            extraMonthly > 0 && extraYearly > 0
+                ? Math.round((1 - extraYearly / (extraMonthly * 12)) * 100)
+                : null;
+
+        return {
+            id: plan.id,
+            key: plan.key,
+            name: plan.name,
+            description: plan.description,
+
+            features: plan.features,
+            max_users_per_store: plan.max_users_per_store,
+            included_stores: plan.included_stores,
+
+            pricing: {
+                monthly: baseMonthly,
+                yearly: baseYearly,
+                display_monthly_from_yearly: baseMonthlyFromYearly,
+                yearly_discount_percent: baseDiscountPercent,
+            },
+
+            extra_store_pricing: {
+                monthly: extraMonthly,
+                yearly: extraYearly,
+                display_monthly_from_yearly: extraMonthlyFromYearly,
+                yearly_discount_percent: extraDiscountPercent,
+            },
+
+            is_free: plan.is_free,
+            is_popular: plan.is_popular,
+            allows_paid_plugins: plan.allows_paid_plugins,
+            rank: plan.rank,
+        }
+        })
+
+    return res.json({
+        success: true,
+        data: normalizedPlans,
+    });
 
     } catch (err) {
         console.error('Error fetching plans:', err);
@@ -381,7 +395,18 @@ router.get('/plugins-recommendations', requireAuth, async (req, res) => {
 
         let query = supabase
             .from("plugin_industry_recommendations")
-            .select(` priority, plugins ( key, name, description, stripe_price_id_monthly, photo_url, current_version ) `)
+            .select(` 
+                priority, 
+                plugins ( 
+                    key, 
+                    name, 
+                    description, 
+                    cached_price_monthly,
+                    cached_price_yearly,
+                    photo_url, 
+                    current_version 
+                ) 
+            `)
             .eq("scope", scope)
             .eq("plugins.is_active", true) 
             .order("priority", { ascending: true });
@@ -442,42 +467,29 @@ router.get('/plugins-recommendations', requireAuth, async (req, res) => {
             .map(({ effectivePriority, ...plugin }) => plugin);
 
         // ===============================
-        // STRIPE PRICE LOGIC
+        // MAP TO RESPONSE FORMAT
         // ===============================
-        const plugins = await Promise.all(
-            result.map(async (r) => {
-                const {
-                    key,
-                    name,
-                    description,
-                    stripe_price_id_monthly,
-                    photo_url,
-                    current_version
-                } = r;
+        const plugins = result.map((r) => {
+            const {
+                key,
+                name,
+                description,
+                cached_price_monthly,
+                cached_price_yearly,
+                photo_url,
+                current_version
+            } = r;
 
-                let base_price_per_month = 0;
-                
-                try {
-                    const stripePrice = await stripe.prices.retrieve(stripe_price_id_monthly);
-
-                    base_price_per_month = stripePrice?.unit_amount
-                        ? stripePrice.unit_amount / 100
-                        : 0;
-                        
-                } catch (err) {
-                    base_price_per_month = 0;
-                }
-
-                return {
-                    key,
-                    name,
-                    description,
-                    base_price_per_month,
-                    photo_url,
-                    current_version
-                };
-            })
-        );
+            return {
+                key,
+                name,
+                description,
+                base_price_per_month: cached_price_monthly || 0,
+                base_price_per_year: cached_price_yearly || 0,
+                photo_url,
+                current_version
+            };
+        });
 
         return res.json({
             success: true,
@@ -496,9 +508,9 @@ router.get('/plugins-recommendations', requireAuth, async (req, res) => {
 });
 
 
-router.get("/:companyId/onboarding/data", requireAuth, requireActiveCompany, requireOwner, async (req, res) => {
+router.get("/onboarding/data", requireAuth, requireOwner, async (req, res) => {
 
-    const { companyId } = req.params;
+    const { companyId } = req.user;
 
     try {
         // Fetch onboarding draft data
@@ -548,9 +560,9 @@ router.get("/:companyId/onboarding/data", requireAuth, requireActiveCompany, req
 // ============================================
 // ENDPOINT : Sync Step
 // ============================================ 
-router.post("/:companyId/onboarding/sync-step", requireAuth, requireActiveCompany, requireOwner, async (req, res) => {
+router.post("/onboarding/sync-step", requireAuth, requireOwner, async (req, res) => {
     
-    const { companyId } = req.params;
+    const { companyId } = req.user;
     const { step } = req.body;
 
     if (!Number.isInteger(step)) {
@@ -634,9 +646,9 @@ router.post("/:companyId/onboarding/sync-step", requireAuth, requireActiveCompan
 // ============================================
 // ENDPOINT 1: Move forward (with data updates)
 // ============================================
-router.post("/:companyId/onboarding/next", requireAuth, requireActiveCompany, requireOwner, async (req, res) => {
+router.post("/onboarding/next", requireAuth, requireOwner, async (req, res) => {
 
-    const { companyId } = req.params;
+    const { companyId } = req.user;
     const { updates } = req.body;
 
     try {
@@ -699,16 +711,24 @@ router.post("/:companyId/onboarding/next", requireAuth, requireActiveCompany, re
 
         // Update company name immediately if changed
         if (sanitizedData.company.name && sanitizedData.company.name !== currentData.company?.name) {
-            const { error: companyUpdateErr } = await supabase
+            const { data: companyUpdData, error: companyUpdateErr } = await supabase
                 .from('companies')
                 .update({
                     name: sanitizedData.company.name
                 })
-                .eq('id', companyId);
+                .select("stripe_customer_id")
+                .eq('id', companyId)
+                .maybeSingle();
 
             if (companyUpdateErr) {
                 console.error("Failed to update company name:", companyUpdateErr);
                 // Don't fail the request, just log it
+            }
+            
+            if (companyUpdData?.stripe_customer_id) {
+                await stripe.customers.update(companyUpdData.stripe_customer_id, {
+                    name: sanitizedData.company.name,
+                });
             }
         }
 
@@ -801,9 +821,9 @@ router.post("/:companyId/onboarding/next", requireAuth, requireActiveCompany, re
 // ============================================
 // ENDPOINT: Complete Onboarding
 // ============================================
-router.post("/:companyId/onboarding/complete", requireAuth, requireActiveCompany, requireOwner, async (req, res) => {
+router.post("/onboarding/complete", requireAuth, requireOwner, async (req, res) => {
 
-    const { companyId } = req.params;
+    const { companyId } = req.user;
     const { final_updates } = req.body;
 
     try {
@@ -970,7 +990,7 @@ router.post("/:companyId/onboarding/complete", requireAuth, requireActiveCompany
             // πάρε plugins που υπάρχουν και είναι active
             const { data: availablePlugins, error: pluginsSelectErr } = await supabase
                 .from('plugins')
-                .select('key, is_active, stripe_price_id_monthly, stripe_price_id_yearly')
+                .select('key, is_active, price_monthly, price_yearly')
                 .in('key', sanitizedData.plugins)
                 .eq('is_active', true);
 
@@ -985,11 +1005,11 @@ router.post("/:companyId/onboarding/complete", requireAuth, requireActiveCompany
 
             // φιλτράρισμα βάσει plan
             const allowedPlugins = availablePlugins.filter(plugin => {
-                // basic → μόνο free plugins (δεν έχουν stripe price)
+                // basic → μόνο free plugins
                 if (!canUsePaidPlugins) {
                     return (
-                        plugin.stripe_price_id_monthly === null &&
-                        plugin.stripe_price_id_yearly === null
+                        plugin.price_monthly === null &&
+                        plugin.price_yearly === null
                     );
                 }
 
@@ -1005,7 +1025,7 @@ router.post("/:companyId/onboarding/complete", requireAuth, requireActiveCompany
                     plugin_key: plugin.key,
 
                     // σωστά για onboarding
-                    is_active: true,
+                    status: 'active',
                     activated_at: new Date().toISOString(),
                     subscription_item_id: null,
                     settings: null
@@ -1095,9 +1115,6 @@ router.post("/:companyId/onboarding/complete", requireAuth, requireActiveCompany
             // Log analytics event
             // await trackEvent('onboarding_completed', { companyId, plan: data.plan.id });
             
-            // Trigger webhooks
-            // await triggerWebhook('onboarding.completed', { companyId });
-            
         } catch (error) {
             // Don't fail the request if post-completion actions fail
             console.error("Post-completion actions failed:", error);
@@ -1124,8 +1141,9 @@ router.post("/:companyId/onboarding/complete", requireAuth, requireActiveCompany
 // ============================================
 // ENDPOINT 2: Move backward (no data updates)
 // ============================================
-router.post("/:companyId/onboarding/back", requireAuth, requireActiveCompany, requireOwner, async (req, res) => {
-    const { companyId } = req.params;
+router.post("/onboarding/back", requireAuth, requireOwner, async (req, res) => {
+
+    const { companyId } = req.user;
 
     try {
         const { data: onboarding, error: onboardingErr } = await supabase
@@ -1199,10 +1217,92 @@ router.post("/:companyId/onboarding/back", requireAuth, requireActiveCompany, re
     }
 });
 
+// For updating billing period on payment checkout step
+router.post("/onboarding/update-draft", requireAuth, requireOwner, async (req, res) => {
+
+    const { companyId } = req.user;
+    const { updates } = req.body;
+
+    try {
+        const { data: onboarding, error } = await supabase
+            .from("onboarding")
+            .select("data, is_completed")
+            .eq("company_id", companyId)
+            .single();
+
+        if (error || !onboarding) {
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης onboarding",
+                code: "DB_ERROR"
+            });
+        }
+
+        if (onboarding.is_completed) {
+            return res.status(403).json({
+                success: false,
+                message: "Το onboarding έχει ολοκληρωθεί",
+                code: "ONBOARDING_COMPLETED"
+            });
+        }
+
+        const currentData = onboarding.data || {
+            company: { name: '', phone: '' },
+            industries: [],
+            plan: null,
+            plugins: []
+        };
+
+        let sanitizedData;
+        try {
+            sanitizedData = sanitizeOnboardingUpdates(updates, currentData);
+        } catch (err) {
+            return res.status(400).json({
+                success: false,
+                message: err.message,
+                code: "VALIDATION_ERROR"
+            });
+        }
+
+        const { data: updated, error: updateErr } = await supabase
+            .from("onboarding")
+            .update({
+                data: sanitizedData,
+                updated_at: new Date().toISOString()
+            })
+            .eq("company_id", companyId)
+            .select("data")
+            .single();
+
+        if (updateErr) {
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ενημέρωσης onboarding",
+                code: "DB_ERROR"
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                draft_data: updated.data
+            }
+        });
+
+    } catch (err) {
+        console.error("update-draft error", err);
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+            code: "SERVER_ERROR"
+        });
+    }
+})
+
 // ============================================
 // ENDPOINT 3: Navigate to specific step (optional but useful)
 // ============================================
-router.post("/:companyId/onboarding/goto/:step", requireAuth, requireActiveCompany, requireOwner, async (req, res) => {
+router.post("/onboarding/goto/:step", requireAuth, requireOwner, async (req, res) => {
     const { companyId, step } = req.params;
     const targetStep = parseInt(step);
 

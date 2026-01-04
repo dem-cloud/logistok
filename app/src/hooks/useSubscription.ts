@@ -1,7 +1,6 @@
 import { axiosPrivate } from "@/api/axios";
+import { BillingPeriod } from "@/types/billing.types";
 import { useQuery } from "@tanstack/react-query";
-
-export type BillingPeriod = "monthly" | "yearly";
 
 export type SubscriptionStatus =
   | "active"

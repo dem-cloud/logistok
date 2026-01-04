@@ -17,6 +17,7 @@ export function useOnboardingInternal() {
         },
         industries: [],
         plan: null,
+        branches: 1,
         plugins: []
     });
     const [onboardingMeta, setOnboardingDataMeta] = useState<OnboardingMeta>({})
@@ -25,7 +26,7 @@ export function useOnboardingInternal() {
 
     const syncCurrentStep = async (step: number) => {
         try {
-            const response = await axiosPrivate.post(`/api/shared/${activeCompany?.id}/onboarding/sync-step`, { step });
+            const response = await axiosPrivate.post(`/api/shared/onboarding/sync-step`, { step });
             const { success } = response.data;
 
             if(!success){
@@ -39,7 +40,7 @@ export function useOnboardingInternal() {
 
     const fetchOnboardingData = async () => {
         try {
-            const response = await axiosPrivate.get(`/api/shared/${activeCompany?.id}/onboarding/data`);
+            const response = await axiosPrivate.get(`/api/shared/onboarding/data`);
             const { success, data } = response.data;
 
             if(!success){
@@ -60,7 +61,7 @@ export function useOnboardingInternal() {
     }
 
     const nextStep = async (updates: Partial<OnboardingData>) => {
-        const response = await axiosPrivate.post<OnboardingNextResponse>(`/api/shared/${activeCompany?.id}/onboarding/next`, { updates });
+        const response = await axiosPrivate.post<OnboardingNextResponse>(`/api/shared/onboarding/next`, { updates });
         const { success, data } = response.data;
 
         if(!success || !data) {
@@ -97,7 +98,7 @@ export function useOnboardingInternal() {
     };
 
     const backStep = async () => {
-        const response = await axiosPrivate.post<OnboardingBackResponse>(`/api/shared/${activeCompany?.id}/onboarding/back`);
+        const response = await axiosPrivate.post<OnboardingBackResponse>(`/api/shared/onboarding/back`);
         const { success, data } = response.data;
 
         if(!success || !data) {
@@ -129,9 +130,9 @@ export function useOnboardingInternal() {
         navigate(`/onboarding/${STEP_ROUTES[back_step]}`)
     }
 
-    const completeOnboarding = async (final_updates: Partial<OnboardingData>) => {
+    const completeOnboarding = async (final_updates: OnboardingData) => {
 
-        const response = await axiosPrivate.post(`/api/shared/${activeCompany?.id}/onboarding/complete`, { final_updates });
+        const response = await axiosPrivate.post(`/api/shared/onboarding/complete`, { final_updates });
 
         const { success, data } = response.data;
 
@@ -165,6 +166,21 @@ export function useOnboardingInternal() {
         navigate('/')
     }
 
+    const updateDraft = async (updates: Partial<OnboardingData>) => { // For billing period in PaymentCheckout
+
+        const res = await axiosPrivate.post("/api/shared/onboarding/update-draft", { updates });
+
+        const { success, data } = res.data;
+
+        if (!success || !data) {
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            return;
+        }
+
+        setOnboardingData(data.draft_data);
+    }
+
+
     const exitSetup = async () => {
 
         // 1. Βγαίνεις από company context
@@ -191,6 +207,7 @@ export function useOnboardingInternal() {
         nextStep,
         backStep,
         completeOnboarding,
+        updateDraft,
         exitSetup,
 
         // INTERNAL only

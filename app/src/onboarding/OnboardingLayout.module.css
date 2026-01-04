@@ -24,7 +24,7 @@
     align-items: center;
     width: 500px;
     transition: transform 0.3s ease-in-out, width 0.3s ease-in-out, height 0.3s ease-in-out;
-    margin: 5rem 0;
+    margin: 3rem 0;
 }
 
 .content form {

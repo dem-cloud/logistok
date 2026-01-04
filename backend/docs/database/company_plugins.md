@@ -65,13 +65,17 @@ CREATE TABLE company_plugins (
 
   subscription_item_id UUID NULL REFERENCES subscription_items(id) ON DELETE CASCADE,
 
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  -- 🔄 ΒΕΛΤΙΩΣΗ: Πιο explicit status
+  status TEXT NOT NULL DEFAULT 'active' 
+    CHECK (status IN ('active', 'inactive', 'suspended')),
+  
   activated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   deactivated_at TIMESTAMP NULL,
 
   settings JSONB NULL,
 
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(), -- 🆕 ΠΡΟΣΘΗΚΗ
 
   PRIMARY KEY (company_id, plugin_key)
 );
