@@ -285,7 +285,7 @@ export default function AuthForm({ verificationType, setTagline }: AuthFormProps
             
             const fingerprint = await getFingerprint();
 
-            console.log("Sign Up", email, password, confirmPassword, verificationCode, fingerprint)
+            console.log("Sign Up", email, phone, password, confirmPassword, verificationCode, fingerprint)
 
             const response = await axiosPublic.post("/api/auth/signup", { email, phone: null, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
             const { success, message, data = {}, code } = response.data;
@@ -337,10 +337,9 @@ export default function AuthForm({ verificationType, setTagline }: AuthFormProps
             
             const fingerprint = await getFingerprint();
 
-            console.log("Reset Password", email, password, confirmPassword, verificationCode, fingerprint)
+            console.log("Reset Password", email, phone, password, confirmPassword, verificationCode, fingerprint)
 
-
-            const response = await axiosPublic.post("/api/auth/password-reset", { email, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
+            const response = await axiosPublic.post("/api/auth/password-reset", { email, phone: null, password, confirmPassword, verificationCode, fingerprint }, { withCredentials: true })
             const { success, message, data = {}, code } = response.data;
 
             if(!success){
@@ -349,6 +348,7 @@ export default function AuthForm({ verificationType, setTagline }: AuthFormProps
                 // INVALID_PASSWORD
                 // PASSWORD_MISMATCH
                 // OTP_NOT_FOUND
+                // OTP_TOO_MANY_ATTEMPTS
                 // INVALID_OTP
                 // OTP_EXPIRED
 

@@ -9,14 +9,16 @@ const { requireAuth } = require('../middlewares/authRequired.js');
 const { Resend } = require('resend');
 const { generateSixDigitCode } = require('../helpers/generateSixDigitCode.js');
 const getCooldownStatus = require('../helpers/getCooldownStatus.js');
-const { generateVerificationEmail, generatePasswordResetEmail } = require('../helpers/emailTemplate.js');
+const { generateVerificationEmail, generatePasswordResetEmail } = require('../helpers/emailTemplates.js');
 const { VERIFICATION_TYPES, VERIFICATION_DELIVERY_METHODS } = require('../helpers/verificationTypes.js');
 const Stripe = require('stripe');
 const { checkAuth } = require('../middlewares/authOptional.js');
+const { OAuth2Client } = require('google-auth-library');
 // const UAParser = require('ua-parser-js');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // ## Rate Limiting (ανά IP) -> Προστατεύει τον server από spam & network floods από DoS / Botnets
 // ## Brute-force ανά Fingerprint -> Προστατεύει τον λογαριασμό από token/password guessing από Account takeover
@@ -464,9 +466,9 @@ router.post("/send-code", baseRateLimiter, checkAuth, async (req, res) => {
 })
 
 router.post("/password-reset", baseRateLimiter, async (req, res) => {
-    const { email, password, confirmPassword, verificationCode, fingerprint } = req.body;
+    const { email, phone, password, confirmPassword, verificationCode, fingerprint } = req.body;
 
-    if (!email || !password || !confirmPassword || !verificationCode || !fingerprint) {
+    if ((!email && !phone) || !password || !confirmPassword || !verificationCode || !fingerprint) {
         console.log("NO DATA RECEIVED");
         return res.status(400).json({
             success: false,
@@ -479,13 +481,19 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         // ---------------------------------------------
         // 1. USER EXISTANCE
         // ---------------------------------------------
-        const { data: userFound, error: userError } = await supabase
+        let userQuery = supabase
             .from("users")
-            .select("*")
-            .eq("email", email)
-            .maybeSingle();
+            .select("*");
 
-        if(userError){
+        if (email) {
+            userQuery = userQuery.eq("email", email);
+        } else {
+            userQuery = userQuery.eq("phone", phone);
+        }
+
+        const { data: userFound, error: userError } = await userQuery.maybeSingle();
+
+        if (userError) {
             console.error("DB SELECT ERROR (users):", userError);
             return res.status(500).json({
                 success: false,
@@ -494,65 +502,13 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             });
         }
 
-        if(!userFound){
+        if (!userFound) {
             console.log("USER DOESN'T EXISTS");
             return res.status(400).json({
                 success: false,
                 message: "Ο χρήστης δεν υπάρχει",
                 code: "USER_NOT_FOUND",
             });
-        }
-
-        // -----
-        // Find subscription id
-        const { data: sub, error: subError } = await supabase
-            .from('subscriptions')
-            .select('id')
-            .eq('owner_id', userFound.id)
-            .maybeSingle();
-
-        if (subError){
-            console.error("DB SELECT ERROR (subscriptions):", subError);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την ανάγνωση subscriptions",
-                code: "DB_ERROR",
-            });
-        };
-
-        let userIsOwner = true;
-        if(!sub) userIsOwner = false;
-        let needsOnboarding = false;
-        let onboardingStep = null;
-
-        if(userIsOwner){
-            // Find is_completed on onboarding table
-            const { data: onboarding, error: onboardingError } = await supabase
-                .from('onboarding')
-                .select('step, is_completed')
-                .eq('subscription_id', sub.id)
-                .maybeSingle();
-
-            if (onboardingError){
-                console.error("DB SELECT ERROR (onboarding):", onboardingError);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την ανάγνωση onboarding",
-                    code: "DB_ERROR",
-                });
-            };
-
-            if(!onboarding){
-                console.log("ONBOARDING NOT FOUND");
-                return res.status(404).json({
-                    success: false,
-                    message: "Δεν βρέθηκε onboarding stage",
-                    code: "ONBOARDING_NOT_FOUND",
-                });
-            }
-
-            needsOnboarding = !onboarding.is_completed;
-            onboardingStep = onboarding.step || 1;
         }
 
         // ---------------------------------------------
@@ -581,25 +537,33 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         // ---------------------------------------------
         // 3. CHECK OTP (verification_code table)
         // ---------------------------------------------
-        const { data: otpRecord, error: otpErr } = await supabase
+        let query = supabase
             .from("verification_codes")
             .select("*")
-            .eq("email", email)
-            .eq("type", VERIFICATION_TYPES.PASSWORD_RESET)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .eq("type", VERIFICATION_TYPES.PASSWORD_RESET);
 
-        if (otpErr){
+        // add email filter only if email was provided
+        if (email) {
+            query = query.eq("email", email);
+        }
+
+        // add phone filter only if phone was provided
+        if (phone) {
+            query = query.eq("phone", phone);
+        }
+
+        const { data: otpRecord, error: otpErr } = await query.maybeSingle();
+
+        if (otpErr) {
             console.error("DB SELECT ERROR (verification_codes):", otpErr);
             return res.status(500).json({
                 success: false,
                 message: "Σφάλμα κατά την ανάγνωση verification_codes",
                 code: "DB_ERROR",
             });
-        };
+        }
 
-        if(!otpRecord){
+        if (!otpRecord) {
             console.log("NO VERIFICATION CODE RETURNED AFTER SELECT");
             return res.status(400).json({
                 success: false,
@@ -608,9 +572,34 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             });
         }
 
+        if (otpRecord.attempts >= 5) {
+            return res.status(400).json({
+                success: false,
+                message: "Πάρα πολλές προσπάθειες. Ζητήστε νέο OTP.",
+                code: "OTP_TOO_MANY_ATTEMPTS",
+            });
+        }
+
+        // Always increase attempts immediately
+        const { error: attemptsErr } = await supabase
+            .from("verification_codes")
+            .update({
+                attempts: otpRecord.attempts + 1
+            })
+            .eq("id", otpRecord.id);
+
+        if (attemptsErr) {
+            console.error("DB UPDATE ERROR (attempts):", attemptsErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση attempts",
+                code: "DB_UPDATE_ERROR",
+            });
+        }
+
         const otpMatch = await bcrypt.compare(verificationCode, otpRecord.code_hash);
 
-        if (!otpMatch) {
+        if (!otpMatch || otpRecord.consumed) {
             console.log("INVALID OTP");
             return res.status(400).json({
                 success: false,
@@ -626,6 +615,24 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 success: false,
                 message: "Ο κωδικός OTP έχει λήξει.",
                 code: "OTP_EXPIRED",
+            });
+        }
+
+        // Mark OTP as consumed
+        const { error: consumeErr } = await supabase
+            .from("verification_codes")
+            .update({
+                consumed: true,
+                consumed_at: new Date().toISOString()
+            })
+            .eq("id", otpRecord.id);
+
+        if (consumeErr) {
+            console.error("DB UPDATE ERROR (consume):", consumeErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την κατανάλωση verification code",
+                code: "DB_ERROR",
             });
         }
 
@@ -650,48 +657,220 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             });
         }
 
+        const userId = userFound.id;
+
         // ---------------------------------------------
-        // 5. CREATE OR UPDATE USER SESSION
+        // 5. FETCH USER COMPANIES (like login)
+        // ---------------------------------------------
+        const { data: companyUsers, error: companyUsersError } = await supabase
+            .from('company_users')
+            .select('company_id, role_id, is_owner, status')
+            .eq('user_id', userId);
+
+        if (companyUsersError) {
+            console.error("DB SELECT ERROR (company_users):", companyUsersError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση company_users",
+                code: "DB_ERROR",
+            });
+        }
+
+        let companiesPayload = [];
+        if (companyUsers) {
+
+            const companyIds = companyUsers.map(cu => cu.company_id);
+            const roleIds = companyUsers.map(cu => cu.role_id);
+
+            // Fetch companies
+            const { data: companies, error: companiesErr } = await supabase
+                .from("companies")
+                .select("id, name")
+                .in("id", companyIds);
+
+            if (companiesErr) {
+                console.error("DB SELECT ERROR (companies):", companiesErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση companies",
+                    code: "DB_ERROR",
+                });
+            }
+            
+            if (!companies) {
+                console.log("NONE COMPANY FOUND");
+                return res.status(404).json({
+                    success: false,
+                    message: "Δεν βρέθηκε καμία εταιρεία",
+                    code: "COMPANIES_NOT_FOUND",
+                });
+            }
+
+            // Fetch roles
+            const { data: roles, error: rolesErr } = await supabase
+                .from("roles")
+                .select("id, key, name")
+                .in("id", roleIds);
+
+            if (rolesErr) {
+                console.error("DB SELECT ERROR (roles):", rolesErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση roles",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // Fetch permissions per role
+            const { data: rolePermissions, error: rolePermErr } = await supabase
+                .from("role_permissions")
+                .select("role_id, permissions(key)")
+                .in("role_id", roleIds);
+
+            if (rolePermErr) {
+                console.error("DB SELECT ERROR (role_permissions):", rolePermErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση role_permissions",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // Fetch onboarding for all companies
+            const { data: onboardingList, error: onboardingErr } = await supabase
+                .from("onboarding")
+                .select("company_id, current_step, max_step_reached, is_completed")
+                .in("company_id", companyIds);
+
+            if (onboardingErr) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης onboarding",
+                    code: "DB_ERROR_ONBOARDING",
+                });
+            }
+
+            // ---- LOOKUP MAPS ----
+
+            // Companies lookup
+            const companiesById = {};
+            companies.forEach(c => {
+                companiesById[c.id] = c;
+            });
+
+            // Roles lookup
+            const rolesById = {};
+            roles.forEach(r => {
+                rolesById[r.id] = r;
+            });
+
+            // Permissions by role lookup
+            const permissionsByRole = {};
+            rolePermissions.forEach(rp => {
+                if (!permissionsByRole[rp.role_id]) {
+                    permissionsByRole[rp.role_id] = [];
+                }
+
+                // case 1: { permissions: { key: "xxx" } }
+                if (rp.permissions?.key) {
+                    permissionsByRole[rp.role_id].push(rp.permissions.key);
+                    return;
+                }
+
+                // case 2: { permissions: [ { key: "xxx" }, { key: "yyy" } ] }
+                if (Array.isArray(rp.permissions)) {
+                    rp.permissions.forEach(p => permissionsByRole[rp.role_id].push(p.key));
+                }
+            });
+
+            // Onboarding lookup
+            const onboardingMap = {};
+            onboardingList?.forEach(o => {
+                onboardingMap[o.company_id] = {
+                    current_step: o.current_step,
+                    max_step_reached: o.max_step_reached,
+                    is_completed: o.is_completed
+                };
+            });
+
+            // ---- BUILD FINAL PAYLOAD ----
+
+            companiesPayload = companyUsers.map(cu => {
+
+                const company = companiesById[cu.company_id];
+                const role = rolesById[cu.role_id];
+                const permsForRole = permissionsByRole[cu.role_id] ?? [];
+
+                const onboarding = onboardingMap[cu.company_id] ?? {
+                    current_step: 1,
+                    max_step_reached: 1,
+                    is_completed: false
+                };
+
+                return {
+                    id: company.id,
+                    name: company.name,
+
+                    onboarding,
+
+                    membership: {
+                        is_owner: cu.is_owner,
+                        status: cu.status,
+
+                        role: {
+                            id: role.id,
+                            key: role.key,
+                            name: role.name
+                        },
+
+                        permissions: permsForRole
+                    }
+                };
+            });
+        }
+
+        // ---------------------------------------------
+        // 6. CREATE OR UPDATE USER SESSION
         // ---------------------------------------------
         const refreshToken = generateRefreshToken();
         const refreshTokenHash = hashRefreshToken(refreshToken);
 
-        // 1) Παλιές συσκευές -> revoke
+        // Revoke old sessions from other devices
         const { error: revokeOldSessionsError } = await supabase
             .from("user_sessions")
             .update({ 
                 revoked: true,
                 revoked_at: new Date().toISOString()
             })
-            .eq("user_id", userFound.id)
+            .eq("user_id", userId)
             .neq("fingerprint", fingerprint);
 
-        if (revokeOldSessionsError){
+        if (revokeOldSessionsError) {
             console.error("DB UPDATE ERROR (user_sessions):", revokeOldSessionsError);
             return res.status(500).json({
                 success: false,
                 message: "Σφάλμα κατά την ενημέρωση user_sessions",
                 code: "DB_ERROR",
             });
-        };
+        }
 
-        // 2) Έλεγχος υπάρχοντος session για το συγκεκριμένο fingerprint
+        // Check for existing session with this fingerprint
         const { data: existingSessions, error: existingSessionsError } = await supabase
             .from("user_sessions")
             .select("id")
-            .eq("user_id", userFound.id)
+            .eq("user_id", userId)
             .eq("fingerprint", fingerprint)
             .order("created_at", { ascending: false })
             .limit(1);
 
-        if (existingSessionsError){
+        if (existingSessionsError) {
             console.error("DB SELECT ERROR (user_sessions):", existingSessionsError);
             return res.status(500).json({
                 success: false,
                 message: "Σφάλμα κατά την ανάγνωση user_sessions",
                 code: "DB_ERROR",
             });
-        };
+        }
 
         const existingSession = existingSessions?.[0];
 
@@ -699,7 +878,7 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
         if (existingSession) {
-            // Υπάρχει session για αυτή τη συσκευή -> ανανέωσε το token
+            // Existing session for this device -> refresh token
             const { error: updateError } = await supabase
                 .from("user_sessions")
                 .update({
@@ -715,42 +894,34 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 })
                 .eq("id", existingSession.id);
 
-            if (updateError){
+            if (updateError) {
                 console.error("DB UPDATE ERROR (user_sessions):", updateError);
                 return res.status(500).json({
                     success: false,
                     message: "Σφάλμα κατά την ενημέρωση user_sessions",
                     code: "DB_ERROR",
                 });
-            };
+            }
 
         } else {
-            // Νέα συσκευή -> δημιουργία session
+            // New device -> create session
             const { error: insertError } = await supabase
                 .from("user_sessions")
                 .insert({
-                    user_id: userFound.id,
+                    user_id: userId,
                     refresh_token_hash: refreshTokenHash,
                     fingerprint,
-                    revoked: false,
-                    revoked_at: null,
-                    expires_at: expires_at,
-                    created_at: new Date().toISOString(),
-                    last_login_at: new Date().toISOString(),
-                    last_activity_at: new Date().toISOString(),
-                    // user_agent: req.headers["user-agent"],
-                    // device: deviceName,
-                    // platform: `${browser} on ${os}`,
+                    expires_at: expires_at
                 });
 
-            if (insertError){
+            if (insertError) {
                 console.error("DB INSERT ERROR (user_sessions):", insertError);
                 return res.status(500).json({
                     success: false,
                     message: "Σφάλμα κατά την καταχώρηση user_sessions",
                     code: "DB_ERROR",
                 });
-            };
+            }
         }
 
         setRefreshCookie(res, refreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
@@ -762,19 +933,19 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             success: true,
             message: "Επιτυχής αλλαγή κωδικού",
             data: {
-                access_token: generateAccessToken(userFound.id),
+                access_token: generateAccessToken(userId),
+
                 user: {
                     email: userFound.email,
-                    first_name: userFound.first_name,
-                    last_name: userFound.last_name,
-                    needsOnboarding: needsOnboarding,
-                    onboardingStep: onboardingStep
-                }
+                    phone: userFound.phone
+                },
+
+                companies: companiesPayload
             }
         });
         
     } catch (error) {
-        console.error('Error signing up', error);
+        console.error('Password reset error', error);
         return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
     }
     
@@ -1125,7 +1296,8 @@ router.post("/create-company", requireAuth, async (req, res) => {
         const { data: user, error: userError } = await supabase
             .from("users")
             .select("email")
-            .eq("id", userId);
+            .eq("id", userId)
+            .single();
 
         if (userError) {
             console.error("DB SELECT ERROR (users):", userError);
@@ -1161,29 +1333,6 @@ router.post("/create-company", requireAuth, async (req, res) => {
                 code: "DB_ERROR",
             });
         }
-
-        // ---------------------------------------------
-        // 2. CREATE STORE
-        // ---------------------------------------------
-        const { data: storeCreated, error: storeErr } = await supabase
-            .from("stores")
-            .insert([{
-                company_id: companyCreated.id,
-                is_main: true
-            }])
-            .select()
-            .single();
-
-        if (storeErr) {
-            console.error("DB INSERT ERROR (stores):", storeErr);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά τη δημιουργία αποθήκης",
-                code: "DB_ERROR",
-            });
-        }
-
-        console.log("STORE CREATED:", storeCreated.id);
 
         // ---------------------------------------------
         // 3. CREATE COMPANY USER
@@ -1822,6 +1971,438 @@ router.post("/login", baseRateLimiter, async (req, res) => {
         return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
     }
 });
+
+// ====== GOOGLE ======
+router.post("/google", baseRateLimiter, async (req, res) => {
+    const { credential, fingerprint } = req.body;
+
+    if (!credential || !fingerprint) {
+        console.log("NO DATA RECEIVED");
+        return res.status(400).json({
+            success: false,
+            message: "Δεν δόθηκαν τιμές",
+            code: "MISSING_VALUES"
+        });
+    }
+
+    try {
+        // ---------------------------------------------
+        // 1. VERIFY GOOGLE TOKEN
+        // ---------------------------------------------
+        let payload;
+        try {
+            const ticket = await googleClient.verifyIdToken({
+                idToken: credential,
+                audience: process.env.GOOGLE_CLIENT_ID,
+            });
+            payload = ticket.getPayload();
+        } catch (verifyError) {
+            console.error("Google token verification failed:", verifyError);
+            return res.status(401).json({
+                success: false,
+                message: "Μη έγκυρο Google token",
+                code: "INVALID_GOOGLE_TOKEN",
+            });
+        }
+
+        const { email, email_verified, sub: googleId, name, given_name, family_name, picture } = payload;
+
+        if (!email || !email_verified) {
+            console.log("EMAIL NOT VERIFIED BY GOOGLE");
+            return res.status(400).json({
+                success: false,
+                message: "Το email δεν έχει επαληθευτεί από την Google",
+                code: "EMAIL_NOT_VERIFIED",
+            });
+        }
+
+        // ---------------------------------------------
+        // 2. CHECK IF USER EXISTS
+        // ---------------------------------------------
+        const { data: existingUser, error: userError } = await supabase
+            .from("users")
+            .select("id, email, phone, google_id")
+            .eq("email", email)
+            .maybeSingle();
+
+        if (userError) {
+            console.error("DB SELECT ERROR (users):", userError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση users",
+                code: "DB_ERROR",
+            });
+        }
+
+        let userId;
+        let isNewUser = false;
+
+        if (existingUser) {
+            // ---------------------------------------------
+            // USER EXISTS - LOGIN FLOW
+            // ---------------------------------------------
+            userId = existingUser.id;
+
+            // Update google_id if not set
+            if (!existingUser.google_id) {
+                const { error: updateError } = await supabase
+                    .from("users")
+                    .update({ google_id: googleId })
+                    .eq("id", userId);
+
+                if (updateError) {
+                    console.error("DB UPDATE ERROR (google_id):", updateError);
+                    // Non-critical error, continue
+                }
+            }
+
+            console.log("EXISTING USER LOGGED IN:", userId);
+
+        } else {
+            // ---------------------------------------------
+            // USER DOESN'T EXIST - SIGNUP FLOW
+            // ---------------------------------------------
+            const { data: newUser, error: insertError } = await supabase
+                .from("users")
+                .insert([
+                    {
+                        email: email,
+                        google_id: googleId,
+                        email_verified: true,
+                        phone_verified: false,
+                        // password_hash is null for Google users
+                        first_name: given_name || null,
+                        last_name: family_name || null,
+                        profile_photo_url: picture || null,
+                    }
+                ])
+                .select()
+                .single();
+
+            if (insertError) {
+                console.error("DB INSERT ERROR (users):", insertError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά τη δημιουργία χρήστη",
+                    code: "DB_ERROR",
+                });
+            }
+
+            userId = newUser.id;
+            isNewUser = true;
+            console.log("NEW USER CREATED:", userId);
+        }
+
+        // ---------------------------------------------
+        // 3. FETCH USER COMPANIES (same as login)
+        // ---------------------------------------------
+        const { data: companyUsers, error: companyUsersError } = await supabase
+            .from('company_users')
+            .select('company_id, role_id, is_owner, status')
+            .eq('user_id', userId);
+
+        if (companyUsersError) {
+            console.error("DB SELECT ERROR (company_users):", companyUsersError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση company_users",
+                code: "DB_ERROR",
+            });
+        }
+
+        let companiesPayload = [];
+        if (companyUsers && companyUsers.length > 0) {
+
+            const companyIds = companyUsers.map(cu => cu.company_id);
+            const roleIds = companyUsers.map(cu => cu.role_id);
+
+            // Fetch companies
+            const { data: companies, error: companiesErr } = await supabase
+                .from("companies")
+                .select("id, name")
+                .in("id", companyIds);
+
+            if (companiesErr) {
+                console.error("DB SELECT ERROR (companies):", companiesErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση companies",
+                    code: "DB_ERROR",
+                });
+            }
+            
+            if (!companies) {
+                console.log("NONE COMPANY FOUND");
+                return res.status(404).json({
+                    success: false,
+                    message: "Δεν βρέθηκε καμία εταιρεία",
+                    code: "COMPANIES_NOT_FOUND",
+                });
+            }
+
+            // Fetch roles
+            const { data: roles, error: rolesErr } = await supabase
+                .from("roles")
+                .select("id, key, name")
+                .in("id", roleIds);
+
+            if (rolesErr) {
+                console.error("DB SELECT ERROR (roles):", rolesErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση roles",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // Fetch permissions per role
+            const { data: rolePermissions, error: rolePermErr } = await supabase
+                .from("role_permissions")
+                .select("role_id, permissions(key)")
+                .in("role_id", roleIds);
+
+            if (rolePermErr) {
+                console.error("DB SELECT ERROR (role_permissions):", rolePermErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση role_permissions",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // Fetch onboarding for all companies
+            const { data: onboardingList, error: onboardingErr } = await supabase
+                .from("onboarding")
+                .select("company_id, current_step, max_step_reached, is_completed")
+                .in("company_id", companyIds);
+
+            if (onboardingErr) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης onboarding",
+                    code: "DB_ERROR_ONBOARDING",
+                });
+            }
+
+            // ---- LOOKUP MAPS ----
+
+            // Companies lookup
+            const companiesById = {};
+            companies.forEach(c => {
+                companiesById[c.id] = c;
+            });
+
+            // Roles lookup
+            const rolesById = {};
+            roles.forEach(r => {
+                rolesById[r.id] = r;
+            });
+
+            // Permissions by role lookup
+            const permissionsByRole = {};
+            rolePermissions.forEach(rp => {
+                if (!permissionsByRole[rp.role_id]) {
+                    permissionsByRole[rp.role_id] = [];
+                }
+
+                // case 1: { permissions: { key: "xxx" } }
+                if (rp.permissions?.key) {
+                    permissionsByRole[rp.role_id].push(rp.permissions.key);
+                    return;
+                }
+
+                // case 2: { permissions: [ { key: "xxx" }, { key: "yyy" } ] }
+                if (Array.isArray(rp.permissions)) {
+                    rp.permissions.forEach(p => permissionsByRole[rp.role_id].push(p.key));
+                }
+            });
+
+            // Onboarding lookup
+            const onboardingMap = {};
+            onboardingList?.forEach(o => {
+                onboardingMap[o.company_id] = {
+                    current_step: o.current_step,
+                    max_step_reached: o.max_step_reached,
+                    is_completed: o.is_completed
+                };
+            });
+
+            // ---- BUILD FINAL PAYLOAD ----
+
+            companiesPayload = companyUsers.map(cu => {
+
+                const company = companiesById[cu.company_id];
+                const role = rolesById[cu.role_id];
+                const permsForRole = permissionsByRole[cu.role_id] ?? [];
+
+                const onboarding = onboardingMap[cu.company_id] ?? {
+                    current_step: 1,
+                    max_step_reached: 1,
+                    is_completed: false
+                };
+
+                return {
+                    id: company.id,
+                    name: company.name,
+
+                    onboarding,
+
+                    membership: {
+                        is_owner: cu.is_owner,
+                        status: cu.status,
+
+                        role: {
+                            id: role.id,
+                            key: role.key,
+                            name: role.name
+                        },
+
+                        permissions: permsForRole
+                    }
+                };
+            });
+        }
+
+        // ---------------------------------------------
+        // 4. CREATE OR UPDATE USER SESSION
+        // ---------------------------------------------
+        const refreshToken = generateRefreshToken();
+        const refreshTokenHash = hashRefreshToken(refreshToken);
+
+        // Revoke old sessions from other devices
+        const { error: revokeOldSessionsError } = await supabase
+            .from("user_sessions")
+            .update({ 
+                revoked: true,
+                revoked_at: new Date().toISOString()
+            })
+            .eq("user_id", userId)
+            .neq("fingerprint", fingerprint);
+
+        if (revokeOldSessionsError) {
+            console.error("DB UPDATE ERROR (user_sessions):", revokeOldSessionsError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ενημέρωση user_sessions",
+                code: "DB_ERROR",
+            });
+        }
+
+        // Check for existing session with this fingerprint
+        const { data: existingSessions, error: existingSessionsError } = await supabase
+            .from("user_sessions")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("fingerprint", fingerprint)
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+        if (existingSessionsError) {
+            console.error("DB SELECT ERROR (user_sessions):", existingSessionsError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση user_sessions",
+                code: "DB_ERROR",
+            });
+        }
+
+        const existingSession = existingSessions?.[0];
+
+        const expires_at = new Date();
+        expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
+
+        if (existingSession) {
+            // Existing session for this device -> refresh token
+            const { error: updateError } = await supabase
+                .from("user_sessions")
+                .update({
+                    refresh_token_hash: refreshTokenHash,
+                    revoked: false,
+                    revoked_at: null,
+                    expires_at: expires_at.toISOString(),
+                    last_login_at: new Date().toISOString(),
+                    last_activity_at: new Date().toISOString(),
+                })
+                .eq("id", existingSession.id);
+
+            if (updateError) {
+                console.error("DB UPDATE ERROR (user_sessions):", updateError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ενημέρωση user_sessions",
+                    code: "DB_ERROR",
+                });
+            }
+
+        } else {
+            // New device -> create session
+            const { error: insertError } = await supabase
+                .from("user_sessions")
+                .insert({
+                    user_id: userId,
+                    refresh_token_hash: refreshTokenHash,
+                    fingerprint,
+                    expires_at: expires_at
+                });
+
+            if (insertError) {
+                console.error("DB INSERT ERROR (user_sessions):", insertError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την καταχώρηση user_sessions",
+                    code: "DB_ERROR",
+                });
+            }
+        }
+
+        setRefreshCookie(res, refreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
+
+        // ---------------------------------------------
+        // 5. FETCH FULL USER DATA FOR RESPONSE
+        // ---------------------------------------------
+        const { data: fullUser, error: fullUserError } = await supabase
+            .from("users")
+            .select("email, phone")
+            .eq("id", userId)
+            .single();
+
+        if (fullUserError) {
+            console.error("DB SELECT ERROR (full user):", fullUserError);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση user data",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ---------------------------------------------
+        // SUCCESS
+        // ---------------------------------------------
+        return res.json({
+            success: true,
+            message: isNewUser ? "Επιτυχής εγγραφή με Google" : "Επιτυχής σύνδεση με Google",
+            data: {
+                access_token: generateAccessToken(userId),
+
+                user: {
+                    email: fullUser.email,
+                    phone: fullUser.phone
+                },
+
+                companies: companiesPayload
+            }
+        });
+
+    } catch (error) {
+        console.error('Google auth error', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
+            code: "SERVER_ERROR" 
+        });
+    }
+});
+
 
 // --- REFRESH (ROTATION) ---
 router.post("/refresh", refreshRateLimiter, async (req, res) => {

@@ -51,6 +51,11 @@
 - store_plugins = which stores use them
 - settings allows per-store customization
 
+- Καθαρός διαχωρισμός ευθύνης
+- Table	Ρόλος
+- company_plugins	Billing + δικαίωμα χρήσης
+- store_plugins	Runtime ενεργοποίηση
+
 ---
 
 ## 📌 2. Example Rows

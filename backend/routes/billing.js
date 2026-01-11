@@ -2,6 +2,11 @@ const express = require('express');
 const { requireAuth, requireOwner, requireActiveCompany } = require('../middlewares/authRequired');
 const Stripe = require('stripe');
 const supabase = require('../supabaseConfig');
+const { TOTAL_STEPS } = require('../helpers/onboarding/onboardingSteps');
+const { generateSubscriptionCode } = require('../helpers/generateSubscriptionCode');
+const { validateCompleteOnboardingData } = require('../helpers/onboarding/onboardingValidation');
+const { completeOnboardingProcess } = require('../helpers/onboarding/completeOnboarding');
+const { sendWelcomeEmail } = require('../helpers/emailService');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -214,17 +219,18 @@ router.post('/create-setup-intent', requireAuth, requireOwner, async (req, res) 
 router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) => {
 
     const { setupIntentId } = req.body;
-    const companyId = req.user.company_id;
+    const { companyId } = req.user;
+    const userId = req.user.id
 
     if (!setupIntentId) {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'Missing setupIntentId' 
+        return res.status(400).json({
+            success: false,
+            message: 'Missing setupIntentId'
         });
     }
 
     try {
-        // 1️⃣ Load company (Stripe customer)
+        // 1. Load company (Stripe customer)
         const { data: company } = await supabase
             .from('companies')
             .select('name, stripe_customer_id')
@@ -232,38 +238,99 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             .single();
 
         if (!company?.stripe_customer_id) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Stripe customer not found' 
+            return res.status(400).json({
+                success: false,
+                message: 'Stripe customer not found'
             });
         }
 
         const stripeCustomerId = company.stripe_customer_id;
 
-        // 2️⃣ Retrieve SetupIntent
+        // 2. Retrieve SetupIntent & set default payment method
         const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+
+        // Check if SetupIntent has succeeded
+        if (setupIntent.status !== 'succeeded') {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment method not confirmed yet',
+                code: 'SETUP_INTENT_NOT_SUCCEEDED'
+            });
+        }
+
         const paymentMethodId = setupIntent.payment_method;
 
-        // 3️⃣ Set default payment method
+        // Verify the payment method belongs to this customer
+        if (setupIntent.customer && setupIntent.customer !== stripeCustomerId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment method does not belong to this customer',
+                code: 'INVALID_PAYMENT_METHOD'
+            });
+        }
+
         await stripe.customers.update(stripeCustomerId, {
             name: company.name,
             invoice_settings: { default_payment_method: paymentMethodId }
         });
 
-        // 4️⃣ Load onboarding & plan data
-        const { data: onboarding } = await supabase
+        // 3. Load onboarding data with full validation
+        const { data: onboarding, error: onboardingErr } = await supabase
             .from('onboarding')
-            .select('data')
+            .select('current_step, max_step_reached, is_completed, data')
             .eq('company_id', companyId)
             .single();
 
+        if (onboardingErr) {
+            console.error("DB SELECT ERROR (onboarding):", onboardingErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση onboarding",
+                code: "DB_ERROR",
+            });
+        }
+
+        // 3a. Check if already completed
+        if (onboarding.is_completed) {
+            return res.status(400).json({
+                success: false,
+                message: "Το onboarding έχει ήδη ολοκληρωθεί",
+                code: "ALREADY_COMPLETED"
+            });
+        }
+
+        // 3b. Verify user is on the final step
+        if (onboarding.current_step !== TOTAL_STEPS) {
+            return res.status(400).json({
+                success: false,
+                message: "Πρέπει να ολοκληρώσετε όλα τα steps",
+                code: "NOT_ON_FINAL_STEP",
+            });
+        }
+
         const onboardingData = onboarding.data;
+
+        // 3c. Validate the sanitized data
+        const validation = validateCompleteOnboardingData(onboardingData);
+        if (!validation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: "Τα δεδομένα δεν είναι έγκυρα",
+                code: "VALIDATION_ERROR",
+            });
+        }
+
         const planId = onboardingData.plan.id;
         const billingPeriod = onboardingData.plan.billing;
 
+        // 4. Fetch plan details
         const { data: plan } = await supabase
             .from('plans')
             .select(`
+                id,
+                name,
+                is_free,
+                allows_paid_plugins,
                 stripe_price_id_monthly,
                 stripe_price_id_yearly,
                 stripe_extra_store_price_id_monthly,
@@ -273,11 +340,15 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             .eq('id', planId)
             .single();
 
-        // 5️⃣ Build Stripe subscription items
+        // 5. Build Stripe subscription items
         const items = [];
 
         // Base plan
-        items.push({ price: billingPeriod === 'monthly' ? plan.stripe_price_id_monthly : plan.stripe_price_id_yearly });
+        items.push({
+            price: billingPeriod === 'monthly'
+                ? plan.stripe_price_id_monthly
+                : plan.stripe_price_id_yearly
+        });
 
         // Extra branches
         const extraBranches = Math.max(0, onboardingData.branches - plan.included_branches);
@@ -294,67 +365,194 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
         if (onboardingData.plugins?.length) {
             const { data: plugins } = await supabase
                 .from('plugins')
-                .select('stripe_price_id_monthly,stripe_price_id_yearly')
+                .select('key, stripe_price_id_monthly, stripe_price_id_yearly')
                 .in('key', onboardingData.plugins);
 
             plugins.forEach(p => {
-                items.push({ price: billingPeriod === 'monthly' ? p.stripe_price_id_monthly : p.stripe_price_id_yearly });
+                const priceId = billingPeriod === 'monthly' 
+                    ? p.stripe_price_id_monthly 
+                    : p.stripe_price_id_yearly;
+                
+                // Only add if price ID exists and is not empty
+                if (priceId && priceId.trim() !== '') {
+                    items.push({ price: priceId });
+                } else {
+                    console.warn(`Plugin ${p.key} has no valid Stripe price ID for ${billingPeriod} billing`);
+                }
             });
         }
 
-        // 6️⃣ Create subscription (off_session, using saved payment method)
+        // 6. Create Stripe subscription
         const stripeSubscription = await stripe.subscriptions.create({
             customer: stripeCustomerId,
             items,
             payment_behavior: 'default_incomplete',
-            payment_settings: { 
-                save_default_payment_method: 'on_subscription' 
+            payment_settings: {
+                payment_method_types: ['card'],
+                save_default_payment_method: 'on_subscription'
             },
-            expand: ['latest_invoice.payment_intent'],
+            expand: ['latest_invoice', 'items.data.price'],
             metadata: { companyId }
         });
 
-        // 7️⃣ Insert subscription in DB (draft)
-        await supabase
+        // 6a. Pay the invoice immediately (it's already finalized)
+        const invoiceId = stripeSubscription.latest_invoice.id;
+        
+        const paidInvoice = await stripe.invoices.pay(invoiceId, {
+            payment_method: paymentMethodId
+        });
+
+        console.log(`Invoice ${invoiceId} payment status: ${paidInvoice.status}`);
+
+        // 7. Prepare PAID subscription payload
+        const subscriptionPayload = {
+            company_id: companyId,
+            plan_id: plan.id,
+            stripe_subscription_id: stripeSubscription.id,
+            subscription_code: generateSubscriptionCode(),
+            billing_period: billingPeriod,
+            billing_status: 'incomplete',
+            currency: 'eur',
+            current_period_start: null, // Will be set by webhook
+            current_period_end: null,
+            cancel_at_period_end: false,
+            cancel_at: null,
+            canceled_at: null,
+            updated_at: new Date().toISOString(),
+            // metadata: {
+            //     plugins: onboardingData.plugins,
+            //     branches: onboardingData.branches
+            // }
+        };
+
+        // 8. Complete onboarding with Stripe subscription
+        const result = await completeOnboardingProcess(
+            companyId,
+            onboarding,
+            plan,
+            subscriptionPayload
+        );
+
+        // 8a. Get the created subscription ID from DB
+        const { data: createdSubscription, error: fetchSubError } = await supabase
             .from('subscriptions')
-            .insert({
-                company_id: companyId,
-                plan_id: planId,
-                stripe_subscription_id: stripeSubscription.id,
-                subscription_code: `sub_${companyId.slice(0, 8)}`,
-                billing_period: billingPeriod,
-                billing_status: 'incomplete',
-                currency: 'eur',
-                metadata: {
-                    plugins: onboardingData.plugins,
-                    branches: onboardingData.branches
+            .select('id')
+            .eq('stripe_subscription_id', stripeSubscription.id)
+            .single();
+
+        if (fetchSubError || !createdSubscription) {
+            console.error('Failed to fetch created subscription:', fetchSubError);
+            throw fetchSubError;
+        }
+
+        // 8b. Create subscription_items from Stripe subscription items
+        const subscriptionItemsToInsert = [];
+
+        for (const stripeItem of stripeSubscription.items.data) {
+            const priceId = stripeItem.price.id;
+            const quantity = stripeItem.quantity;
+            const unitAmount = stripeItem.price.unit_amount / 100; // Convert from cents
+
+            let itemType = null;
+            let pluginKey = null;
+
+            // Determine item type by matching price IDs
+            if (priceId === plan.stripe_price_id_monthly || priceId === plan.stripe_price_id_yearly) {
+                itemType = 'plan';
+            } else if (priceId === plan.stripe_extra_store_price_id_monthly || priceId === plan.stripe_extra_store_price_id_yearly) {
+                itemType = 'extra_store';
+            } else {
+                // It's a plugin - find which one
+                const { data: matchedPlugin } = await supabase
+                    .from('plugins')
+                    .select('key')
+                    .or(`stripe_price_id_monthly.eq.${priceId},stripe_price_id_yearly.eq.${priceId}`)
+                    .single();
+
+                if (matchedPlugin) {
+                    itemType = 'plugin';
+                    pluginKey = matchedPlugin.key;
                 }
-            });
+            }
 
-        // 8️⃣ Mark onboarding complete
-        await supabase
-            .from('onboarding')
-            .update({ 
-                is_completed: true, 
-                updated_at: new Date().toISOString() 
-            })
-            .eq('company_id', companyId);
+            if (itemType) {
+                subscriptionItemsToInsert.push({
+                    subscription_id: createdSubscription.id,
+                    item_type: itemType,
+                    stripe_subscription_item_id: stripeItem.id,
+                    stripe_price_id: priceId,
+                    plugin_key: pluginKey,
+                    quantity: quantity,
+                    unit_amount: unitAmount,
+                    currency: stripeItem.price.currency,
+                    status: 'active'
+                });
+            }
+        }
 
-        // 9️⃣ Return client_secret for payment confirmation if needed
+        // 8c. Insert subscription items
+        if (subscriptionItemsToInsert.length > 0) {
+            const { error: itemsError } = await supabase
+                .from('subscription_items')
+                .insert(subscriptionItemsToInsert);
+
+            if (itemsError) {
+                console.error('Failed to create subscription items:', itemsError);
+                throw itemsError;
+            }
+
+            console.log(`Created ${subscriptionItemsToInsert.length} subscription items`);
+        }
+
+        // 9. Send welcome email
+        const { data: user } = await supabase
+            .from('users')
+            .select('email')
+            .eq('id', userId)
+            .single();
+
+        if (user) {
+            const nextPaymentDate = new Date(stripeSubscription.items.data[0].current_period_end * 1000)
+                .toLocaleDateString('el-GR', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                });
+
+            await sendWelcomeEmail(
+                user.email,
+                company.name, // company name
+                plan.name,
+                false, // not free
+                nextPaymentDate
+            );
+        }
+
         res.json({
             success: true,
-            clientSecret: stripeSubscription.latest_invoice.payment_intent.client_secret
+            message: "Επιτυχής ολοκλήρωση συνδρομής",
+            data: {
+                is_completed: result.is_completed
+            }
+            
         });
 
     } catch (err) {
+        if (err.status) {
+            return res.status(err.status).json({
+                success: false,
+                message: err.message,
+                code: err.code
+            });
+        }
+
         console.error('ONBOARDING COMPLETE ERROR:', err);
-        res.status(500).json({ success: false, message: 'Failed to complete onboarding' });
+        res.status(500).json({
+            success: false,
+            message: 'Failed to complete onboarding'
+        });
     }
 });
-
-
-
-
 
 // ------------------------------------
 

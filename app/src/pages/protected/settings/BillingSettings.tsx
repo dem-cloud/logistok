@@ -1,7 +1,9 @@
+import { axiosPrivate } from "@/api/axios";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import PlanList from "@/components/PlanList";
 import SidePopup from "@/components/reusable/SidePopup";
 import StripeCheckoutForm, { StripeCheckoutFormHandle } from "@/components/StripeCheckoutForm";
+import { useAuth } from "@/context/AuthContext";
 import { usePlans } from "@/hooks/usePlans";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Plan } from "@/onboarding/types";
@@ -17,6 +19,8 @@ export default function BillingSettings() {
     const { data: plans = [] } = usePlans();
     const { data: subscription } = useSubscription();
 
+    const { activeCompany ,showToast } = useAuth()
+
     const paymentFormRef = useRef<StripeCheckoutFormHandle>(null);
 
     // payload:
@@ -30,6 +34,19 @@ export default function BillingSettings() {
     //     currentPeriodEnd: string;
     //     cancelAtPeriodEnd: boolean;
     // }
+    const [companyName, setCompanyName] = useState(activeCompany?.name || "");
+    const [companyNameError, setCompanyNameError] = useState<string | undefined>(undefined);
+    const [vatNumber, setVatNumber] = useState("");
+
+    const validate = () => {
+        if (!companyName.trim()) {
+            setCompanyNameError("Το όνομα εταιρείας είναι υποχρεωτικό");
+            return false;
+        }
+
+        setCompanyNameError(undefined);
+        return true;
+    };
     
     const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
     const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("yearly");
@@ -52,6 +69,24 @@ export default function BillingSettings() {
     const handleClosePopup = () => {
         setPopupOpen(false);
     };
+
+
+    const handleChangePlan = async () => {
+        
+        if(!selectedPlan) return;
+
+        const response = await axiosPrivate.post("/api/billing/change-plan", {
+            planId: selectedPlan.id,
+            billingPeriod
+        });
+
+        const { success } = response.data;
+
+        if (!success) {
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+            return;
+        }
+    }
 
     return (
         <>
@@ -88,12 +123,24 @@ export default function BillingSettings() {
                 >
                     <StripeCheckoutForm
                         ref={paymentFormRef}
-                        planId={selectedPlan.id}
 
                         billingPeriod={billingPeriod}
                         onBillingPeriodChange={handleBillingChange}
 
                         mode="admin"
+                        loading={false}
+
+                        companyName={companyName}
+                        companyNameError={companyNameError}
+                        onCompanyNameChange={(v) => {
+                            setCompanyName(v);
+                            setCompanyNameError(undefined);
+                        }}
+                        vatNumber = {vatNumber}
+                        onVatNumberChange={setVatNumber}
+                        validate={validate}
+
+                        changePlan = {handleChangePlan}
                         onSuccess={() => {
                             queryClient.invalidateQueries({ queryKey: ["subscription"] });
                             setPopupOpen(false)

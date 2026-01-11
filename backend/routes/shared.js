@@ -7,6 +7,8 @@ const Stripe = require('stripe');
 const { ONBOARDING_STEPS, TOTAL_STEPS } = require('../helpers/onboarding/onboardingSteps');
 const { sanitizeOnboardingUpdates, validateNextOnboardingData, validateCompleteOnboardingData } = require('../helpers/onboarding/onboardingValidation');
 const { generateSubscriptionCode } = require('../helpers/generateSubscriptionCode');
+const { completeOnboardingProcess } = require('../helpers/onboarding/completeOnboarding');
+const { sendWelcomeEmail } = require('../helpers/emailService');
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -821,13 +823,314 @@ router.post("/onboarding/next", requireAuth, requireOwner, async (req, res) => {
 // ============================================
 // ENDPOINT: Complete Onboarding
 // ============================================
-router.post("/onboarding/complete", requireAuth, requireOwner, async (req, res) => {
+
+// **The commented is all the concept only for free plan onboarding completion**
+// router.post("/complete-onboarding", requireAuth, requireOwner, async (req, res) => {
+
+//     const { companyId } = req.user;
+
+//     try {
+//         // Fetch current onboarding state
+//         const { data: onboarding, error: onboardingErr } = await supabase
+//             .from('onboarding')
+//             .select('current_step, max_step_reached, is_completed, data')
+//             .eq("company_id", companyId)
+//             .single();
+
+//         if (onboardingErr) {
+//             console.error("DB SELECT ERROR (onboarding):", onboardingErr);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Σφάλμα κατά την ανάγνωση onboarding",
+//                 code: "DB_ERROR",
+//             });
+//         }
+
+//         // Check if already completed
+//         if (onboarding.is_completed) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Το onboarding έχει ήδη ολοκληρωθεί",
+//                 code: "ALREADY_COMPLETED"
+//             });
+//         }
+
+//         // Verify user is on the final step
+//         if (onboarding.current_step !== TOTAL_STEPS) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Πρέπει να ολοκληρώσετε όλα τα steps",
+//                 code: "NOT_ON_FINAL_STEP",
+//             });
+//         }
+
+//         const sanitizedData = onboarding.data;
+
+//         // Validate the sanitized data (strict validation for completion)
+//         const validation = validateCompleteOnboardingData(sanitizedData);
+
+//         if (!validation.valid) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Τα δεδομένα δεν είναι έγκυρα",
+//                 code: "VALIDATION_ERROR",
+//                 // errors: validation.errors
+//             });
+//         }
+       
+//         const { data: plan, error: planErr } = await supabase
+//             .from('plans')
+//             .select('id, key, is_free, allows_paid_plugins')
+//             .eq('id', sanitizedData.plan.id)
+//             .single();
+
+//         if (planErr || !plan) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Invalid plan",
+//                 code: "INVALID_PLAN"
+//             });
+//         }
+
+//         const canUsePaidPlugins = plan.allows_paid_plugins;
+
+//         // ---------------------------------------------
+//         // 1. Update tables with final data
+//         // ---------------------------------------------
+
+//         // ======= clean ups =======
+//         const { error: deleteError } = await supabase
+//             .from('company_industries')
+//             .delete()
+//             .eq('company_id', companyId);
+
+//         if (deleteError) {
+//             console.error("Failed to delete company_industries:", deleteError);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Σφάλμα κατά την company industries",
+//                 code: "DB_ERROR"
+//             });
+//         }
+        
+//         const { error: deletePluginsErr } = await supabase
+//             .from('company_plugins')
+//             .delete()
+//             .eq('company_id', companyId);
+
+//         if (deletePluginsErr) {
+//             console.error("Failed to delete company_plugins:", deletePluginsErr);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Σφάλμα κατά την εκκαθάριση plugins",
+//                 code: "DB_ERROR"
+//             });
+//         }
+
+//         // ======= companies =======
+//         const { error: companyUpdateErr } = await supabase
+//             .from('companies')
+//             .update({
+//                 name: sanitizedData.company.name,
+//                 phone: sanitizedData.company.phone,
+//             })
+//             .eq('id', companyId);
+
+//         if (companyUpdateErr) {
+//             console.error("Failed to update company:", companyUpdateErr);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Σφάλμα κατά την ενημέρωση της εταιρείας",
+//                 code: "DB_ERROR"
+//             });
+//         }
+//         // ======= company_industries =======
+
+//         if(sanitizedData.industries.length > 0) {
+//             // πάρε valid industries
+//             const { data: validIndustries, error: validIndustriesError } = await supabase
+//                 .from('industries')
+//                 .select('key')
+//                 .in('key', sanitizedData.industries);
+
+//             if (validIndustriesError) {
+//                 console.error("Failed to select industries:", validIndustriesError);
+//                 return res.status(500).json({
+//                     success: false,
+//                     message: "Σφάλμα κατά την ανάγνωση κλάδων",
+//                     code: "DB_ERROR"
+//                 });
+//             }
+
+//             // insert νέες σχέσεις
+//             if (validIndustries.length > 0) {
+
+//                 const rows = validIndustries.map(i => ({
+//                     company_id: companyId,
+//                     industry_key: i.key
+//                 }));
+
+//                 const { error: insertError  } = await supabase
+//                     .from('company_industries')
+//                     .insert(rows);
+
+//                 if (insertError) {
+//                     console.error("Failed to update company_industries:", insertError);
+//                     return res.status(500).json({
+//                         success: false,
+//                         message: "Σφάλμα κατά την ενημέρωση company industries",
+//                         code: "DB_ERROR"
+//                     });
+//                 }
+//             }
+//         }
+
+//         // ======= company_plugins =======
+        
+//         if(sanitizedData.plugins.length > 0){
+
+//             // πάρε plugins που υπάρχουν και είναι active
+//             const { data: availablePlugins, error: pluginsSelectErr } = await supabase
+//                 .from('plugins')
+//                 .select('key, is_active, price_monthly, price_yearly')
+//                 .in('key', sanitizedData.plugins)
+//                 .eq('is_active', true);
+
+//             if (pluginsSelectErr) {
+//                 console.error("Failed to select plugins:", pluginsSelectErr);
+//                 return res.status(500).json({
+//                     success: false,
+//                     message: "Σφάλμα κατά την ανάγνωση plugins",
+//                     code: "DB_ERROR"
+//                 });
+//             }
+
+//             // φιλτράρισμα βάσει plan
+//             const allowedPlugins = availablePlugins.filter(plugin => {
+//                 // basic → μόνο free plugins
+//                 if (!canUsePaidPlugins) {
+//                     return (
+//                         plugin.price_monthly === null &&
+//                         plugin.price_yearly === null
+//                     );
+//                 }
+
+//                 // paid plan → όλα
+//                 return true;
+//             });
+
+//             // insert νέες εγγραφές
+//             if (allowedPlugins.length > 0) {
+
+//                 const pluginRows = allowedPlugins.map(plugin => ({
+//                     company_id: companyId,
+//                     plugin_key: plugin.key,
+
+//                     // σωστά για onboarding
+//                     status: 'active',
+//                     activated_at: new Date().toISOString(),
+//                     subscription_item_id: null,
+//                     settings: null
+//                 }));
+
+//                 const { error: insertPluginsErr } = await supabase
+//                     .from('company_plugins')
+//                     .insert(pluginRows);
+
+//                 if (insertPluginsErr) {
+//                     console.error("Failed to insert company_plugins:", insertPluginsErr);
+//                     return res.status(500).json({
+//                         success: false,
+//                         message: "Σφάλμα κατά την αποθήκευση plugins",
+//                         code: "DB_ERROR"
+//                     });
+//                 }
+//             }
+//         }
+
+//         // ======= subscriptions =======
+//         const subscriptionPayload = {
+//             company_id: companyId,
+//             plan_id: plan.id,
+//             subscription_code: generateSubscriptionCode(),
+
+//             billing_period: plan.is_free ? null : sanitizedData.plan.billing,
+
+//             billing_status: plan.is_free ? 'active' : 'incomplete',
+
+//             current_period_start: plan.is_free ? new Date().toISOString() : null,
+//             current_period_end: null,
+
+//             cancel_at_period_end: false,
+//             cancel_at: null,
+//             canceled_at: null,
+//             updated_at: new Date().toISOString()
+//         };
+
+//         const { error: subscriptionErr } = await supabase
+//             .from('subscriptions')
+//             .upsert(subscriptionPayload, {
+//                 onConflict: 'company_id'
+//             })
+
+//         if (subscriptionErr) {
+//             console.error("Failed to create subscription:", subscriptionErr);
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Σφάλμα κατά τη δημιουργία συνδρομής",
+//                 code: "DB_ERROR"
+//             });
+//         }
+        
+//         // ---------------------------------------------
+//         // 2. Mark onboarding as completed
+//         // ---------------------------------------------
+//         const { data: onboardingUpdate, error: onboardingUpdateErr } = await supabase
+//             .from('onboarding')
+//             .update({
+//                 data: sanitizedData,
+//                 is_completed: true,
+//                 updated_at: new Date().toISOString()
+//             })
+//             .eq('company_id', companyId)
+//             .select("is_completed")
+//             .single();
+
+//         if (onboardingUpdateErr) {
+//             console.error("Failed to complete onboarding:", onboardingUpdateErr);
+//             // This is a critical error - company is updated but onboarding isn't marked complete
+//             return res.status(500).json({
+//                 success: false,
+//                 message: "Σφάλμα κατά την ολοκλήρωση onboarding",
+//                 code: "DB_ERROR"
+//             });
+//         }
+
+//         return res.json({
+//             success: true,
+//             message: "Το onboarding ολοκληρώθηκε επιτυχώς!",
+//             data: {
+//                 is_completed: onboardingUpdate.is_completed
+//             }
+//         });
+
+//     } catch (err) {
+//         console.error('Error completing onboarding:', err);
+//         return res.status(500).json({
+//             success: false,
+//             message: "Server error",
+//             code: "SERVER_ERROR"
+//         });
+//     }
+// });
+
+router.post("/onboarding-complete", requireAuth, requireOwner, async (req, res) => {
 
     const { companyId } = req.user;
-    const { final_updates } = req.body;
+    const userId = req.user.id;
 
     try {
-        // Fetch current onboarding state
+        // 1. Fetch current onboarding state
         const { data: onboarding, error: onboardingErr } = await supabase
             .from('onboarding')
             .select('current_step, max_step_reached, is_completed, data')
@@ -843,7 +1146,7 @@ router.post("/onboarding/complete", requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        // Check if already completed
+        // 2. Check if already completed
         if (onboarding.is_completed) {
             return res.status(400).json({
                 success: false,
@@ -852,7 +1155,7 @@ router.post("/onboarding/complete", requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        // Verify user is on the final step
+        // 3. Verify user is on the final step
         if (onboarding.current_step !== TOTAL_STEPS) {
             return res.status(400).json({
                 success: false,
@@ -861,24 +1164,22 @@ router.post("/onboarding/complete", requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        // Sanitize the complete data from database
-        const sanitizedData = sanitizeOnboardingUpdates(final_updates, onboarding.data);
+        const sanitizedData = onboarding.data;
 
-        // Validate the sanitized data (strict validation for completion)
+        // 4. Validate the sanitized data
         const validation = validateCompleteOnboardingData(sanitizedData);
-
         if (!validation.valid) {
             return res.status(400).json({
                 success: false,
                 message: "Τα δεδομένα δεν είναι έγκυρα",
                 code: "VALIDATION_ERROR",
-                // errors: validation.errors
             });
         }
-       
+
+        // 5. Fetch plan details
         const { data: plan, error: planErr } = await supabase
             .from('plans')
-            .select('id, key, is_free, allows_paid_plugins')
+            .select('id, name, key, is_free, allows_paid_plugins, included_branches')
             .eq('id', sanitizedData.plan.id)
             .single();
 
@@ -890,245 +1191,71 @@ router.post("/onboarding/complete", requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        const canUsePaidPlugins = plan.allows_paid_plugins;
-
-        // ---------------------------------------------
-        // 1. Update tables with final data
-        // ---------------------------------------------
-
-        // ======= clean ups =======
-        const { error: deleteError } = await supabase
-            .from('company_industries')
-            .delete()
-            .eq('company_id', companyId);
-
-        if (deleteError) {
-            console.error("Failed to delete company_industries:", deleteError);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την company industries",
-                code: "DB_ERROR"
-            });
-        }
-        
-        const { error: deletePluginsErr } = await supabase
-            .from('company_plugins')
-            .delete()
-            .eq('company_id', companyId);
-
-        if (deletePluginsErr) {
-            console.error("Failed to delete company_plugins:", deletePluginsErr);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την εκκαθάριση plugins",
-                code: "DB_ERROR"
-            });
-        }
-
-        // ======= companies =======
-        const { error: companyUpdateErr } = await supabase
-            .from('companies')
-            .update({
-                name: sanitizedData.company.name,
-                phone: sanitizedData.company.phone,
-            })
-            .eq('id', companyId);
-
-        if (companyUpdateErr) {
-            console.error("Failed to update company:", companyUpdateErr);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την ενημέρωση της εταιρείας",
-                code: "DB_ERROR"
-            });
-        }
-        // ======= company_industries =======
-
-        if(sanitizedData.industries.length > 0) {
-            // πάρε valid industries
-            const { data: validIndustries, error: validIndustriesError } = await supabase
-                .from('industries')
-                .select('key')
-                .in('key', sanitizedData.industries);
-
-            if (validIndustriesError) {
-                console.error("Failed to select industries:", validIndustriesError);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την ανάγνωση κλάδων",
-                    code: "DB_ERROR"
-                });
-            }
-
-            // insert νέες σχέσεις
-            if (validIndustries.length > 0) {
-
-                const rows = validIndustries.map(i => ({
-                    company_id: companyId,
-                    industry_key: i.key
-                }));
-
-                const { error: insertError  } = await supabase
-                    .from('company_industries')
-                    .insert(rows);
-
-                if (insertError) {
-                    console.error("Failed to update company_industries:", insertError);
-                    return res.status(500).json({
-                        success: false,
-                        message: "Σφάλμα κατά την ενημέρωση company industries",
-                        code: "DB_ERROR"
-                    });
-                }
-            }
-        }
-
-        // ======= company_plugins =======
-        
-        if(sanitizedData.plugins.length > 0){
-
-            // πάρε plugins που υπάρχουν και είναι active
-            const { data: availablePlugins, error: pluginsSelectErr } = await supabase
-                .from('plugins')
-                .select('key, is_active, price_monthly, price_yearly')
-                .in('key', sanitizedData.plugins)
-                .eq('is_active', true);
-
-            if (pluginsSelectErr) {
-                console.error("Failed to select plugins:", pluginsSelectErr);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την ανάγνωση plugins",
-                    code: "DB_ERROR"
-                });
-            }
-
-            // φιλτράρισμα βάσει plan
-            const allowedPlugins = availablePlugins.filter(plugin => {
-                // basic → μόνο free plugins
-                if (!canUsePaidPlugins) {
-                    return (
-                        plugin.price_monthly === null &&
-                        plugin.price_yearly === null
-                    );
-                }
-
-                // paid plan → όλα
-                return true;
-            });
-
-            // insert νέες εγγραφές
-            if (allowedPlugins.length > 0) {
-
-                const pluginRows = allowedPlugins.map(plugin => ({
-                    company_id: companyId,
-                    plugin_key: plugin.key,
-
-                    // σωστά για onboarding
-                    status: 'active',
-                    activated_at: new Date().toISOString(),
-                    subscription_item_id: null,
-                    settings: null
-                }));
-
-                const { error: insertPluginsErr } = await supabase
-                    .from('company_plugins')
-                    .insert(pluginRows);
-
-                if (insertPluginsErr) {
-                    console.error("Failed to insert company_plugins:", insertPluginsErr);
-                    return res.status(500).json({
-                        success: false,
-                        message: "Σφάλμα κατά την αποθήκευση plugins",
-                        code: "DB_ERROR"
-                    });
-                }
-            }
-        }
-
-        // ======= subscriptions =======
+        // 6. Prepare FREE subscription payload
         const subscriptionPayload = {
             company_id: companyId,
             plan_id: plan.id,
             subscription_code: generateSubscriptionCode(),
-
-            billing_period: plan.is_free ? null : sanitizedData.plan.billing,
-
-            billing_status: plan.is_free ? 'active' : 'incomplete',
-
-            current_period_start: plan.is_free ? new Date().toISOString() : null,
+            billing_period: null,
+            billing_status: 'active',
+            currency: 'eur',
+            current_period_start: new Date().toISOString(),
             current_period_end: null,
-
             cancel_at_period_end: false,
             cancel_at: null,
             canceled_at: null,
             updated_at: new Date().toISOString()
         };
 
-        const { error: subscriptionErr } = await supabase
-            .from('subscriptions')
-            .upsert(subscriptionPayload, {
-                onConflict: 'company_id'
-            })
-
-        if (subscriptionErr) {
-            console.error("Failed to create subscription:", subscriptionErr);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά τη δημιουργία συνδρομής",
-                code: "DB_ERROR"
-            });
-        }
+        // 7. Complete onboarding
+        const result = await completeOnboardingProcess(
+            companyId,
+            onboarding,
+            plan,
+            subscriptionPayload
+        );
         
-        // ---------------------------------------------
-        // 2. Mark onboarding as completed
-        // ---------------------------------------------
-        const { data: onboardingUpdate, error: onboardingUpdateErr } = await supabase
-            .from('onboarding')
-            .update({
-                data: sanitizedData,
-                is_completed: true,
-                updated_at: new Date().toISOString()
-            })
-            .eq('company_id', companyId)
-            .select("is_completed")
+        // 8. Send Welcome Email
+        // Fetch company για email
+        const { data: company } = await supabase
+            .from('companies')
+            .select('name')
+            .eq('id', companyId)
             .single();
 
-        if (onboardingUpdateErr) {
-            console.error("Failed to complete onboarding:", onboardingUpdateErr);
-            // This is a critical error - company is updated but onboarding isn't marked complete
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την ολοκλήρωση onboarding",
-                code: "DB_ERROR"
-            });
-        }
+        const { data: user } = await supabase
+            .from('users')
+            .select('email')
+            .eq('id', userId)
+            .single();
 
-        // 4. Post-completion actions (optional)
-        try {
-            // Send welcome email
-            // await sendWelcomeEmail(req.user.email, data.company.name);
-            
-            // Create default data for the company
-            // await createDefaultSettings(companyId);
-            
-            // Log analytics event
-            // await trackEvent('onboarding_completed', { companyId, plan: data.plan.id });
-            
-        } catch (error) {
-            // Don't fail the request if post-completion actions fail
-            console.error("Post-completion actions failed:", error);
+        if (user && company) {
+            await sendWelcomeEmail(
+                user.email,
+                company.name, // company name αντί για user name
+                plan.name,
+                true, // isFree
+                null
+            );
         }
 
         return res.json({
             success: true,
             message: "Το onboarding ολοκληρώθηκε επιτυχώς!",
             data: {
-                is_completed: onboardingUpdate.is_completed
+                is_completed: result.is_completed
             }
         });
 
     } catch (err) {
+        if (err.status) {
+            return res.status(err.status).json({
+                success: false,
+                message: err.message,
+                code: err.code
+            });
+        }
+
         console.error('Error completing onboarding:', err);
         return res.status(500).json({
             success: false,

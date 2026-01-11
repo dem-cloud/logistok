@@ -4,7 +4,7 @@ import { CheckCircle } from "lucide-react";
 
 export default function FreeFinalize() {
 
-    const { onboardingData, completeOnboarding } = useOnboarding();
+    const { completeOnboarding } = useOnboarding();
     
     return (
         <div className={styles.content}>
@@ -29,7 +29,7 @@ export default function FreeFinalize() {
 
                 <button 
                     className={styles.cta} 
-                    onClick={()=>completeOnboarding(onboardingData)}
+                    onClick={()=>completeOnboarding(false)}
                 >
                     Ολοκλήρωση & Μετάβαση στο Dashboard
                 </button>

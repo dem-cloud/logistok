@@ -14,8 +14,6 @@ export interface StripeCheckoutFormHandle {
 }
 
 interface Props {
-    planId: string;
-
     billingPeriod: "monthly" | "yearly";
     onBillingPeriodChange: (period: "monthly" | "yearly") => void;
     totalBranches?: number;
@@ -26,12 +24,23 @@ interface Props {
 
     mode: "onboarding" | "admin";
     pricePreview?: PricePreviewResponse;
+    loading: boolean;
 
+    companyName: string;
+    companyNameError: string | undefined;
+    onCompanyNameChange: (v: string) => void;
+    vatNumber: string;
+    onVatNumberChange: (v: string) => void;
+
+    validate: () => boolean;
+
+    completeOnboarding?: (isPaidPlan: boolean, setupIntentId?: string) => Promise<void>;
+    changePlan?: () => Promise<void>;
     onSuccess: () => void;
 }
 
 const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
-    // planId,
+    
     billingPeriod,
     onBillingPeriodChange,
     totalBranches,
@@ -41,27 +50,26 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     onRemovePlugin,
     mode,
     pricePreview,
+    loading: priceLoading,
+
+    companyName,
+    companyNameError,
+    onCompanyNameChange,
+    vatNumber,
+    onVatNumberChange,
+    validate,
+
+    completeOnboarding,
+    changePlan,
     onSuccess
 }, ref) => {
 
-    const { activeCompany, showToast } = useAuth();
+    const { showToast } = useAuth();
     
     const [clientSecret, setClientSecret] = useState("");
     const [loading, setLoading] = useState(false);
     
-    const [companyName, setCompanyName] = useState(activeCompany?.name || "");
-    const [companyNameError, setCompanyNameError] = useState<string | undefined>(undefined);
-    const [vatNumber, setVatNumber] = useState(""); // TODO: initiate vatNumber
-
-    const validate = () => {
-        if (!companyName.trim()) {
-            setCompanyNameError("Το όνομα εταιρείας είναι υποχρεωτικό");
-            return false;
-        }
-
-        setCompanyNameError(undefined);
-        return true;
-    };
+    
 
     useEffect(() => {
         const fetchSetupIntent = async () => {
@@ -160,17 +168,17 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                     mode={mode}
                     pricePreview={pricePreview}
                     loading={loading}
+                    priceLoading={priceLoading}
 
                     companyName={companyName}
                     companyNameError={companyNameError}
-                    onCompanyNameChange={(v) => {
-                        setCompanyName(v);
-                        setCompanyNameError(undefined);
-                    }}
+                    onCompanyNameChange={onCompanyNameChange}
                     vatNumber = {vatNumber}
-                    onVatNumberChange={setVatNumber}
+                    onVatNumberChange={onVatNumberChange}
                     validate={validate}
 
+                    completeOnboarding={completeOnboarding}
+                    changePlan={changePlan}
                     onSuccess={onSuccess}
                 />
         }

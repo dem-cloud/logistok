@@ -56,6 +56,7 @@ function sanitizeOnboardingUpdates(updates, currentData = {}) {
     // Update plan if provided
     if (updates.plan !== undefined) {
         if (updates.plan === null) {
+            sanitized.plugins = [];
             sanitized.plan = null;
         } else if (typeof updates.plan === 'object') {
             // Plan must have both id and billing if not null
@@ -70,6 +71,11 @@ function sanitizeOnboardingUpdates(updates, currentData = {}) {
             // Validate billing
             if (planBilling && planBilling !== 'monthly' && planBilling !== 'yearly') {
                 throw new Error('INVALID_BILLING_TYPE: billing must be "monthly" or "yearly"');
+            }
+
+            // Check if plan id changed
+            if (sanitized.plan?.id !== planId) {
+                sanitized.plugins = [];
             }
 
             sanitized.plan = {

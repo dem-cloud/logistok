@@ -377,7 +377,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(null);
         setCompanies([]);
         setActiveCompany(null);
-        // remove localstorage
+        localStorage.removeItem("activeCompanyId");
         
         // Αν ο χρήστης βρίσκεται ήδη σε /auth paths, μην κάνεις redirect
         if (!window.location.pathname.startsWith("/auth")) {

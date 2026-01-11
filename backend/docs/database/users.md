@@ -70,7 +70,7 @@ CREATE TABLE users (
   last_name TEXT NULL,
 
   email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT NULL,
 
   phone TEXT NULL,
   
@@ -79,8 +79,17 @@ CREATE TABLE users (
 
   profile_photo_url TEXT NULL,
 
+  google_id TEXT NULL UNIQUE,
+
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE users 
+ADD CONSTRAINT user_auth_method 
+CHECK (
+  (password_hash IS NOT NULL) OR 
+  (google_id IS NOT NULL)
 );
 
 CREATE INDEX idx_users_email ON users(email);

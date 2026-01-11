@@ -11,7 +11,7 @@ interface OnboardingContextValue {
 
     nextStep: (updates: Partial<OnboardingData>) => Promise<void>;
     backStep: () => Promise<void>;
-    completeOnboarding: (final_updates: OnboardingData) => Promise<void>;
+    completeOnboarding: (isPaidPlan: boolean, setupIntentId?: string) => Promise<void>;
     updateDraft: (updates: Partial<OnboardingData>) => Promise<void>;
     exitSetup: () => void;
 

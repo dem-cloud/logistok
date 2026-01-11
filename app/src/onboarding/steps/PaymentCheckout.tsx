@@ -2,22 +2,33 @@ import StripeCheckoutForm from '@/components/StripeCheckoutForm'
 import styles from './PaymentCheckout.module.css'
 import { useOnboarding } from '../OnboardingContext'
 import { useEffect, useState } from 'react'
-import LoadingSpinner from '@/components/LoadingSpinner'
-import { useNavigate } from 'react-router-dom'
 import { BillingPeriod } from '@/types/billing.types'
 import { axiosPrivate } from '@/api/axios'
 
 export default function PaymentCheckout() {
-
-    const navigate = useNavigate();
     
-    const { onboardingData, updateDraft } = useOnboarding()
+    const { onboardingData, updateDraft, completeOnboarding } = useOnboarding()
+
+    const [companyName, setCompanyName] = useState(onboardingData.company.name || "");
+    const [companyNameError, setCompanyNameError] = useState<string | undefined>(undefined);
+    const [vatNumber, setVatNumber] = useState("");
+
+    const validate = () => {
+        if (!companyName.trim()) {
+            setCompanyNameError("Το όνομα εταιρείας είναι υποχρεωτικό");
+            return false;
+        }
+
+        setCompanyNameError(undefined);
+        return true;
+    };
     
     const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(onboardingData.plan?.billing || "yearly");
     const [totalBranches, setTotalBranches] = useState(onboardingData.branches ?? 0);
     const [selectedPlugins, setSelectedPlugins] = useState(onboardingData.plugins ?? []);
 
     const [pricePreview, setPricePreview] = useState(null);
+    const [priceLoading, setPriceLoading] = useState(false);
 
     useEffect(() => {
         const fetchPricePreview = async () => {
@@ -32,6 +43,9 @@ export default function PaymentCheckout() {
             }
 
             try {
+
+                setPriceLoading(true)
+
                 const response = await axiosPrivate.post('/api/billing/price-preview', params);
 
                 const { success, data } = response.data;
@@ -45,6 +59,8 @@ export default function PaymentCheckout() {
 
             } catch (err) {
                 console.log(err);
+            } finally {
+                setPriceLoading(false);
             }
         };
 
@@ -75,7 +91,6 @@ export default function PaymentCheckout() {
         })
     }
 
-
     const handleRemovePlugin = async (pluginKey: string) => {
         if (!onboardingData.plugins?.includes(pluginKey)) return;
 
@@ -85,17 +100,12 @@ export default function PaymentCheckout() {
     }
 
 
-    if (!onboardingData.plan?.id)
-        return <LoadingSpinner />
-
     return (
         <div className={styles.content}>
             <div className={styles.title}>Ενεργοποίηση Συνδρομής</div>
             <div className={styles.tagline}>Ασφαλής πληρωμή και άμεση πρόσβαση σε όλες τις λειτουργίες</div>
             {pricePreview &&
                 <StripeCheckoutForm 
-                    planId = {onboardingData.plan.id}
-
                     billingPeriod = {billingPeriod}
                     onBillingPeriodChange = {handleBillingChange}
                     totalBranches={totalBranches}
@@ -106,9 +116,20 @@ export default function PaymentCheckout() {
 
                     mode = "onboarding"
                     pricePreview={pricePreview} 
-                    onSuccess = {() => {
-                        navigate("/");
+                    loading={priceLoading}
+
+                    companyName={companyName}
+                    companyNameError={companyNameError}
+                    onCompanyNameChange={(v) => {
+                        setCompanyName(v);
+                        setCompanyNameError(undefined);
                     }}
+                    vatNumber = {vatNumber}
+                    onVatNumberChange={setVatNumber}
+                    validate={validate}
+
+                    completeOnboarding={completeOnboarding}
+                    onSuccess = {() => {}}
                 />
             }
         </div>

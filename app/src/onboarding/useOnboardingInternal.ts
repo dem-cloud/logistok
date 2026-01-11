@@ -130,9 +130,14 @@ export function useOnboardingInternal() {
         navigate(`/onboarding/${STEP_ROUTES[back_step]}`)
     }
 
-    const completeOnboarding = async (final_updates: OnboardingData) => {
+    const completeOnboarding = async (isPaidPlan: boolean, setupIntentId: string | null = null) => {
 
-        const response = await axiosPrivate.post(`/api/shared/onboarding/complete`, { final_updates });
+        let response;
+        if(!isPaidPlan){
+            response = await axiosPrivate.post('/api/shared/onboarding-complete');
+        } else {
+            response = await axiosPrivate.post("/api/billing/onboarding-complete", { setupIntentId: setupIntentId });
+        }
 
         const { success, data } = response.data;
 
@@ -166,7 +171,7 @@ export function useOnboardingInternal() {
         navigate('/')
     }
 
-    const updateDraft = async (updates: Partial<OnboardingData>) => { // For billing period in PaymentCheckout
+    const updateDraft = async (updates: Partial<OnboardingData>) => { // For changes in PaymentCheckout
 
         const res = await axiosPrivate.post("/api/shared/onboarding/update-draft", { updates });
 

@@ -1,7 +1,6 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { StripeCheckoutFormHandle } from "./StripeCheckoutForm";
 import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { axiosPrivate } from "@/api/axios";
 import { useAuth } from "@/context/AuthContext";
 import Button from "./reusable/Button";
 import BillingToggle from "./BillingToggle";
@@ -22,6 +21,7 @@ interface Props {
     mode: "onboarding" | "admin";
     pricePreview: PricePreviewResponse;
     loading: boolean;
+    priceLoading: boolean;
 
     companyName: string;
     companyNameError: string | undefined;
@@ -30,6 +30,10 @@ interface Props {
     onVatNumberChange: (v: string) => void;
 
     validate: () => boolean;
+
+    completeOnboarding?: (isPaidPlan: boolean, setupIntentId?: string) => Promise<void>;
+    changePlan?: () => Promise<void>;
+
     onSuccess: () => void;
 }
 
@@ -45,6 +49,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     mode, 
     pricePreview, 
     loading, 
+    priceLoading,
 
     companyName,
     companyNameError,
@@ -52,7 +57,11 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     vatNumber,
     onVatNumberChange,
     validate,
-    onSuccess 
+    
+    completeOnboarding,
+    changePlan,
+
+    // onSuccess 
 }, ref) => {
 
     const { showToast } = useAuth();
@@ -85,24 +94,13 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
             return;
         }
 
-        let response;
         if (mode === "onboarding") {
-            response = await axiosPrivate.post("/api/billing/complete-onboarding", { setupIntentId: setupIntent.id });
+            completeOnboarding && completeOnboarding(true, setupIntent.id);
         } else {
-            response = await axiosPrivate.post("/api/billing/change-plan", {
-                planId: plan.id,
-                billingPeriod
-            });
+            changePlan && changePlan();
         }
 
-        const { success } = response.data;
-
-        if (!success) {
-            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-            return;
-        }
-
-        onSuccess();
+        // onSuccess();
     };
 
     useImperativeHandle(ref, () => ({ submit: handleSubmit }));
@@ -162,12 +160,12 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                         <div className={styles.planCard}>
                             <div className={styles.planInfo}>
                                 <div className={styles.planName}>{plan.name}</div>
-                                <div className={styles.planPrice}>
+                                {/* <div className={styles.planPrice}>
                                     {billingPeriod === "monthly"
                                         ? `${plan.prices.monthly}€ / μήνα`
                                         : `${plan.prices.yearly_per_month}€ / μήνα`
                                     }
-                                </div>
+                                </div> */}
                             </div>
                         </div>
                     </div>
@@ -230,7 +228,10 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                                 )}
                             </span>
 
+                            
                             <span className={styles.storeLabel}>Υποκαταστήματα</span>
+                            <span className={styles.storeIncluded}>({branches.unit_price_monthly}{currency.symbol}/μήνα/υποκατάστημα)</span>
+
                             <div className={styles.storeCounter}>
                                 <button 
                                     className={styles.counterBtn}
@@ -278,15 +279,9 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
 
                             {/* DETAILS */}
                             <div className={styles.detailRow}>
-                                <span>
-                                    {billingPeriod === "monthly" ? (
-                                            <>1x {plan.prices.monthly}{currency.symbol} / μήνα</>
-                                        ) : (
-                                            <>12x {plan.prices.yearly_per_month}{currency.symbol} / μήνα</>
-                                        )}
-                                </span>
+                                <span>Υποσύνολο</span>
                                 {
-                                    loading ?
+                                    (loading || priceLoading) ?
                                         <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
                                     :
                                         <span>
@@ -298,7 +293,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                             <div className={styles.detailRow}>
                                 <span>ΦΠΑ {summary.vat_percent}%</span>
                                 {
-                                    loading ?
+                                    (loading || priceLoading) ?
                                         <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
                                     :
                                         <span>{summary.vat_amount}{currency.symbol}</span>
@@ -312,7 +307,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                                 <span>Σύνολο</span>
                                 <div className={styles.totalRowRight}>
                                     {
-                                        loading ? 
+                                        (loading || priceLoading) ? 
                                             <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
                                         :
                                             <>
@@ -335,7 +330,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                     {mode === "onboarding" && (
                         <Button 
                             onClick={handleSubmit} 
-                            disabled={loading}
+                            disabled={loading || priceLoading}
                             widthFull
                         >
                             Πληρωμή

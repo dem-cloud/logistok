@@ -1,5 +1,8 @@
 import { useEffect } from "react";
 import axios from "axios";
+import { axiosPublic } from "@/api/axios";
+import { useAuth } from "@/context/AuthContext";
+import { getFingerprint } from "@/auth/getFingerprint";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -11,6 +14,9 @@ declare global {
 }
 
 const GoogleLoginButton: React.FC = () => {
+
+    const { login, showToast } = useAuth();
+
     useEffect(() => {
         if (!window.google) return;
 
@@ -32,19 +38,23 @@ const GoogleLoginButton: React.FC = () => {
         );
     }, []);
 
-    const handleGoogleResponse = async (response: any) => {
+    const handleGoogleResponse = async (googleResponse: any) => {
         try {
+            const fingerprint = await getFingerprint();
             // Στέλνεις το credential token στο backend σου
-            const res = await axios.post("/api/auth/google", {
-                credential: response.credential,
-            });
+            const response = await axiosPublic.post("/api/auth/google", { credential: googleResponse.credential, fingerprint }, { withCredentials: true });
+            const { success, message, data = {}, code } = response.data;
 
-            console.log("Server response:", res.data);
+            if(!success){
+                showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+                return;
+            }
 
-            // π.χ. αποθήκευσε το accessToken στο localStorage
-            // localStorage.setItem("accessToken", res.data.accessToken);
+            login(data);
+
         } catch (error) {
             console.error("Google login error:", error);
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
         }
     };
 
