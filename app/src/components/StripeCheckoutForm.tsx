@@ -1,11 +1,9 @@
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef } from "react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
-import { useAuth } from "@/context/AuthContext";
-import { axiosPrivate } from "@/api/axios";
 import InnerCheckoutForm from "./InnerCheckoutForm";
-import LoadingSpinner from "./LoadingSpinner";
 import { PricePreviewResponse } from "@/types/billing.types";
+import LoadingSpinner from "./LoadingSpinner";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
@@ -63,51 +61,17 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     changePlan,
     onSuccess
 }, ref) => {
-
-    const { showToast } = useAuth();
     
-    const [clientSecret, setClientSecret] = useState("");
-    const [loading, setLoading] = useState(false);
-    
-    
-
-    useEffect(() => {
-        const fetchSetupIntent = async () => {
-            try {
-                setLoading(true);
-
-                const response = await axiosPrivate.post('/api/billing/create-setup-intent');
-
-                const { success, data } = response.data;
-
-                if (!success) {
-                    showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-                    return;
-                }
-                const { clientSecret } = data;
-
-                setClientSecret(clientSecret);
-
-            } catch (error) {
-                console.error("error:", error);
-                showToast({ message: "Κάτι πήγε στραβά", type: "error" });
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchSetupIntent();
-    }, []);
-
-    if (!clientSecret) 
-        return <LoadingSpinner />
+    if (!pricePreview) return <LoadingSpinner />;
 
     return (
         <Elements
-            key={clientSecret}
             stripe={stripePromise}
             options={{ 
-                clientSecret,
+                mode: 'subscription',
+                amount: pricePreview.summary.total * 100,
+                currency: 'eur',
+                setup_future_usage: 'off_session',
                 locale: 'el',
                 appearance: {
                     theme: 'stripe',   // ξεκινάμε από το default theme
@@ -153,35 +117,31 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                 }
             }}
         >
-        {   
-            pricePreview &&
-                <InnerCheckoutForm
-                    ref={ref}
-                    billingPeriod={billingPeriod}
-                    onBillingPeriodChange={onBillingPeriodChange}
-                    totalBranches={totalBranches}
-                    handleIncreaseTotalBranches={handleIncreaseTotalBranches}
-                    handleDecreaseTotalBranches={handleDecreaseTotalBranches}
-                    selectedPlugins={selectedPlugins}
-                    onRemovePlugin={onRemovePlugin}
+            <InnerCheckoutForm
+                ref={ref}
+                billingPeriod={billingPeriod}
+                onBillingPeriodChange={onBillingPeriodChange}
+                totalBranches={totalBranches}
+                handleIncreaseTotalBranches={handleIncreaseTotalBranches}
+                handleDecreaseTotalBranches={handleDecreaseTotalBranches}
+                selectedPlugins={selectedPlugins}
+                onRemovePlugin={onRemovePlugin}
 
-                    mode={mode}
-                    pricePreview={pricePreview}
-                    loading={loading}
-                    priceLoading={priceLoading}
+                mode={mode}
+                pricePreview={pricePreview}
+                priceLoading={priceLoading}
 
-                    companyName={companyName}
-                    companyNameError={companyNameError}
-                    onCompanyNameChange={onCompanyNameChange}
-                    vatNumber = {vatNumber}
-                    onVatNumberChange={onVatNumberChange}
-                    validate={validate}
+                companyName={companyName}
+                companyNameError={companyNameError}
+                onCompanyNameChange={onCompanyNameChange}
+                vatNumber = {vatNumber}
+                onVatNumberChange={onVatNumberChange}
+                validate={validate}
 
-                    completeOnboarding={completeOnboarding}
-                    changePlan={changePlan}
-                    onSuccess={onSuccess}
-                />
-        }
+                completeOnboarding={completeOnboarding}
+                changePlan={changePlan}
+                onSuccess={onSuccess}
+            />
         </Elements>
     );
 });

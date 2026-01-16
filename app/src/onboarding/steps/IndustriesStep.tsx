@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import styles from '../OnboardingLayout.module.css'
 import Button from "../../components/reusable/Button";
 import IndustryCard from "../../components/IndustryCard";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useOnboarding } from "../OnboardingContext";
 import { useIndustries } from "@/hooks/useIndustries";
 

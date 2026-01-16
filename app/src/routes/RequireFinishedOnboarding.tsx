@@ -1,8 +1,8 @@
 import { Navigate, Outlet } from "react-router-dom";
-import AppLayout from "../AppLayout";
+import AppLayout from "../layouts/AppLayout";
 import { OnboardingStepNumber } from "../onboarding/types";
 import { STEP_ROUTES } from "../onboarding/steps";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function RequireFinishedOnboarding() {
     const { activeCompany } = useAuth();
@@ -25,9 +25,8 @@ export default function RequireFinishedOnboarding() {
     }
 
     return (
-        <>
-            <AppLayout />
+        <AppLayout>
             <Outlet />
-        </>
+        </AppLayout>
     );
 }

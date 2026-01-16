@@ -261,31 +261,6 @@
     }
 }
 
-
-.stripeWrapper {
-  position: relative;
-}
-
-.stripeOverlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(2px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  z-index: 2;
-  pointer-events: all;
-  animation: fadeIn 0.15s ease-out;
-}
-
-.disabled :global(.StripeElement),
-.disabled iframe {
-  pointer-events: none;
-}
-
 @keyframes fadeIn {
   from { opacity: 0 }
   to { opacity: 1 }

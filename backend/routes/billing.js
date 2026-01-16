@@ -1,12 +1,11 @@
 const express = require('express');
-const { requireAuth, requireOwner, requireActiveCompany } = require('../middlewares/authRequired');
+const { requireAuth, requireOwner } = require('../middlewares/authRequired');
 const Stripe = require('stripe');
 const supabase = require('../supabaseConfig');
 const { TOTAL_STEPS } = require('../helpers/onboarding/onboardingSteps');
 const { generateSubscriptionCode } = require('../helpers/generateSubscriptionCode');
 const { validateCompleteOnboardingData } = require('../helpers/onboarding/onboardingValidation');
-const { completeOnboardingProcess } = require('../helpers/onboarding/completeOnboarding');
-const { sendWelcomeEmail } = require('../helpers/emailService');
+const { hasDataChanged, cleanupIncompleteSubscription } = require('../helpers/onboarding/subscriptionCleanup');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -170,111 +169,15 @@ router.post("/price-preview", requireAuth, requireOwner, async (req, res) => {
     }
 })
 
-router.post('/create-setup-intent', requireAuth, requireOwner, async (req, res) => {
-    try {
-        const companyId = req.user.companyId;
-        
-        const { data: company, error: companyErr } = await supabase
-            .from("companies")
-            .select("stripe_customer_id")
-            .eq("id", companyId)
-            .single();
-
-        if (companyErr) {
-            console.error("DB SELECT ERROR (companies):", companyErr);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά τη ανάγνωση της εταιρείας",
-                code: "DB_ERROR",
-            });
-        }
-
-        const customerId = company.stripe_customer_id;
-
-        // Δημιουργία SetupIntent
-        const setupIntent = await stripe.setupIntents.create({
-            customer: customerId,
-            // automatic_payment_methods: { enabled: true },
-            payment_method_types: ['card'],
-        });
-
-            res.json({ 
-                success: true,
-                message: "Setup intent created",
-                data: {
-                    clientSecret: setupIntent.client_secret 
-                }
-            });
-    } catch (error) {
-            console.error("Create setup intent error:", error);
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
-                code: "SERVER_ERROR"
-            });
-    }
-});
-
 
 router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) => {
 
-    const { setupIntentId } = req.body;
     const { companyId } = req.user;
-    const userId = req.user.id
-
-    if (!setupIntentId) {
-        return res.status(400).json({
-            success: false,
-            message: 'Missing setupIntentId'
-        });
-    }
+    const userId = req.user.id;
 
     try {
-        // 1. Load company (Stripe customer)
-        const { data: company } = await supabase
-            .from('companies')
-            .select('name, stripe_customer_id')
-            .eq('id', companyId)
-            .single();
 
-        if (!company?.stripe_customer_id) {
-            return res.status(400).json({
-                success: false,
-                message: 'Stripe customer not found'
-            });
-        }
-
-        const stripeCustomerId = company.stripe_customer_id;
-
-        // 2. Retrieve SetupIntent & set default payment method
-        const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
-
-        // Check if SetupIntent has succeeded
-        if (setupIntent.status !== 'succeeded') {
-            return res.status(400).json({
-                success: false,
-                message: 'Payment method not confirmed yet',
-                code: 'SETUP_INTENT_NOT_SUCCEEDED'
-            });
-        }
-
-        const paymentMethodId = setupIntent.payment_method;
-
-        // Verify the payment method belongs to this customer
-        if (setupIntent.customer && setupIntent.customer !== stripeCustomerId) {
-            return res.status(400).json({
-                success: false,
-                message: 'Payment method does not belong to this customer',
-                code: 'INVALID_PAYMENT_METHOD'
-            });
-        }
-
-        await stripe.customers.update(stripeCustomerId, {
-            name: company.name,
-            invoice_settings: { default_payment_method: paymentMethodId }
-        });
-
-        // 3. Load onboarding data with full validation
+        // 1. Load onboarding data with full validation
         const { data: onboarding, error: onboardingErr } = await supabase
             .from('onboarding')
             .select('current_step, max_step_reached, is_completed, data')
@@ -290,7 +193,6 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        // 3a. Check if already completed
         if (onboarding.is_completed) {
             return res.status(400).json({
                 success: false,
@@ -299,7 +201,6 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        // 3b. Verify user is on the final step
         if (onboarding.current_step !== TOTAL_STEPS) {
             return res.status(400).json({
                 success: false,
@@ -310,7 +211,6 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
 
         const onboardingData = onboarding.data;
 
-        // 3c. Validate the sanitized data
         const validation = validateCompleteOnboardingData(onboardingData);
         if (!validation.valid) {
             return res.status(400).json({
@@ -320,11 +220,136 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             });
         }
 
+
+        // =============================================
+        // UPDATE COMPANY INFO & STRIPE CUSTOMER
+        // =============================================
+        const { data: updatedCompany, error: updatedCompanyErr } = await supabase
+            .from('companies')
+            .update({
+                name: onboardingData.company.name,
+                phone: onboardingData.company.phone,
+            })
+            .eq('id', companyId)
+            .select('name, stripe_customer_id')
+            .single();
+
+        if (updatedCompanyErr) {
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά την ενημέρωση της εταιρείας"
+            };
+        }
+
+        if (!updatedCompany?.stripe_customer_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Stripe customer not found'
+            });
+        }
+
+        const stripeCustomerId = updatedCompany.stripe_customer_id;
+
+        await stripe.customers.update(stripeCustomerId, {
+            name: updatedCompany.name,
+        });
+
+        // =============================================
+        // UPDATE INDUSTRIES
+        // =============================================
+        // Διαγραφή παλιών και εισαγωγή νέων
+        await supabase
+            .from('company_industries')
+            .delete()
+            .eq('company_id', companyId);
+
+        if (onboardingData.industries.length > 0) {
+            const { data: validIndustries, error: validIndustriesError } = await supabase
+                .from('industries')
+                .select('key')
+                .in('key', onboardingData.industries);
+
+            if (validIndustriesError) {
+                throw {
+                    status: 500,
+                    code: "DB_ERROR",
+                    message: "Σφάλμα κατά την ανάγνωση κλάδων"
+                };
+            }
+
+            if (validIndustries.length > 0) {
+                const rows = validIndustries.map(i => ({
+                    company_id: companyId,
+                    industry_key: i.key
+                }));
+
+                const { error: insertError } = await supabase
+                    .from('company_industries')
+                    .insert(rows);
+
+                if (insertError) {
+                    throw {
+                        status: 500,
+                        code: "DB_ERROR",
+                        message: "Σφάλμα κατά την ενημέρωση company industries"
+                    };
+                }
+            }
+        }
+
+        // =============================================
+        // CHECK FOR EXISTING INCOMPLETE SUBSCRIPTION
+        // =============================================
+        const { data: existingSub } = await supabase
+            .from('subscriptions')
+            .select('id, stripe_subscription_id, plan_id, billing_period')
+            .eq('company_id', companyId)
+            .eq('billing_status', 'incomplete')
+            .maybeSingle();
+
+        // =============================================
+        // HANDLE EXISTING SUBSCRIPTION
+        // =============================================
+        if (existingSub) {
+            // Έλεγχος αν άλλαξαν τα δεδομένα
+            const dataChanged = await hasDataChanged(existingSub, companyId, onboardingData);
+
+            if (!dataChanged) {
+                // Τίποτα δεν άλλαξε, επιστρέφουμε το ίδιο clientSecret
+                const stripeSub = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id, {
+                    expand: ['latest_invoice.confirmation_secret']
+                });
+
+                return res.json({
+                    success: true,
+                    message: "Existing valid subscription found",
+                    data: {
+                        subscriptionId: stripeSub.id,
+                        clientSecret: stripeSub.latest_invoice.confirmation_secret.client_secret,
+                    }
+                });
+            }
+
+            // ΤΑ ΔΕΔΟΜΕΝΑ ΑΛΛΑΞΑΝ - Ακύρωση παλιάς συνδρομής και cleanup
+            const cleanup = await cleanupIncompleteSubscription(existingSub, companyId);
+
+            if (!cleanup.success) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Αποτυχία κατά την ακύρωση παλιάς συνδρομής",
+                    code: "CLEANUP_FAILED",
+                });
+            }
+        }
+
+        // =============================================
+        // FETCH PLAN DETAILS
+        // =============================================
         const planId = onboardingData.plan.id;
         const billingPeriod = onboardingData.plan.billing;
 
-        // 4. Fetch plan details
-        const { data: plan } = await supabase
+        const { data: plan, error: planErr } = await supabase
             .from('plans')
             .select(`
                 id,
@@ -340,18 +365,26 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             .eq('id', planId)
             .single();
 
-        // 5. Build Stripe subscription items
+        if (planErr || !plan) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid plan",
+                code: "INVALID_PLAN"
+            });
+        }
+
+        // =============================================
+        // BUILD STRIPE SUBSCRIPTION ITEMS
+        // =============================================
         const items = [];
 
-        // Base plan
         items.push({
             price: billingPeriod === 'monthly'
                 ? plan.stripe_price_id_monthly
                 : plan.stripe_price_id_yearly
         });
 
-        // Extra branches
-        const extraBranches = Math.max(0, onboardingData.branches - plan.included_branches);
+        const extraBranches = Math.max(0, (onboardingData.branches || 0) - plan.included_branches);
         if (extraBranches > 0) {
             items.push({
                 price: billingPeriod === 'monthly'
@@ -361,113 +394,208 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        // Plugins
         if (onboardingData.plugins?.length) {
             const { data: plugins } = await supabase
                 .from('plugins')
                 .select('key, stripe_price_id_monthly, stripe_price_id_yearly')
-                .in('key', onboardingData.plugins);
+                .in('key', onboardingData.plugins)
+                .eq('is_active', true);
 
-            plugins.forEach(p => {
-                const priceId = billingPeriod === 'monthly' 
-                    ? p.stripe_price_id_monthly 
-                    : p.stripe_price_id_yearly;
-                
-                // Only add if price ID exists and is not empty
-                if (priceId && priceId.trim() !== '') {
-                    items.push({ price: priceId });
-                } else {
-                    console.warn(`Plugin ${p.key} has no valid Stripe price ID for ${billingPeriod} billing`);
-                }
-            });
+            if (plugins) {
+                plugins.forEach(p => {
+                    const priceId = billingPeriod === 'monthly' 
+                        ? p.stripe_price_id_monthly 
+                        : p.stripe_price_id_yearly;
+                    
+                    if (priceId && priceId.trim() !== '') {
+                        items.push({ price: priceId });
+                    }
+                });
+            }
         }
 
-        // 6. Create Stripe subscription
+        // =============================================
+        // CREATE STRIPE SUBSCRIPTION
+        // =============================================
+        const subCode = generateSubscriptionCode();
+
         const stripeSubscription = await stripe.subscriptions.create({
             customer: stripeCustomerId,
             items,
             payment_behavior: 'default_incomplete',
             payment_settings: {
-                payment_method_types: ['card'],
                 save_default_payment_method: 'on_subscription'
             },
-            expand: ['latest_invoice', 'items.data.price'],
-            metadata: { companyId }
+            expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payment_intent'],
+            metadata: { 
+                companyId,
+                planId,
+                billingPeriod,
+                subscriptionCode: subCode
+            }
         });
 
-        // 6a. Pay the invoice immediately (it's already finalized)
-        const invoiceId = stripeSubscription.latest_invoice.id;
+        console.log('Subscription created:', stripeSubscription.id);
+
+        // =============================================
+        // INSERT PLUGINS
+        // =============================================
+        if (onboardingData.plugins.length > 0) {
+            const { data: availablePlugins } = await supabase
+                .from('plugins')
+                .select('key, is_active')
+                .in('key', onboardingData.plugins)
+                .eq('is_active', true);
+
+            if (availablePlugins && availablePlugins.length > 0) {
+                const pluginRows = availablePlugins.map(plugin => ({
+                    company_id: companyId,
+                    plugin_key: plugin.key,
+                    status: 'active',
+                    activated_at: new Date().toISOString(),
+                    subscription_item_id: null,
+                    settings: null
+                }));
+
+                await supabase
+                    .from('company_plugins')
+                    .insert(pluginRows);
+            }
+        }
+
+        // =============================================
+        // CREATE STORES
+        // =============================================
+        const storesToCreate = [];
+
+        storesToCreate.push({
+            company_id: companyId,
+            name: 'Κεντρική Αποθήκη',
+            is_main: true,
+            created_at: new Date().toISOString()
+        });
+
+        const totalBranches = (onboardingData.branches || 0);
+        for (let i = 1; i <= totalBranches; i++) {
+            storesToCreate.push({
+                company_id: companyId,
+                name: `Υποκατάστημα ${i}`,
+                is_main: false,
+                created_at: new Date().toISOString()
+            });
+        }
+
+        const { data: createdStores, error: storesErr } = await supabase
+            .from('stores')
+            .insert(storesToCreate)
+            .select('id, name, address, city, is_main');
+
+        if (storesErr) {
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά τη δημιουργία καταστημάτων"
+            };
+        }
+
+        console.log(`Created ${createdStores.length} stores`);
+
+        // =============================================
+        // LINK PLUGINS TO STORES
+        // =============================================
+        if (onboardingData.plugins.length > 0 && createdStores.length > 0) {
+            const { data: companyPlugins } = await supabase
+                .from('company_plugins')
+                .select('id, plugin_key')
+                .eq('company_id', companyId)
+                .in('plugin_key', onboardingData.plugins);
+
+            if (companyPlugins && companyPlugins.length > 0) {
+                const storePluginsToInsert = [];
+                
+                for (const store of createdStores) {
+                    for (const companyPlugin of companyPlugins) {
+                        storePluginsToInsert.push({
+                            company_plugin_id: companyPlugin.id,
+                            store_id: store.id,
+                            settings: null,
+                            is_active: false,
+                            created_at: new Date().toISOString()
+                        });
+                    }
+                }
+
+                if (storePluginsToInsert.length > 0) {
+                    await supabase
+                        .from('store_plugins')
+                        .insert(storePluginsToInsert);
+
+                    console.log(`Created ${storePluginsToInsert.length} store_plugin records`);
+                }
+            }
+        }
+
+        // =============================================
+        // CREATE SUBSCRIPTION IN DB
+        // =============================================
+        const latestInvoice = stripeSubscription.latest_invoice;
+        const invoiceLine = latestInvoice.lines.data[0];
         
-        const paidInvoice = await stripe.invoices.pay(invoiceId, {
-            payment_method: paymentMethodId
-        });
-
-        console.log(`Invoice ${invoiceId} payment status: ${paidInvoice.status}`);
-
-        // 7. Prepare PAID subscription payload
         const subscriptionPayload = {
             company_id: companyId,
             plan_id: plan.id,
             stripe_subscription_id: stripeSubscription.id,
-            subscription_code: generateSubscriptionCode(),
+            subscription_code: subCode,
             billing_period: billingPeriod,
-            billing_status: 'incomplete',
-            currency: 'eur',
-            current_period_start: null, // Will be set by webhook
-            current_period_end: null,
+            // Θα είναι 'incomplete' μέχρι να ολοκληρωθεί η πληρωμή στο frontend
+            billing_status: stripeSubscription.status,
+            currency: stripeSubscription.currency,
+            current_period_start: new Date(invoiceLine.period.start * 1000).toISOString(),
+            current_period_end: new Date(invoiceLine.period.end * 1000).toISOString(),
             cancel_at_period_end: false,
             cancel_at: null,
             canceled_at: null,
-            updated_at: new Date().toISOString(),
-            // metadata: {
-            //     plugins: onboardingData.plugins,
-            //     branches: onboardingData.branches
-            // }
+            updated_at: new Date().toISOString()
         };
 
-        // 8. Complete onboarding with Stripe subscription
-        const result = await completeOnboardingProcess(
-            companyId,
-            onboarding,
-            plan,
-            subscriptionPayload
-        );
-
-        // 8a. Get the created subscription ID from DB
-        const { data: createdSubscription, error: fetchSubError } = await supabase
+        const { data: createdSubscription, error: subscriptionErr } = await supabase
             .from('subscriptions')
+            .insert(subscriptionPayload)
             .select('id')
-            .eq('stripe_subscription_id', stripeSubscription.id)
             .single();
 
-        if (fetchSubError || !createdSubscription) {
-            console.error('Failed to fetch created subscription:', fetchSubError);
-            throw fetchSubError;
+        if (subscriptionErr) {
+            console.error('FULL DB ERROR:', subscriptionErr);
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά τη δημιουργία συνδρομής"
+            };
         }
 
-        // 8b. Create subscription_items from Stripe subscription items
+        // =============================================
+        // CREATE SUBSCRIPTION ITEMS
+        // =============================================
         const subscriptionItemsToInsert = [];
 
         for (const stripeItem of stripeSubscription.items.data) {
             const priceId = stripeItem.price.id;
             const quantity = stripeItem.quantity;
-            const unitAmount = stripeItem.price.unit_amount / 100; // Convert from cents
+            const unitAmount = stripeItem.price.unit_amount / 100;
 
             let itemType = null;
             let pluginKey = null;
 
-            // Determine item type by matching price IDs
             if (priceId === plan.stripe_price_id_monthly || priceId === plan.stripe_price_id_yearly) {
                 itemType = 'plan';
             } else if (priceId === plan.stripe_extra_store_price_id_monthly || priceId === plan.stripe_extra_store_price_id_yearly) {
                 itemType = 'extra_store';
             } else {
-                // It's a plugin - find which one
                 const { data: matchedPlugin } = await supabase
                     .from('plugins')
                     .select('key')
                     .or(`stripe_price_id_monthly.eq.${priceId},stripe_price_id_yearly.eq.${priceId}`)
-                    .single();
+                    .maybeSingle();
 
                 if (matchedPlugin) {
                     itemType = 'plugin';
@@ -490,51 +618,81 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
             }
         }
 
-        // 8c. Insert subscription items
         if (subscriptionItemsToInsert.length > 0) {
-            const { error: itemsError } = await supabase
+            const { data: createdSubscriptionItems, error: itemsError } = await supabase
                 .from('subscription_items')
-                .insert(subscriptionItemsToInsert);
+                .insert(subscriptionItemsToInsert)
+                .select('id, plugin_key');
 
             if (itemsError) {
                 console.error('Failed to create subscription items:', itemsError);
-                throw itemsError;
+                throw {
+                    status: 500,
+                    code: "DB_ERROR",
+                    message: "Σφάλμα κατά τη δημιουργία subscription items"
+                };
             }
 
-            console.log(`Created ${subscriptionItemsToInsert.length} subscription items`);
+            console.log(`Created ${createdSubscriptionItems.length} subscription items`);
+
+            // =============================================
+            // UPDATE COMPANY_PLUGINS WITH SUBSCRIPTION_ITEM_ID
+            // =============================================
+            const pluginItems = createdSubscriptionItems.filter(item => item.plugin_key !== null);
+
+            if (pluginItems.length > 0) {
+                const updatePromises = pluginItems.map(pluginItem =>
+                    supabase
+                        .from('company_plugins')
+                        .update({ subscription_item_id: pluginItem.id })
+                        .eq('company_id', companyId)
+                        .eq('plugin_key', pluginItem.plugin_key)
+                );
+
+                const results = await Promise.allSettled(updatePromises);
+
+                const successCount = results.filter(r => r.status === 'fulfilled').length;
+                console.log(`Updated ${successCount}/${pluginItems.length} company_plugins with subscription_item_id`);
+            }
         }
 
-        // 9. Send welcome email
-        const { data: user } = await supabase
-            .from('users')
-            .select('email')
-            .eq('id', userId)
-            .single();
+        // =============================================
+        // CREATE PAYMENT HISTORY
+        // =============================================
+        await supabase
+            .from('payment_history')
+            .insert({
+                subscription_id: createdSubscription.id,
+                stripe_invoice_id: latestInvoice.id,
+                stripe_payment_intent_id: latestInvoice.payment_intent?.id || null,
+                stripe_charge_id: null,
+                amount: latestInvoice.amount_due / 100,
+                currency: latestInvoice.currency,
+                status: 'pending',
+                payment_method: 'card',
+                failure_reason: null,
+                metadata: {
+                    billing_reason: latestInvoice.billing_reason,
+                    invoice_number: latestInvoice.number,
+                    subscription_period: {
+                        start: new Date(invoiceLine.period.start * 1000).toISOString(),
+                        end: new Date(invoiceLine.period.end * 1000).toISOString()
+                    }
+                },
+                updated_at: new Date().toISOString()
+            });
 
-        if (user) {
-            const nextPaymentDate = new Date(stripeSubscription.items.data[0].current_period_end * 1000)
-                .toLocaleDateString('el-GR', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric'
-                });
-
-            await sendWelcomeEmail(
-                user.email,
-                company.name, // company name
-                plan.name,
-                false, // not free
-                nextPaymentDate
-            );
-        }
-
-        res.json({
+        return res.json({
             success: true,
             message: "Επιτυχής ολοκλήρωση συνδρομής",
             data: {
-                is_completed: result.is_completed
+                subscriptionId: stripeSubscription.id,
+                clientSecret: stripeSubscription.latest_invoice.confirmation_secret.client_secret,
+
+                // Χρήσιμα για το Frontend tracking ή αν θες να εμφανίσεις π.χ. τον αριθμό τιμολογίου
+                //paymentIntentId: stripeSubscription.latest_invoice.payment_intent?.id, // Για το ιστορικό σου
+                //invoiceId: stripeSubscription.latest_invoice.id
             }
-            
         });
 
     } catch (err) {
@@ -547,14 +705,317 @@ router.post('/onboarding-complete', requireAuth, requireOwner, async (req, res) 
         }
 
         console.error('ONBOARDING COMPLETE ERROR:', err);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to complete onboarding'
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
+            code: "SERVER_ERROR" 
         });
     }
 });
 
-// ------------------------------------
+router.post('/onboarding-verify', requireAuth, requireOwner, async (req, res) => {
+    const { companyId } = req.user;
+    const userId = req.user.id;
+    const { subscriptionId } = req.body;
+
+    if (!subscriptionId) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing subscriptionId',
+            code: 'MISSING_PARAMETER'
+        });
+    }
+
+    try {
+        // =============================================
+        // 1. VALIDATE: Subscription belongs to company
+        // =============================================
+        const { data: existingSub, error: subFetchErr } = await supabase
+            .from('subscriptions')
+            .select('id, billing_status, stripe_subscription_id')
+            .eq('company_id', companyId)
+            .eq('stripe_subscription_id', subscriptionId)
+            .single();
+
+        if (subFetchErr || !existingSub) {
+            return res.status(404).json({
+                success: false,
+                message: 'Subscription not found for this company',
+                code: 'SUBSCRIPTION_NOT_FOUND'
+            });
+        }
+
+        // =============================================
+        // 2. CHECK: Onboarding already completed?
+        // =============================================
+        const { data: onboarding, error: onboardingFetchErr } = await supabase
+            .from('onboarding')
+            .select('is_completed')
+            .eq('company_id', companyId)
+            .single();
+
+        if (onboardingFetchErr) {
+            console.error("Error fetching onboarding:", onboardingFetchErr);
+            return res.status(500).json({
+                success: false,
+                message: 'Σφάλμα κατά την ανάγνωση onboarding',
+                code: 'DB_ERROR'
+            });
+        }
+
+        // If already completed, return success with existing data
+        if (onboarding?.is_completed) {
+            console.log("Onboarding already completed - returning existing data");
+
+            // Fetch stores
+            const { data: stores, error: fetchStoresErr } = await supabase
+                .from('stores')
+                .select('id, name, address, city, is_main')
+                .eq('company_id', companyId);
+
+            if (fetchStoresErr) {
+                console.error('Failed to fetch stores:', fetchStoresErr);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Σφάλμα κατά την ανάγνωση καταστημάτων',
+                    code: 'DB_ERROR'
+                });
+            }
+
+            // Fetch owner role & permissions
+            const { data: ownerRole, error: ownerRoleErr } = await supabase
+                .from('company_users')
+                .select(`
+                    role_id,
+                    roles (id, key, name)
+                `)
+                .eq('company_id', companyId)
+                .eq('user_id', userId)
+                .eq('is_owner', true)
+                .single();
+
+            if (ownerRoleErr || !ownerRole) {
+                console.error('Failed to fetch owner role:', ownerRoleErr);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Σφάλμα κατά την ανάγνωση ρόλου',
+                    code: 'DB_ERROR'
+                });
+            }
+
+            const { data: rolePerms } = await supabase
+                .from('role_permissions')
+                .select('permission_key')
+                .eq('role_id', ownerRole.role_id);
+
+            const permissions = rolePerms?.map(rp => rp.permission_key) || [];
+
+            const storesWithRoles = stores.map(store => ({
+                id: store.id,
+                name: store.name,
+                address: store.address,
+                city: store.city,
+                is_main: store.is_main,
+                role: {
+                    id: ownerRole.roles.id,
+                    key: ownerRole.roles.key,
+                    name: ownerRole.roles.name
+                },
+                permissions
+            }));
+
+            return res.json({
+                success: true,
+                message: "Το onboarding έχει ήδη ολοκληρωθεί",
+                data: {
+                    is_completed: true,
+                    stores: storesWithRoles
+                }
+            });
+        }
+
+        // =============================================
+        // 3. VERIFY: Stripe subscription status
+        // =============================================
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+        if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Η πληρωμή δεν ολοκληρώθηκε. Παρακαλώ ελέγξτε την κάρτα σας.",
+                code: "PAYMENT_FAILED",
+                data: {
+                    status: subscription.status 
+                }
+            });
+        }
+
+        // =============================================
+        // 4. UPDATE: Subscription status to active
+        // =============================================
+        const { error: subUpdateErr } = await supabase
+            .from('subscriptions')
+            .update({ 
+                billing_status: 'active',
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', existingSub.id);
+
+        if (subUpdateErr) {
+            console.error('Failed to update subscription:', subUpdateErr);
+            return res.status(500).json({
+                success: false,
+                message: 'Σφάλμα κατά την ενημέρωση συνδρομής',
+                code: 'DB_ERROR'
+            });
+        }
+
+        console.log(`Subscription ${subscriptionId} marked as active`);
+
+        // =============================================
+        // 5. UPDATE: Payment history status
+        // =============================================
+        const invoiceId = subscription.latest_invoice;
+        if (invoiceId) {
+            const { error: payError } = await supabase
+                .from('payment_history')
+                .update({ 
+                    status: 'paid',
+                    paid_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString() 
+                })
+                .eq('stripe_invoice_id', invoiceId)
+                .eq('status', 'pending');
+            
+            if (payError) {
+                console.error('Failed to update payment history:', payError);
+                // Don't fail the request, just log it
+            } else {
+                console.log(`Payment history updated for invoice ${invoiceId}`);
+            }
+        }
+
+        // =============================================
+        // 6. MARK: Onboarding as completed
+        // =============================================
+        const { data: onboardingUpdate, error: onboardingUpdateErr } = await supabase
+            .from('onboarding')
+            .update({
+                is_completed: true,
+                updated_at: new Date().toISOString()
+            })
+            .eq('company_id', companyId)
+            .select('is_completed')
+            .single();
+
+        if (onboardingUpdateErr) {
+            console.error('Failed to complete onboarding:', onboardingUpdateErr);
+            return res.status(500).json({
+                success: false,
+                message: 'Σφάλμα κατά την ολοκλήρωση onboarding',
+                code: 'DB_ERROR'
+            });
+        }
+
+        console.log(`Onboarding completed for company ${companyId}`);
+
+        // =============================================
+        // 7. FETCH: Stores for response
+        // =============================================
+        const { data: stores, error: fetchStoresErr } = await supabase
+            .from('stores')
+            .select('id, name, address, city, is_main')
+            .eq('company_id', companyId);
+
+        if (fetchStoresErr) {
+            console.error('Failed to fetch stores:', fetchStoresErr);
+            return res.status(500).json({
+                success: false,
+                message: 'Σφάλμα κατά την ανάγνωση καταστημάτων',
+                code: 'DB_ERROR'
+            });
+        }
+
+        // =============================================
+        // 8. FETCH: Owner role & permissions
+        // =============================================
+        const { data: ownerRole, error: ownerRoleErr } = await supabase
+            .from('company_users')
+            .select(`
+                role_id,
+                roles (id, key, name)
+            `)
+            .eq('company_id', companyId)
+            .eq('user_id', userId)
+            .eq('is_owner', true)
+            .single();
+
+        if (ownerRoleErr || !ownerRole) {
+            console.error('Failed to fetch owner role:', ownerRoleErr);
+            return res.status(500).json({
+                success: false,
+                message: 'Σφάλμα κατά την ανάγνωση ρόλου',
+                code: 'DB_ERROR'
+            });
+        }
+
+        const { data: rolePerms, error: rolePermsErr } = await supabase
+            .from('role_permissions')
+            .select('permission_key')
+            .eq('role_id', ownerRole.role_id);
+
+        if (rolePermsErr) {
+            console.error('Failed to fetch permissions:', rolePermsErr);
+            return res.status(500).json({
+                success: false,
+                message: 'Σφάλμα κατά την ανάγνωση δικαιωμάτων',
+                code: 'DB_ERROR'
+            });
+        }
+
+        const permissions = rolePerms?.map(rp => rp.permission_key) || [];
+
+        // =============================================
+        // 9. BUILD: Response with stores + roles
+        // =============================================
+        const storesWithRoles = stores.map(store => ({
+            id: store.id,
+            name: store.name,
+            address: store.address,
+            city: store.city,
+            is_main: store.is_main,
+            role: {
+                id: ownerRole.roles.id,
+                key: ownerRole.roles.key,
+                name: ownerRole.roles.name
+            },
+            permissions
+        }));
+
+        // =============================================
+        // 10. SUCCESS RESPONSE
+        // =============================================
+        return res.json({ 
+            success: true, 
+            message: "Η συνδρομή είναι πλέον ενεργή!",
+            data: {
+                is_completed: onboardingUpdate.is_completed,
+                stores: storesWithRoles
+            }
+        });
+
+    } catch (error) {
+        console.error("Error in onboarding-verify:", error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
+            code: 'SERVER_ERROR' 
+        });
+    }
+});
+
+
+
 
 
 

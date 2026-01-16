@@ -1,165 +1,292 @@
 import React, { useState } from 'react';
 import styles from './Sidebar.module.css';
+import { useNavigate } from 'react-router-dom';
+import { StoreRole } from '@/types/auth.types';
 
-const quickMenu: NavItem[] = [
-  { label: 'Πίνακας Ελέγχου', icon: 'home', active: false },
-  { label: 'Ειδοποιήσεις', icon: 'bell', active: false, badge: 8 },
-  { label: 'Πρόγραμμα', icon: 'calendar', active: false },
-];
-
-const services: NavItem[] = [
-  { label: 'Ανάλυση', icon: 'pulse', active: false },
-  { label: 'Πορτοφόλι', icon: 'card', active: false },
-  { label: 'Συναλλαγές', icon: 'transfer', active: false },
-  { label: 'Επαφές', icon: 'user', active: false },
-  { label: 'Τιμολόγια', icon: 'doc', active: false },
-  { label: 'Λογαριασμός', icon: 'settings', active: false },
-];
-
-const others: NavItem[] = [
-  { label: 'Αλλαγή Πλάνου', icon: 'flash', active: true },
-  { label: 'Ρυθμίσεις', icon: 'gear', active: false },
-  { label: 'Κέντρο Βοήθειας', icon: 'help', active: false },
-];
-
-// Demo stores data
-const demoStores = [
-  { id: '1', name: 'Κεντρικό Κατάστημα', address: 'Αθήνα' },
-  { id: '2', name: 'Κατάστημα Θεσσαλονίκης', address: 'Θεσσαλονίκη' },
-  { id: '3', name: 'Διαδικτυακό Κατάστημα', address: 'Διαδικτυακό' },
-];
-
-type NavItem = {
-  label: string;
-  icon: string;
-  active?: boolean;
-  badge?: number;
+export type NavItem = {
+    label: string;
+    icon: string;
+    path: string;
+    active?: boolean;
+    badge?: number;
+    notification?: boolean;
+    pluginKey?: string;
 };
 
 type SidebarProps = {
-  companyName?: string;
-  planName?: string;
-  stores?: Array<{ id: string; name: string; address?: string }>;
-  selectedStoreId?: string;
-  onStoreChange?: (storeId: string) => void;
+    // Company & Plan
+    companyName?: string;
+    planName?: string;
+    
+    // Store Selector
+    stores: StoreRole[];
+    selectedStoreId?: string;
+    onStoreChange: (storeId: string) => void;
+    
+    // Menu Sections
+    quickMenu: NavItem[];
+    coreOperations: NavItem[];
+    financial: NavItem[];
+    pluginMenuItems: NavItem[];
+    management: NavItem[];
+    system: NavItem[];
+    
+    // User
+    userInitials?: string;
 };
 
-const Section: React.FC<{ title?: string; items: NavItem[] }> = ({
-  title,
-  items,
-}) => (
-  <div className={styles.section}>
-    {title && <p className={styles.sectionTitle}>{title}</p>}
-    <ul className={styles.list}>
-      {items.map((item) => (
-        <li
-          key={item.label}
-          className={`${styles.item} ${item.active ? styles.active : ''}`}
-        >
-          <span className={`${styles.icon} ${styles[item.icon]}`} />
-          <span className={styles.label}>{item.label}</span>
-          {item.badge ? <span className={styles.badge}>{item.badge}</span> : null}
-        </li>
-      ))}
-    </ul>
-  </div>
+// ============================================
+// MENU ITEM COMPONENT
+// ============================================
+const MenuItem: React.FC<{ 
+    item: NavItem; 
+    onClick: (item: NavItem) => void;
+}> = ({ item, onClick }) => (
+    <li
+        className={`${styles.item} ${item.active ? styles.active : ''} ${
+            item.notification ? styles.hasNotification : ''
+        }`}
+        onClick={() => onClick(item)}
+    >
+        <span className={`${styles.icon} ${styles[item.icon]}`} />
+        <span className={styles.label}>{item.label}</span>
+        {item.badge ? <span className={styles.badge}>{item.badge}</span> : null}
+        {item.notification && !item.badge ? (
+            <span className={styles.notificationDot} />
+        ) : null}
+    </li>
 );
 
+// ============================================
+// SECTION COMPONENT
+// ============================================
+const Section: React.FC<{ 
+    title?: string; 
+    items: NavItem[];
+    onItemClick: (item: NavItem) => void;
+}> = ({ title, items, onItemClick }) => {
+    if (items.length === 0) return null;
+
+    return (
+        <div className={styles.section}>
+            {title && <p className={styles.sectionTitle}>{title}</p>}
+            <ul className={styles.list}>
+                {items.map((item) => (
+                    <MenuItem key={item.path} item={item} onClick={onItemClick} />
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+// ============================================
+// MAIN SIDEBAR COMPONENT
+// ============================================
 export const Sidebar: React.FC<SidebarProps> = ({
-  companyName = 'Logistok',
-  planName = 'Βασικό Πρόγραμμα',
-  stores = demoStores,
-  selectedStoreId,
-  onStoreChange,
+    companyName = 'Logistok',
+    planName = 'Βασικό Πρόγραμμα',
+    stores = [],
+    selectedStoreId,
+    onStoreChange,
+    quickMenu,
+    coreOperations,
+    financial,
+    pluginMenuItems,
+    management,
+    system,
+    userInitials = 'L',
 }) => {
-  const [isStoreDropdownOpen, setIsStoreDropdownOpen] = useState(false);
-  const selectedStore = stores.find((s) => s.id === selectedStoreId) || stores[0];
+    const navigate = useNavigate();
+    const [isStoreDropdownOpen, setIsStoreDropdownOpen] = useState(false);
+    const selectedStore = stores.find((s) => s.id === selectedStoreId) || stores[0];
 
-  return (
-    <aside className={styles.sidebar}>
-      <div className={styles.brand}>
-        <span className={styles.brandIcon}>L</span>
-        <div className={styles.brandCopy}>
-          <div className={styles.brandName}>Logistok</div>
-        </div>
-      </div>
+    const handleItemClick = (item: NavItem) => {
+        navigate(item.path);
+    };
 
-      <div className={styles.storeSelector}>
-        <button
-          className={styles.storeButton}
-          onClick={() => setIsStoreDropdownOpen(!isStoreDropdownOpen)}
-        >
-          <div className={styles.storeInfo}>
-            <div className={styles.storeName}>{selectedStore.name}</div>
-            {selectedStore.address && (
-              <div className={styles.storeAddress}>{selectedStore.address}</div>
-            )}
-          </div>
-          <span className={`${styles.chevron} ${isStoreDropdownOpen ? styles.chevronOpen : ''}`} />
-        </button>
-        {isStoreDropdownOpen && (
-          <div className={styles.storeDropdown}>
-            {stores.map((store) => (
-              <button
-                key={store.id}
-                className={`${styles.storeOption} ${selectedStoreId === store.id ? styles.storeOptionActive : ''}`}
-                onClick={() => {
-                  onStoreChange?.(store.id);
-                  setIsStoreDropdownOpen(false);
-                }}
-              >
-                <div className={styles.storeOptionInfo}>
-                  <div className={styles.storeOptionName}>{store.name}</div>
-                  {store.address && (
-                    <div className={styles.storeOptionAddress}>{store.address}</div>
-                  )}
+    return (
+        <aside className={styles.sidebar}>
+            {/* ============================================ */}
+            {/* BRAND */}
+            {/* ============================================ */}
+            <div className={styles.brand}>
+                <span className={styles.brandIcon}>L</span>
+                <div className={styles.brandCopy}>
+                    <div className={styles.brandName}>Logistok</div>
                 </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
 
-      <div className={styles.fixedTop}>
-        <Section title="Γρήγορο Μενού" items={quickMenu} />
-      </div>
+            {/* ============================================ */}
+            {/* STORE SELECTOR */}
+            {/* ============================================ */}
+            {stores.length > 0 && (
+                <div className={styles.storeSelector}>
+                    <button
+                        className={styles.storeButton}
+                        onClick={() => setIsStoreDropdownOpen(!isStoreDropdownOpen)}
+                    >
+                        <div className={styles.storeInfo}>
+                            <div className={styles.storeName}>
+                                {selectedStore?.name || 'Επιλέξτε Κατάστημα'}
+                            </div>
+                            {selectedStore?.address && (
+                                <div className={styles.storeAddress}>
+                                    {selectedStore.address}
+                                </div>
+                            )}
+                        </div>
+                        <span 
+                            className={`${styles.chevron} ${
+                                isStoreDropdownOpen ? styles.chevronOpen : ''
+                            }`} 
+                        />
+                    </button>
+                    
+                    {isStoreDropdownOpen && (
+                        <div className={styles.storeDropdown}>
+                            {stores.map((store) => (
+                                <button
+                                    key={store.id}
+                                    className={`${styles.storeOption} ${
+                                        selectedStoreId === store.id ? styles.storeOptionActive : ''
+                                    }`}
+                                    onClick={() => {
+                                        onStoreChange?.(store.id);
+                                        setIsStoreDropdownOpen(false);
+                                    }}
+                                >
+                                    <div className={styles.storeOptionInfo}>
+                                        <div className={styles.storeOptionName}>
+                                            {store.name}
+                                        </div>
+                                        {store.address && (
+                                            <div className={styles.storeOptionAddress}>
+                                                {store.address}
+                                            </div>
+                                        )}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
-      <div className={styles.scrollableSection}>
-        <div className={styles.scrollableSectionHeader}>
-          <p className={styles.sectionTitle}>Υπηρεσίες</p>
-        </div>
-        <div className={styles.scrollableSectionContent}>
-          <ul className={styles.list}>
-            {services.map((item) => (
-              <li
-                key={item.label}
-                className={`${styles.item} ${item.active ? styles.active : ''}`}
-              >
-                <span className={`${styles.icon} ${styles[item.icon]}`} />
-                <span className={styles.label}>{item.label}</span>
-                {item.badge ? <span className={styles.badge}>{item.badge}</span> : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+            {/* ============================================ */}
+            {/* QUICK MENU (Fixed Top) */}
+            {/* ============================================ */}
+            <div className={styles.fixedTop}>
+                <Section 
+                    title="Γρήγορο Μενού" 
+                    items={quickMenu} 
+                    onItemClick={handleItemClick} 
+                />
+            </div>
 
-      <div className={styles.fixedBottom}>
-        <Section title="Άλλα" items={others} />
-      </div>
+            {/* ============================================ */}
+            {/* SCROLLABLE SECTION */}
+            {/* ============================================ */}
+            <div className={styles.scrollableSection}>
+                <div className={styles.scrollableSectionContent}>
+                    {/* Core Operations */}
+                    {coreOperations.length > 0 && (
+                        <>
+                            <div className={styles.scrollableSectionHeader}>
+                                <p className={styles.sectionTitle}>Βασικές Λειτουργίες</p>
+                            </div>
+                            <ul className={styles.list}>
+                                {coreOperations.map((item) => (
+                                    <MenuItem 
+                                        key={item.path} 
+                                        item={item} 
+                                        onClick={handleItemClick} 
+                                    />
+                                ))}
+                            </ul>
+                        </>
+                    )}
 
-      <div className={styles.accountInfo}>
-        <span className={styles.accountIcon}>
-          {companyName.charAt(0).toUpperCase()}
-        </span>
-        <div className={styles.accountDetails}>
-          <div className={styles.accountName}>{companyName}</div>
-          <div className={styles.accountPlan}>{planName}</div>
-        </div>
-      </div>
-    </aside>
-  );
+                    {/* Financial */}
+                    {financial.length > 0 && (
+                        <>
+                            <p className={styles.sectionTitle} style={{ marginTop: '24px' }}>
+                                Οικονομικά
+                            </p>
+                            <ul className={styles.list}>
+                                {financial.map((item) => (
+                                    <MenuItem 
+                                        key={item.path} 
+                                        item={item} 
+                                        onClick={handleItemClick} 
+                                    />
+                                ))}
+                            </ul>
+                        </>
+                    )}
+
+                    {/* Plugin Items */}
+                    {pluginMenuItems.length > 0 && (
+                        <>
+                            <p className={styles.sectionTitle} style={{ marginTop: '24px' }}>
+                                Plugins
+                            </p>
+                            <ul className={styles.list}>
+                                {pluginMenuItems.map((item) => (
+                                    <MenuItem 
+                                        key={item.path} 
+                                        item={item} 
+                                        onClick={handleItemClick} 
+                                    />
+                                ))}
+                            </ul>
+                        </>
+                    )}
+
+                    {/* Management (Conditional) */}
+                    {management.length > 0 && (
+                        <>
+                            <p className={styles.sectionTitle} style={{ marginTop: '24px' }}>
+                                Διαχείριση
+                            </p>
+                            <ul className={styles.list}>
+                                {management.map((item) => (
+                                    <MenuItem 
+                                        key={item.path} 
+                                        item={item} 
+                                        onClick={handleItemClick} 
+                                    />
+                                ))}
+                            </ul>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {/* ============================================ */}
+            {/* SYSTEM (Fixed Bottom) */}
+            {/* ============================================ */}
+            <div className={styles.fixedBottom}>
+                <Section 
+                    title="Σύστημα" 
+                    items={system} 
+                    onItemClick={handleItemClick} 
+                />
+            </div>
+
+            {/* ============================================ */}
+            {/* ACCOUNT INFO */}
+            {/* ============================================ */}
+            <div className={styles.accountInfo}>
+                <span className={styles.accountIcon}>
+                    {userInitials}
+                </span>
+                <div className={styles.accountDetails}>
+                    <div className={styles.accountName}>{companyName}</div>
+                    <div className={styles.accountPlan}>{planName}</div>
+                </div>
+            </div>
+        </aside>
+    );
 };
 
 export default Sidebar;
-

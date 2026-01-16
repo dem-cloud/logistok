@@ -4,7 +4,7 @@ import Spinner from "../components/Spinner";
 import { axiosPrivate, axiosPublic } from "../api/axios";
 import Button from "../components/reusable/Button";
 import Input from "../components/reusable/Input";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 type Invite = {
     email: string;
     company: {

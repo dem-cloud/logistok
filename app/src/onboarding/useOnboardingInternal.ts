@@ -3,11 +3,13 @@ import { axiosPrivate } from "../api/axios";
 import { OnboardingBackResponse, OnboardingData, OnboardingMeta, OnboardingNextResponse } from "./types";
 import { useNavigate } from "react-router-dom";
 import { STEP_ROUTES } from "./steps";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { StoreRole } from "@/types/auth.types";
+import { Stripe } from "@stripe/stripe-js";
 
 export function useOnboardingInternal() {
 
-    const { activeCompany, setActiveCompany, updateActiveCompany, setCompanies, refresh, me, showToast } = useAuth();
+    const { activeCompany, setActiveCompany, setActiveStore, updateActiveCompany, setCompanies, refresh, me, showToast } = useAuth();
     const navigate = useNavigate();
 
     const [onboardingData, setOnboardingData] = useState<OnboardingData>({
@@ -130,24 +132,11 @@ export function useOnboardingInternal() {
         navigate(`/onboarding/${STEP_ROUTES[back_step]}`)
     }
 
-    const completeOnboarding = async (isPaidPlan: boolean, setupIntentId: string | null = null) => {
+    const completeOnboarding = async (data: any) => {
 
-        let response;
-        if(!isPaidPlan){
-            response = await axiosPrivate.post('/api/shared/onboarding-complete');
-        } else {
-            response = await axiosPrivate.post("/api/billing/onboarding-complete", { setupIntentId: setupIntentId });
-        }
+        const { is_completed, stores } = data;
 
-        const { success, data } = response.data;
-
-        if(!success) {
-            showToast({message: "Κάτι πήγε στραβά", type: "error"})
-            return;
-        }
-
-        const { is_completed } = data;
-
+        // Update activeCompany
         updateActiveCompany(prev => {
             if (!prev) return prev;
 
@@ -156,20 +145,29 @@ export function useOnboardingInternal() {
                 onboarding: {
                     ...prev.onboarding,
                     is_completed: is_completed,
-                }
-            }
-        })
+                },
+                stores: stores
+            };
+        });
 
         setCompanies(prev =>
             prev.map(c =>
                 c.id === activeCompany?.id
-                    ? { ...c, onboarding: { ...c.onboarding, is_completed: is_completed } }
+                    ? { ...c, onboarding: { ...c.onboarding, is_completed: is_completed }, stores: stores }
                     : c
             )
-        )
+        );
 
-        navigate('/')
-    }
+        // Set first/main store as active
+        const mainStore = stores.find((s: StoreRole) => s.is_main) || stores[0];
+        setActiveStore(mainStore);
+        localStorage.setItem(`activeStoreId_${activeCompany!.id}`, mainStore.id);
+
+        await refresh();
+
+        navigate('/');
+
+    };
 
     const updateDraft = async (updates: Partial<OnboardingData>) => { // For changes in PaymentCheckout
 

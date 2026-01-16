@@ -1,11 +1,11 @@
 
 import styles from '../OnboardingLayout.module.css'
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import React, { useEffect, useState } from 'react';
 import Button from '@/components/reusable/Button';
 import { PluginList } from '@/components/PluginList';
 import { useOnboarding } from '../OnboardingContext';
-import { usePluginsRecommendations } from '@/hooks/usePlugins';
+import { usePluginsRecommendations } from '@/hooks/usePluginsRecommendations';
 
 export function PluginsStep() {
     

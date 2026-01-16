@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import Spinner from "../../components/Spinner";
 import styles from './CompanySelector.module.css';
 import { Crown, Hourglass } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { CompanySessionInfo } from "@/types/auth.types";
 
 
 type Invitation = {
@@ -24,6 +25,31 @@ export default function CompanySelector() {
     } = useAuth();
 
     const [invitations, setInvitations] = useState<Invitation[]>([]);
+
+    const getRoleSummary = (company: CompanySessionInfo): string => {
+        // Case 1: Has company-level role (applies to all stores)
+        // This includes owners with "Admin" role
+        if (company.membership.role) {
+            return company.membership.role.name;
+        }
+
+        // Case 2: Single store-specific role
+        if (company.stores.length === 1) {
+            return company.stores[0].role.name;
+        }
+
+        // Case 3: Multiple stores - check if all have same role
+        const uniqueRoles = [...new Set(company.stores.map(s => s.role.key))];
+        
+        if (uniqueRoles.length === 1) {
+            // All stores have the same role
+            return company.stores[0].role.name;
+        }
+
+        // Case 4: Multiple different roles
+        const roleNames = [...new Set(company.stores.map(s => s.role.name))];
+        return roleNames.join(", ");
+    };
 
     const fetchInvitations = async () => {
         try {
@@ -174,7 +200,7 @@ export default function CompanySelector() {
                                           )}
                                       </div>
                                     </div>
-                                    <p className={styles.cardSubtitle}>{company.membership.role.name}</p>
+                                    <p className={styles.cardSubtitle}>{getRoleSummary(company)}</p>
                                 </div>
                             </button>
                         );

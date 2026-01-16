@@ -14,7 +14,7 @@ import CompanySelector from './pages/protected/CompanySelector'
 import InviteSetPassword from './pages/InviteSetPassword'
 import RequireSelectCompany from './routes/RequireSelectCompany'
 import LoadingSpinner from './components/LoadingSpinner'
-import { useAuth } from './context/AuthContext'
+import { useAuth } from './contexts/AuthContext'
 import { OnboardingLayout } from './onboarding/OnboardingLayout'
 
 export default function App() {

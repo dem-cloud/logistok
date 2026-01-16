@@ -3,7 +3,7 @@ import styles from './OnboardingLayout.module.css'
 import { useParams } from "react-router-dom";
 import { ONBOARDING_STEPS, STEP_COMPONENTS } from "./steps";
 import { OnboardingStepKey } from "./types";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useOnboarding } from "./OnboardingContext";
 import LoadingSpinner from "@/components/LoadingSpinner";
 

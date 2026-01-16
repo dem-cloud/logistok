@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import axios from "axios";
 import { axiosPublic } from "@/api/axios";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { getFingerprint } from "@/auth/getFingerprint";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;

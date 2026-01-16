@@ -1,10 +1,32 @@
+import { axiosPrivate } from "@/api/axios";
 import { useOnboarding } from "../OnboardingContext";
 import styles from "./FreeFinalize.module.css";
 import { CheckCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function FreeFinalize() {
 
+    const { showToast } = useAuth();
     const { completeOnboarding } = useOnboarding();
+
+    const handleSubmit = async () => {
+
+        try {
+            const response = await axiosPrivate.post('/api/shared/onboarding-complete-free');
+            const { success, data, message } = response.data;
+
+            if (!success) {
+                showToast({ message: message || "Κάτι πήγε στραβά", type: "error" });
+                return;
+            }
+
+            completeOnboarding(data)
+        } catch (error) {
+            console.error("error:", error);
+            showToast({ message: "Κάτι πήγε στραβά", type: "error" });
+        }
+        
+    }
     
     return (
         <div className={styles.content}>
@@ -29,7 +51,7 @@ export default function FreeFinalize() {
 
                 <button 
                     className={styles.cta} 
-                    onClick={()=>completeOnboarding(false)}
+                    onClick={handleSubmit}
                 >
                     Ολοκλήρωση & Μετάβαση στο Dashboard
                 </button>

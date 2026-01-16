@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function RequireLoggedOut() {
     const { user, loading } = useAuth();

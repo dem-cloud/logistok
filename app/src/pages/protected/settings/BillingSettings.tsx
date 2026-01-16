@@ -3,7 +3,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import PlanList from "@/components/PlanList";
 import SidePopup from "@/components/reusable/SidePopup";
 import StripeCheckoutForm, { StripeCheckoutFormHandle } from "@/components/StripeCheckoutForm";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { usePlans } from "@/hooks/usePlans";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Plan } from "@/onboarding/types";

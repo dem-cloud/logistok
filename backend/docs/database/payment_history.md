@@ -5,7 +5,7 @@ CREATE TABLE payment_history (
   subscription_id UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
   
   stripe_payment_intent_id TEXT NULL,
-  stripe_invoice_id TEXT NULL,
+  stripe_invoice_id TEXT NOT NULL UNIQUE,
   stripe_charge_id TEXT NULL,
   
   amount DECIMAL(10,2) NOT NULL,

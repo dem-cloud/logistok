@@ -1,12 +1,12 @@
 // RequireSelectCompany.tsx
 import { Navigate, Outlet } from "react-router-dom";
-import AppLayout from "../AppLayout";
 import { STEP_ROUTES } from "../onboarding/steps";
 import { OnboardingStepNumber } from "../onboarding/types";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { SelectCompanyLayout } from "@/layouts/SelectCompanyLayout";
 
 export default function RequireSelectCompany() {
-    const { activeCompany, logout } = useAuth();
+    const { activeCompany } = useAuth();
 
     // Αν έχει active company → δεν πρέπει να είναι εδώ
     if (activeCompany) {
@@ -31,12 +31,8 @@ export default function RequireSelectCompany() {
 
     // OK → επιτρέπουμε το CompanySelector
     return (
-        <AppLayout
-            topbarVariant = {'select-company'}
-            showSidebar = {false}
-            onLogout = {logout}
-        >
+        <SelectCompanyLayout>
             <Outlet />
-        </AppLayout>
+        </SelectCompanyLayout>
     );
 }

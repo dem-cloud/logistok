@@ -1,7 +1,7 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { ONBOARDING_STEPS, STEP_ROUTES } from "../onboarding/steps";
 import { OnboardingStepKey, OnboardingStepNumber } from "../onboarding/types";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function RequireOnboarding() {
     const { activeCompany } = useAuth();

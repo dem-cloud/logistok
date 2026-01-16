@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom";
 import { OnboardingStepNumber } from "../onboarding/types";
 import { STEP_ROUTES } from "../onboarding/steps";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 
 export default function ProtectedCatchAll() {

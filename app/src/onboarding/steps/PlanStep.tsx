@@ -2,7 +2,7 @@ import PlanList from "@/components/PlanList";
 import styles from '../OnboardingLayout.module.css'
 import { usePlans } from "@/hooks/usePlans";
 import { useState } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useOnboarding } from "../OnboardingContext";
 import { Plan } from "../types";
 

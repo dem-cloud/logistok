@@ -1,0 +1,73 @@
+
+.selectCompanyContainer {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f7f8fb;
+}
+
+.simpleTopbar {
+  height: 76px;
+  background: #fff;
+  border-bottom: 1px solid #eef1f7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  gap: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 13px;
+}
+
+.brandName {
+  font-weight: 700;
+  font-size: 16px;
+  color: #111827;
+}
+
+.logoutButton {
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.logoutButton:hover {
+  background-color: #d5d5d5;
+  transform: translateY(-1px);
+}
+
+.logoutButton:active {
+  transform: translateY(0);
+}
+
+.selectCompanyMain {
+  flex: 1;
+  padding: 24px 28px;
+  background: #f7f8fb;
+  display: flex;
+  flex-direction: column;
+}

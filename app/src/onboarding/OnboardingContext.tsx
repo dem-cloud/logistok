@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { useOnboardingInternal } from "./useOnboardingInternal";
 import { OnboardingData, OnboardingMeta, OnboardingProviderProps } from "./types";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { Stripe } from "@stripe/stripe-js";
 
 interface OnboardingContextValue {
     onboardingData: OnboardingData;
@@ -11,7 +12,7 @@ interface OnboardingContextValue {
 
     nextStep: (updates: Partial<OnboardingData>) => Promise<void>;
     backStep: () => Promise<void>;
-    completeOnboarding: (isPaidPlan: boolean, setupIntentId?: string) => Promise<void>;
+    completeOnboarding: (isPaidPlan: boolean, setupIntentId?: string, stripe?: Stripe | null) => Promise<void>;
     updateDraft: (updates: Partial<OnboardingData>) => Promise<void>;
     exitSetup: () => void;
 

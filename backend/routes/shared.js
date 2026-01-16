@@ -7,7 +7,6 @@ const Stripe = require('stripe');
 const { ONBOARDING_STEPS, TOTAL_STEPS } = require('../helpers/onboarding/onboardingSteps');
 const { sanitizeOnboardingUpdates, validateNextOnboardingData, validateCompleteOnboardingData } = require('../helpers/onboarding/onboardingValidation');
 const { generateSubscriptionCode } = require('../helpers/generateSubscriptionCode');
-const { completeOnboardingProcess } = require('../helpers/onboarding/completeOnboarding');
 const { sendWelcomeEmail } = require('../helpers/emailService');
 
 const router = express.Router();
@@ -1124,7 +1123,7 @@ router.post("/onboarding/next", requireAuth, requireOwner, async (req, res) => {
 //     }
 // });
 
-router.post("/onboarding-complete", requireAuth, requireOwner, async (req, res) => {
+router.post("/onboarding-complete-free", requireAuth, requireOwner, async (req, res) => {
 
     const { companyId } = req.user;
     const userId = req.user.id;
@@ -1191,7 +1190,220 @@ router.post("/onboarding-complete", requireAuth, requireOwner, async (req, res) 
             });
         }
 
-        // 6. Prepare FREE subscription payload
+        if (!plan.is_free) {
+            return res.status(400).json({
+                success: false,
+                message: "Αυτό το endpoint είναι μόνο για free plans",
+                code: "INVALID_PLAN_TYPE"
+            });
+        }
+
+        const canUsePaidPlugins = plan.allows_paid_plugins;
+
+        // =============================================
+        // UPDATE COMPANY INFO
+        // =============================================
+        const { error: companyUpdateErr } = await supabase
+            .from('companies')
+            .update({
+                name: sanitizedData.company.name,
+                phone: sanitizedData.company.phone,
+            })
+            .eq('id', companyId);
+    
+        if (companyUpdateErr) {
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά την ενημέρωση της εταιρείας"
+            };
+        }
+        // =============================================
+        // INSERT INDUSTRIES
+        // =============================================
+
+        if (sanitizedData.industries.length > 0) {
+            const { data: validIndustries, error: validIndustriesError } = await supabase
+                .from('industries')
+                .select('key')
+                .in('key', sanitizedData.industries);
+
+            if (validIndustriesError) {
+                throw {
+                    status: 500,
+                    code: "DB_ERROR",
+                    message: "Σφάλμα κατά την ανάγνωση κλάδων"
+                };
+            }
+
+            if (validIndustries.length > 0) {
+                const rows = validIndustries.map(i => ({
+                    company_id: companyId,
+                    industry_key: i.key
+                }));
+
+                const { error: insertError } = await supabase
+                    .from('company_industries')
+                    .insert(rows);
+
+                if (insertError) {
+                    throw {
+                        status: 500,
+                        code: "DB_ERROR",
+                        message: "Σφάλμα κατά την ενημέρωση company industries"
+                    };
+                }
+            }
+        }
+
+        // =============================================
+        // INSERT PLUGINS
+        // =============================================
+
+        if (sanitizedData.plugins.length > 0) {
+            const { data: availablePlugins, error: pluginsSelectErr } = await supabase
+                .from('plugins')
+                .select('key, is_active, cached_price_monthly, cached_price_yearly')
+                .in('key', sanitizedData.plugins)
+                .eq('is_active', true);
+
+            if (pluginsSelectErr) {
+                throw {
+                    status: 500,
+                    code: "DB_ERROR",
+                    message: "Σφάλμα κατά την ανάγνωση plugins"
+                };
+            }
+
+            // Filter based on plan
+            const allowedPlugins = availablePlugins.filter(plugin => {
+                if (!canUsePaidPlugins) {
+                    return plugin.cached_price_monthly === null && plugin.cached_price_yearly === null;
+                }
+                return true;
+            });
+
+            if (allowedPlugins.length > 0) {
+                const pluginRows = allowedPlugins.map(plugin => ({
+                    company_id: companyId,
+                    plugin_key: plugin.key,
+                    status: 'active',
+                    activated_at: new Date().toISOString(),
+                    subscription_item_id: null,
+                    settings: null
+                }));
+
+                const { error: insertPluginsErr } = await supabase
+                    .from('company_plugins')
+                    .insert(pluginRows);
+
+                if (insertPluginsErr) {
+                    throw {
+                        status: 500,
+                        code: "DB_ERROR",
+                        message: "Σφάλμα κατά την αποθήκευση plugins"
+                    };
+                }
+            }
+        }
+
+        // =============================================
+        // CREATE STORES
+        // =============================================
+
+        const storesToCreate = [];
+
+        // Always create main store
+        storesToCreate.push({
+            company_id: companyId,
+            name: 'Κεντρική Αποθήκη',
+            is_main: true,
+            created_at: new Date().toISOString()
+        });
+
+        // Create additional branches for paid plans
+        if (plan.key !== "basic") {
+            const totalBranches = (sanitizedData.branches || 0) + plan.included_branches;
+            
+            for (let i = 1; i <= totalBranches; i++) {
+                storesToCreate.push({
+                    company_id: companyId,
+                    name: `Υποκατάστημα ${i}`,
+                    is_main: false,
+                    created_at: new Date().toISOString()
+                });
+            }
+        }
+
+        const { data: createdStores, error: storesErr } = await supabase
+            .from('stores')
+            .insert(storesToCreate)
+            .select('id, name, address, city, is_main');
+
+        if (storesErr) {
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά τη δημιουργία καταστημάτων"
+            };
+        }
+
+        console.log(`Created ${createdStores.length} stores`);
+        // =============================================
+        // LINK PLUGINS TO STORES
+        // =============================================
+
+        if (sanitizedData.plugins.length > 0 && createdStores.length > 0) {
+            // Fetch company_plugins που μόλις δημιουργήθηκαν
+            const { data: companyPlugins, error: fetchPluginsErr } = await supabase
+                .from('company_plugins')
+                .select('id, plugin_key')
+                .eq('company_id', companyId)
+                .in('plugin_key', sanitizedData.plugins);
+
+            if (fetchPluginsErr) {
+                throw {
+                    status: 500,
+                    code: "DB_ERROR",
+                    message: "Σφάλμα κατά την ανάγνωση company plugins"
+                };
+            }
+
+            // Δημιουργία store_plugins: κάθε plugin σε όλα τα stores
+            const storePluginsToInsert = [];
+            
+            for (const store of createdStores) {
+                for (const companyPlugin of companyPlugins) {
+                    storePluginsToInsert.push({
+                        company_plugin_id: companyPlugin.id,
+                        store_id: store.id,
+                        settings: null,
+                        is_active: false,
+                        created_at: new Date().toISOString()
+                    });
+                }
+            }
+
+            if (storePluginsToInsert.length > 0) {
+                const { error: storePluginsErr } = await supabase
+                    .from('store_plugins')
+                    .insert(storePluginsToInsert);
+
+                if (storePluginsErr) {
+                    throw {
+                        status: 500,
+                        code: "DB_ERROR",
+                        message: "Σφάλμα κατά τη σύνδεση plugins με stores"
+                    };
+                }
+
+                console.log(`Created ${storePluginsToInsert.length} store_plugin records`);
+            }
+        }
+
+        // =============================================
+        // CREATE SUBSCRIPTION
+        // =============================================
         const subscriptionPayload = {
             company_id: companyId,
             plan_id: plan.id,
@@ -1207,13 +1419,98 @@ router.post("/onboarding-complete", requireAuth, requireOwner, async (req, res) 
             updated_at: new Date().toISOString()
         };
 
-        // 7. Complete onboarding
-        const result = await completeOnboardingProcess(
-            companyId,
-            onboarding,
-            plan,
-            subscriptionPayload
-        );
+        const { error: subscriptionErr } = await supabase
+            .from('subscriptions')
+            .insert(subscriptionPayload);
+
+        if (subscriptionErr) {
+            console.error('FULL DB ERROR:', subscriptionErr);
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά τη δημιουργία συνδρομής"
+            };
+        }
+
+        // =============================================
+        // MARK ONBOARDING AS COMPLETED
+        // =============================================
+
+        const { data: onboardingUpdate, error: onboardingUpdateErr } = await supabase
+            .from('onboarding')
+            .update({
+                is_completed: true,
+                updated_at: new Date().toISOString()
+            })
+            .eq('company_id', companyId)
+            .select("is_completed")
+            .single();
+
+        if (onboardingUpdateErr) {
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά την ολοκλήρωση onboarding"
+            };
+        }
+
+        // =============================================
+        // FETCH OWNER'S ROLE & PERMISSIONS
+        // =============================================
+
+        const { data: ownerRole, error: ownerRoleErr } = await supabase
+            .from('company_users')
+            .select(`
+                role_id,
+                roles (id,key,name)
+            `)
+            .eq('company_id', companyId)
+            .eq('user_id', userId)
+            .eq('is_owner', true)
+            .single();
+
+        if (ownerRoleErr) {
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά την ανάγνωση owner role"
+            };
+        }
+
+        const { data: rolePerms, error: rolePermsErr } = await supabase
+            .from('role_permissions')
+            .select('permission_key')
+            .eq('role_id', ownerRole.role_id);
+
+        if (rolePermsErr) {
+            throw {
+                status: 500,
+                code: "DB_ERROR",
+                message: "Σφάλμα κατά την ανάγνωση permissions"
+            };
+        }
+
+        const permissions = rolePerms?.map(rp => rp.permission_key) || [];
+
+        // =============================================
+        // ✅ BUILD STORES ARRAY WITH ROLE INFO
+        // =============================================
+
+        const storesWithRoles = createdStores.map(store => ({
+            id: store.id,
+            name: store.name,
+            address: store.address,
+            city: store.city,
+            is_main: store.is_main,
+            role: {
+                id: ownerRole.roles.id,
+                key: ownerRole.roles.key,
+                name: ownerRole.roles.name
+            },
+            permissions
+        }));
+
+
         
         // 8. Send Welcome Email
         // Fetch company για email
@@ -1234,7 +1531,7 @@ router.post("/onboarding-complete", requireAuth, requireOwner, async (req, res) 
                 user.email,
                 company.name, // company name αντί για user name
                 plan.name,
-                true, // isFree
+                plan.is_free, // isFree
                 null
             );
         }
@@ -1243,7 +1540,8 @@ router.post("/onboarding-complete", requireAuth, requireOwner, async (req, res) 
             success: true,
             message: "Το onboarding ολοκληρώθηκε επιτυχώς!",
             data: {
-                is_completed: result.is_completed
+                is_completed: onboardingUpdate.is_completed,
+                stores: storesWithRoles
             }
         });
 

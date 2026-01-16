@@ -1,13 +1,17 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-export function generateAccessToken(userId, companyId = null, role = null, permissions = []) {
+export function generateAccessToken(userId, companyId = null, role = null, permissions = [], storeId = null) {
 
     const payload = { sub: userId };
 
     // Αν υπάρχει ενεργή εταιρεία → contextual token
     if (companyId) {
         payload.companyId = companyId;
+    }
+
+    if (storeId) {
+        payload.storeId = storeId;
     }
 
     // Role = metadata (όχι security source of truth)

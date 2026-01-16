@@ -478,12 +478,12 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
     }
 
     try {
-        // ---------------------------------------------
-        // 1. USER EXISTANCE
-        // ---------------------------------------------
+        // ============================================
+        // 1. USER EXISTENCE
+        // ============================================
         let userQuery = supabase
             .from("users")
-            .select("*");
+            .select("id, email, phone, first_name, last_name");
 
         if (email) {
             userQuery = userQuery.eq("email", email);
@@ -503,7 +503,7 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         }
 
         if (!userFound) {
-            console.log("USER DOESN'T EXISTS");
+            console.log("USER DOESN'T EXIST");
             return res.status(400).json({
                 success: false,
                 message: "Ο χρήστης δεν υπάρχει",
@@ -511,9 +511,11 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
+        const userId = userFound.id;
+
+        // ============================================
         // 2. PASSWORD VALIDATION
-        // ---------------------------------------------
+        // ============================================
         const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
 
         if (!passwordRegex.test(password)) {
@@ -534,20 +536,18 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
-        // 3. CHECK OTP (verification_code table)
-        // ---------------------------------------------
+        // ============================================
+        // 3. CHECK OTP
+        // ============================================
         let query = supabase
             .from("verification_codes")
             .select("*")
             .eq("type", VERIFICATION_TYPES.PASSWORD_RESET);
 
-        // add email filter only if email was provided
         if (email) {
             query = query.eq("email", email);
         }
 
-        // add phone filter only if phone was provided
         if (phone) {
             query = query.eq("phone", phone);
         }
@@ -609,7 +609,7 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         }
 
         // Check expiry
-        if (new Date(otpRecord.expires_at) < new Date().toISOString()) {
+        if (new Date(otpRecord.expires_at) < new Date()) {
             console.log("OTP EXPIRED");
             return res.status(400).json({
                 success: false,
@@ -636,17 +636,15 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
+        // ============================================
         // 4. UPDATE USER with new password
-        // ---------------------------------------------
+        // ============================================
         const password_hash = await bcrypt.hash(password, 10);
 
         const { error: updateUserError } = await supabase
             .from("users")
-            .update({ 
-                password_hash
-             })
-            .eq("id", userFound.id);
+            .update({ password_hash })
+            .eq("id", userId);
 
         if (updateUserError) {
             console.error("DB UPDATE ERROR (users):", updateUserError);
@@ -657,15 +655,14 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             });
         }
 
-        const userId = userFound.id;
-
-        // ---------------------------------------------
-        // 5. FETCH USER COMPANIES (like login)
-        // ---------------------------------------------
+        // ============================================
+        // 5. FETCH USER COMPANIES
+        // ============================================
         const { data: companyUsers, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .eq('status', 'active');
 
         if (companyUsersError) {
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
@@ -677,15 +674,20 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         }
 
         let companiesPayload = [];
-        if (companyUsers) {
+        
+        if (companyUsers && companyUsers.length > 0) {
 
             const companyIds = companyUsers.map(cu => cu.company_id);
-            const roleIds = companyUsers.map(cu => cu.role_id);
+            const companyLevelRoleIds = companyUsers
+                .map(cu => cu.role_id)
+                .filter(Boolean);
 
-            // Fetch companies
+            // ============================================
+            // 6. FETCH COMPANY INFO
+            // ============================================
             const { data: companies, error: companiesErr } = await supabase
                 .from("companies")
-                .select("id, name")
+                .select("id, name, logo_url")
                 .in("id", companyIds);
 
             if (companiesErr) {
@@ -697,20 +699,78 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 });
             }
             
-            if (!companies) {
-                console.log("NONE COMPANY FOUND");
+            if (!companies || companies.length === 0) {
+                console.log("COMPANIES NOT FOUND");
                 return res.status(404).json({
                     success: false,
-                    message: "Δεν βρέθηκε καμία εταιρεία",
+                    message: "Δεν βρέθηκαν εταιρείες",
                     code: "COMPANIES_NOT_FOUND",
                 });
             }
 
-            // Fetch roles
+            // ============================================
+            // 7. FETCH ONBOARDING INFO
+            // ============================================
+            const { data: onboardingList, error: onboardingErr } = await supabase
+                .from("onboarding")
+                .select("company_id, current_step, max_step_reached, is_completed")
+                .in("company_id", companyIds);
+
+            if (onboardingErr) {
+                console.error("DB SELECT ERROR (onboarding):", onboardingErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης onboarding",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // ============================================
+            // 8. FETCH ALL STORES
+            // ============================================
+            const { data: allStores, error: allStoresErr } = await supabase
+                .from("stores")
+                .select("id, company_id, name, address, city, is_main")
+                .in("company_id", companyIds);
+
+            if (allStoresErr) {
+                console.error("DB SELECT ERROR (stores):", allStoresErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης stores",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // ============================================
+            // 9. FETCH USER_STORE_ROLES
+            // ============================================
+            const { data: userStoreRoles, error: userStoreRolesErr } = await supabase
+                .from("user_store_roles")
+                .select("store_id, role_id, company_id")
+                .eq('user_id', userId)
+                .eq('status', 'active')
+                .in('company_id', companyIds);
+
+            if (userStoreRolesErr) {
+                console.error("DB SELECT ERROR (user_store_roles):", userStoreRolesErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης user_store_roles",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // ============================================
+            // 10. FETCH ALL ROLES
+            // ============================================
+            const storeLevelRoleIds = userStoreRoles?.map(usr => usr.role_id) || [];
+            const allRoleIds = [...new Set([...companyLevelRoleIds, ...storeLevelRoleIds])];
+
             const { data: roles, error: rolesErr } = await supabase
                 .from("roles")
                 .select("id, key, name")
-                .in("id", roleIds);
+                .in("id", allRoleIds);
 
             if (rolesErr) {
                 console.error("DB SELECT ERROR (roles):", rolesErr);
@@ -721,11 +781,13 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 });
             }
 
-            // Fetch permissions per role
+            // ============================================
+            // 11. FETCH PERMISSIONS PER ROLE
+            // ============================================
             const { data: rolePermissions, error: rolePermErr } = await supabase
                 .from("role_permissions")
-                .select("role_id, permissions(key)")
-                .in("role_id", roleIds);
+                .select("role_id, permission_key")
+                .in("role_id", allRoleIds);
 
             if (rolePermErr) {
                 console.error("DB SELECT ERROR (role_permissions):", rolePermErr);
@@ -736,51 +798,14 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 });
             }
 
-            // Fetch onboarding for all companies
-            const { data: onboardingList, error: onboardingErr } = await supabase
-                .from("onboarding")
-                .select("company_id, current_step, max_step_reached, is_completed")
-                .in("company_id", companyIds);
-
-            if (onboardingErr) {
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα ανάγνωσης onboarding",
-                    code: "DB_ERROR_ONBOARDING",
-                });
-            }
-
-            // ---- LOOKUP MAPS ----
-
+            // ============================================
+            // BUILD LOOKUP MAPS
+            // ============================================
+            
             // Companies lookup
             const companiesById = {};
             companies.forEach(c => {
                 companiesById[c.id] = c;
-            });
-
-            // Roles lookup
-            const rolesById = {};
-            roles.forEach(r => {
-                rolesById[r.id] = r;
-            });
-
-            // Permissions by role lookup
-            const permissionsByRole = {};
-            rolePermissions.forEach(rp => {
-                if (!permissionsByRole[rp.role_id]) {
-                    permissionsByRole[rp.role_id] = [];
-                }
-
-                // case 1: { permissions: { key: "xxx" } }
-                if (rp.permissions?.key) {
-                    permissionsByRole[rp.role_id].push(rp.permissions.key);
-                    return;
-                }
-
-                // case 2: { permissions: [ { key: "xxx" }, { key: "yyy" } ] }
-                if (Array.isArray(rp.permissions)) {
-                    rp.permissions.forEach(p => permissionsByRole[rp.role_id].push(p.key));
-                }
             });
 
             // Onboarding lookup
@@ -793,23 +818,95 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 };
             });
 
-            // ---- BUILD FINAL PAYLOAD ----
+            // Roles lookup
+            const rolesById = {};
+            roles?.forEach(r => {
+                rolesById[r.id] = r;
+            });
 
+            // Permissions by role lookup
+            const permissionsByRole = {};
+            rolePermissions?.forEach(rp => {
+                if (!permissionsByRole[rp.role_id]) {
+                    permissionsByRole[rp.role_id] = [];
+                }
+                permissionsByRole[rp.role_id].push(rp.permission_key);
+            });
+
+            // All stores grouped by company
+            const storesByCompany = {};
+            allStores?.forEach(store => {
+                if (!storesByCompany[store.company_id]) {
+                    storesByCompany[store.company_id] = [];
+                }
+                storesByCompany[store.company_id].push(store);
+            });
+
+            // Store-specific roles lookup
+            const storeRolesMap = {};
+            userStoreRoles?.forEach(usr => {
+                storeRolesMap[usr.store_id] = usr.role_id;
+            });
+
+            // ============================================
+            // BUILD FINAL PAYLOAD
+            // ============================================
             companiesPayload = companyUsers.map(cu => {
-
                 const company = companiesById[cu.company_id];
-                const role = rolesById[cu.role_id];
-                const permsForRole = permissionsByRole[cu.role_id] ?? [];
+                const companyLevelRole = cu.role_id ? rolesById[cu.role_id] : null;
+                const companyLevelPermissions = cu.role_id ? (permissionsByRole[cu.role_id] || []) : [];
 
-                const onboarding = onboardingMap[cu.company_id] ?? {
+                const onboarding = onboardingMap[cu.company_id] || {
                     current_step: 1,
                     max_step_reached: 1,
                     is_completed: false
                 };
 
+                // Όλα τα stores της εταιρείας
+                const companyStores = storesByCompany[cu.company_id] || [];
+
+                // Build stores array με role resolution
+                const stores = companyStores.map(store => {
+                    let finalRole = null;
+                    let finalPermissions = [];
+
+                    // Priority 1: Store-specific role (override)
+                    if (storeRolesMap[store.id]) {
+                        const storeRoleId = storeRolesMap[store.id];
+                        finalRole = rolesById[storeRoleId];
+                        finalPermissions = permissionsByRole[storeRoleId] || [];
+                    }
+                    // Priority 2: Company-level role (default)
+                    else if (companyLevelRole) {
+                        finalRole = companyLevelRole;
+                        finalPermissions = companyLevelPermissions;
+                    }
+                    // Priority 3: No access
+                    else {
+                        return null;
+                    }
+
+                    return {
+                        id: store.id,
+                        name: store.name,
+                        address: store.address,
+                        city: store.city,
+                        is_main: store.is_main,
+                        
+                        role: {
+                            id: finalRole.id,
+                            key: finalRole.key,
+                            name: finalRole.name
+                        },
+                        
+                        permissions: finalPermissions
+                    };
+                }).filter(Boolean);
+
                 return {
                     id: company.id,
                     name: company.name,
+                    logo_url: company.logo_url,
 
                     onboarding,
 
@@ -817,21 +914,23 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                         is_owner: cu.is_owner,
                         status: cu.status,
 
-                        role: {
-                            id: role.id,
-                            key: role.key,
-                            name: role.name
-                        },
+                        role: companyLevelRole ? {
+                            id: companyLevelRole.id,
+                            key: companyLevelRole.key,
+                            name: companyLevelRole.name
+                        } : null,
 
-                        permissions: permsForRole
-                    }
+                        permissions: companyLevelRole ? companyLevelPermissions : null
+                    },
+
+                    stores
                 };
             });
         }
 
-        // ---------------------------------------------
-        // 6. CREATE OR UPDATE USER SESSION
-        // ---------------------------------------------
+        // ============================================
+        // 12. SESSION MANAGEMENT
+        // ============================================
         const refreshToken = generateRefreshToken();
         const refreshTokenHash = hashRefreshToken(refreshToken);
 
@@ -878,7 +977,7 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
         if (existingSession) {
-            // Existing session for this device -> refresh token
+            // Update existing session
             const { error: updateError } = await supabase
                 .from("user_sessions")
                 .update({
@@ -888,9 +987,6 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                     expires_at: expires_at.toISOString(),
                     last_login_at: new Date().toISOString(),
                     last_activity_at: new Date().toISOString(),
-                    // user_agent: req.headers["user-agent"],
-                    // device: deviceName,
-                    // platform: `${browser} on ${os}`,
                 })
                 .eq("id", existingSession.id);
 
@@ -904,14 +1000,14 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             }
 
         } else {
-            // New device -> create session
+            // Create new session
             const { error: insertError } = await supabase
                 .from("user_sessions")
                 .insert({
                     user_id: userId,
                     refresh_token_hash: refreshTokenHash,
                     fingerprint,
-                    expires_at: expires_at
+                    expires_at: expires_at.toISOString()
                 });
 
             if (insertError) {
@@ -926,9 +1022,9 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
 
         setRefreshCookie(res, refreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
-        // ---------------------------------------------
-        // SUCCESS
-        // ---------------------------------------------
+        // ============================================
+        // 13. RETURN RESPONSE
+        // ============================================
         return res.json({
             success: true,
             message: "Επιτυχής αλλαγή κωδικού",
@@ -936,8 +1032,11 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 access_token: generateAccessToken(userId),
 
                 user: {
+                    id: userFound.id,
                     email: userFound.email,
-                    phone: userFound.phone
+                    phone: userFound.phone,
+                    first_name: userFound.first_name,
+                    last_name: userFound.last_name
                 },
 
                 companies: companiesPayload
@@ -946,10 +1045,13 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         
     } catch (error) {
         console.error('Password reset error', error);
-        return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
+            code: "SERVER_ERROR" 
+        });
     }
-    
-})
+});
 
 router.post("/signup", baseRateLimiter, async (req, res) => {
 
@@ -1195,8 +1297,11 @@ router.post("/signup", baseRateLimiter, async (req, res) => {
                 access_token: generateAccessToken(userId),
 
                 user: {
+                    id: userCreated.id,
                     email: userCreated.email,
                     phone: userCreated.phone,
+                    first_name: userCreated.first_name || null,
+                    last_name: userCreated.last_name || null,
                 },
 
                 companies: [],
@@ -1216,9 +1321,9 @@ router.post("/create-company", requireAuth, async (req, res) => {
     const userId = req.user.id;
 
     try {
-        // ---------------------------------------------
+        // ============================================
         // 0. CHECK FOR INCOMPLETE ONBOARDING
-        // ---------------------------------------------
+        // ============================================
         
         // Βρες όλες τις εταιρείες όπου ο χρήστης είναι owner
         const { data: ownedCompanies, error: ownedCompaniesError } = await supabase
@@ -1271,10 +1376,9 @@ router.post("/create-company", requireAuth, async (req, res) => {
             }
         }
 
-        // ---------------------------------------------
+        // ============================================
         // 1. CREATE COMPANY
-        // ---------------------------------------------
-
+        // ============================================
         const { data: companyCreated, error: companyErr } = await supabase
             .from("companies")
             .insert([{}])
@@ -1292,7 +1396,9 @@ router.post("/create-company", requireAuth, async (req, res) => {
 
         console.log("COMPANY CREATED:", companyCreated.id);
 
-        // Find user email
+        // ============================================
+        // 2. CREATE STRIPE CUSTOMER
+        // ============================================
         const { data: user, error: userError } = await supabase
             .from("users")
             .select("email")
@@ -1308,7 +1414,6 @@ router.post("/create-company", requireAuth, async (req, res) => {
             });
         }
 
-        // Create stripe customer id
         const customer = await stripe.customers.create({
             name: companyCreated.name,
             email: user.email,
@@ -1317,12 +1422,12 @@ router.post("/create-company", requireAuth, async (req, res) => {
             }
         });
 
-        // Update company with new customer id
+        // Update company with stripe customer id
         const { error: companyUpdErr } = await supabase
             .from("companies")
-            .update([{
+            .update({
                 stripe_customer_id: customer.id
-            }])
+            })
             .eq("id", companyCreated.id);
 
         if (companyUpdErr) {
@@ -1334,36 +1439,9 @@ router.post("/create-company", requireAuth, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
-        // 3. CREATE COMPANY USER
-        // ---------------------------------------------
-        const { data: cuCreated, error: cuErr } = await supabase
-            .from("company_users")
-            .insert([
-                {
-                    company_id: companyCreated.id,
-                    user_id: userId,
-                    is_owner: true,
-                    status: "active"
-                }
-            ])
-            .select("id, is_owner, status")
-            .single();
-
-        if (cuErr) {
-            console.error("DB INSERT ERROR (company_users):", cuErr);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά τη δημιουργία company_users",
-                code: "DB_ERROR",
-            });
-        }
-
-        console.log("COMPANY USER CREATED:", cuCreated.id);
-
-        // ---------------------------------------------
-        // 4. SELECT DEFAULT ROLE (KEY=ADMIN)
-        // ---------------------------------------------
+        // ============================================
+        // 3. SELECT DEFAULT ROLE (KEY=ADMIN)
+        // ============================================
         const { data: defaultRole, error: defaultRoleErr } = await supabase
             .from("default_roles")
             .select("key, name, description")
@@ -1388,10 +1466,9 @@ router.post("/create-company", requireAuth, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
-        // 5. CREATE ROLE
-        // ---------------------------------------------
-
+        // ============================================
+        // 4. CREATE ROLE
+        // ============================================
         const { data: roleCreated, error: roleErr } = await supabase
             .from("roles")
             .insert([
@@ -1399,7 +1476,7 @@ router.post("/create-company", requireAuth, async (req, res) => {
                     company_id: companyCreated.id,
                     key: defaultRole.key,
                     name: defaultRole.name,
-                    description: defaultRole.description
+                    description: defaultRole.description,
                 }
             ])
             .select()
@@ -1416,9 +1493,9 @@ router.post("/create-company", requireAuth, async (req, res) => {
 
         console.log("ROLE CREATED:", roleCreated.id);
 
-        // ---------------------------------------------
-        // 6. SELECT DEFAULT ROLE PERMISSIONS (KEYS)
-        // ---------------------------------------------
+        // ============================================
+        // 5. SELECT DEFAULT ROLE PERMISSIONS
+        // ============================================
         const { data: defaultPermissions, error: defaultPermErr } = await supabase
             .from("default_role_permissions")
             .select("permission_key")
@@ -1442,11 +1519,11 @@ router.post("/create-company", requireAuth, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
-        // 7. SELECT PERMISSIONS (IDS)
-        // ---------------------------------------------
         const permissionKeys = defaultPermissions.map(p => p.permission_key);
 
+        // ============================================
+        // 6. VALIDATE PERMISSIONS EXIST
+        // ============================================
         const { data: permissions, error: permErr } = await supabase
             .from("permissions")
             .select("key")
@@ -1461,18 +1538,18 @@ router.post("/create-company", requireAuth, async (req, res) => {
             });
         }
 
-         if (!permissions || permissions.length === 0) {
+        if (!permissions || permissions.length === 0) {
             console.log("NO PERMISSIONS FOUND:", permissionKeys);
             return res.status(404).json({
                 success: false,
-                message: "Δεν βρέθηκαν permissions με αυτα τα permissionKeys",
+                message: "Δεν βρέθηκαν permissions με αυτά τα permissionKeys",
                 code: "PERMISSIONS_NOT_FOUND",
             });
         }
 
-        // ---------------------------------------------
-        // 8. CREATE ROLE PERMISSIONS
-        // ---------------------------------------------
+        // ============================================
+        // 7. CREATE ROLE PERMISSIONS
+        // ============================================
         const rolePermissionsData = permissions.map(p => ({
             role_id: roleCreated.id,
             permission_key: p.key,
@@ -1494,31 +1571,37 @@ router.post("/create-company", requireAuth, async (req, res) => {
 
         console.log("ROLE PERMISSIONS CREATED:", rolePermissionsData.length);
 
-        // ---------------------------------------------
-        // 9. UPDATE COMPANY USER
-        // ---------------------------------------------
-        const { error: cuUpdateErr } = await supabase
+        // ============================================
+        // 8. CREATE COMPANY USER
+        // ============================================
+        const { data: cuCreated, error: cuErr } = await supabase
             .from("company_users")
-            .update({
-                role_id: roleCreated.id
-            })
-            .eq("company_id", companyCreated.id)
-            .eq("user_id", userId);
+            .insert([
+                {
+                    company_id: companyCreated.id,
+                    user_id: userId,
+                    role_id: roleCreated.id,
+                    is_owner: true,
+                    status: "active"
+                }
+            ])
+            .select("id, is_owner, status")
+            .single();
 
-        if (cuUpdateErr) {
-            console.error("DB UPDATE ERROR (company_users):", cuUpdateErr);
+        if (cuErr) {
+            console.error("DB INSERT ERROR (company_users):", cuErr);
             return res.status(500).json({
                 success: false,
-                message: "Σφάλμα κατά την ενημέρωση company_users",
+                message: "Σφάλμα κατά τη δημιουργία company_users",
                 code: "DB_ERROR",
             });
         }
 
-        console.log("COMPANY USER UPDATED WITH ROLE:", roleCreated.id);
+        console.log("COMPANY USER CREATED:", cuCreated.id);
 
-        // ---------------------------------------------
-        // 10. CREATE ONBOARDING
-        // ---------------------------------------------
+        // ============================================
+        // 9. CREATE ONBOARDING
+        // ============================================
         const { data: onboarding, error: onboardingErr } = await supabase
             .from("onboarding")
             .insert([
@@ -1541,20 +1624,21 @@ router.post("/create-company", requireAuth, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
-        // 11. EXTRACT PERMISSIONS KEYS
-        // ---------------------------------------------
-        // Τα permissions έχουμε ήδη από το Step 7
+        console.log("ONBOARDING CREATED");
+
+        // ============================================
+        // 10. EXTRACT PERMISSIONS KEYS
+        // ============================================
         const perms = permissions.map(p => p.key);
 
-        // ---------------------------------------------
-        // SUCCESS - RETURN CONTEXTUAL TOKEN WITH PERMISSIONS
-        // ---------------------------------------------
+        // ============================================
+        // 11. SUCCESS - RETURN COMPANY WITH EMPTY STORES
+        // ============================================
         return res.json({
             success: true,
             message: "Επιτυχής δημιουργία εταιρείας",
             data: {
-                // Contextual token με permissions
+                // ✅ Contextual token με permissions
                 access_token: generateAccessToken(
                     userId, 
                     companyCreated.id, 
@@ -1565,6 +1649,7 @@ router.post("/create-company", requireAuth, async (req, res) => {
                 active_company: {
                     id: companyCreated.id,
                     name: companyCreated.name,
+                    logo_url: companyCreated.logo_url,
 
                     onboarding: {
                         current_step: onboarding.current_step,
@@ -1581,18 +1666,25 @@ router.post("/create-company", requireAuth, async (req, res) => {
                             key: roleCreated.key,
                             name: roleCreated.name
                         },
+                        
+                        permissions: perms
+                    },
 
-                        permissions: perms,
-                    }
+                    // ✅ ΝΕΟ: Empty stores array
+                    // Stores will be created during onboarding
+                    stores: []
                 }
             }
         });
         
     } catch (error) {
         console.error('Error creating company', error);
-        return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
+            code: "SERVER_ERROR" 
+        });
     }
-    
 });
 
 router.post("/login", baseRateLimiter, async (req, res) => {
@@ -1610,10 +1702,12 @@ router.post("/login", baseRateLimiter, async (req, res) => {
 
     try {
 
+        // ============================================
         // 1) Βρες τον χρήστη με email Ή phone
+        // ============================================
         let userQuery = supabase
             .from("users")
-            .select("id, email, phone, password_hash, email_verified, phone_verified");
+            .select("id, email, phone, first_name, last_name, password_hash, email_verified, phone_verified");
 
         if (email) {
             userQuery = userQuery.eq("email", email);
@@ -1630,7 +1724,7 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                 message: "Σφάλμα κατά την ανάγνωση users",
                 code: "DB_ERROR",
             });
-        };
+        }
 
         if(!user){
             console.log("USER NOT FOUND");
@@ -1643,7 +1737,9 @@ router.post("/login", baseRateLimiter, async (req, res) => {
 
         const userId = user.id;
 
+        // ============================================
         // 2) Έλεγχος verification
+        // ============================================
         if(email && !user.email_verified){
             console.log("EMAIL NOT VERIFIED");
             return res.status(403).json({
@@ -1662,7 +1758,9 @@ router.post("/login", baseRateLimiter, async (req, res) => {
             });
         }
 
+        // ============================================
         // 3) Password check
+        // ============================================
         const match = await bcrypt.compare(password, user.password_hash);
         if (!match) {
             console.log("WRONG PASSWORD");
@@ -1673,11 +1771,14 @@ router.post("/login", baseRateLimiter, async (req, res) => {
             });
         }
 
+        // ============================================
         // 4) Φέρε τις εταιρείες του χρήστη
+        // ============================================
         const { data: companyUsers, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .eq('status', 'active'); // Μόνο active memberships
 
         if (companyUsersError){
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
@@ -1686,177 +1787,274 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                 message: "Σφάλμα κατά την ανάγνωση company_users",
                 code: "DB_ERROR",
             });
-        };
+        }
 
-        let companiesPayload = [];
-        if(companyUsers){
-
-            const companyIds = companyUsers.map(cu => cu.company_id);
-            const roleIds = companyUsers.map(cu => cu.role_id);
-
-            // 5) Φέρε τις εταιρείες
-            const { data: companies, error: companiesErr } = await supabase
-                .from("companies")
-                .select("id, name")
-                .in("id", companyIds);
-
-            if (companiesErr) {
-                console.error("DB SELECT ERROR (companies):", companiesErr);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την ανάγνωση companies",
-                    code: "DB_ERROR",
-                });
-            }
-            
-            if(!companies){
-                console.log("NONE COMPANY FOUND");
-                return res.status(404).json({
-                    success: false,
-                    message: "Δεν βρέθηκε καμία εταιρεία",
-                    code: "COMPANIES_NOT_FOUND",
-                });
-            }
-
-            // 6) Φέρε roles
-            const { data: roles, error: rolesErr } = await supabase
-                .from("roles")
-                .select("id, key, name")
-                .in("id", roleIds);
-
-            if (rolesErr) {
-                console.error("DB SELECT ERROR (roles):", rolesErr);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την ανάγνωση roles",
-                    code: "DB_ERROR",
-                });
-            }
-
-            // 7) Φέρε permissions ανά ρόλο
-            const { data: rolePermissions, error: rolePermErr } = await supabase
-                .from("role_permissions")
-                .select("role_id, permissions(key)")
-                .in("role_id", roleIds);
-
-            if (rolePermErr) {
-                console.error("DB SELECT ERROR (role_permissions):", rolePermErr);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την ανάγνωση role_permissions",
-                    code: "DB_ERROR",
-                });
-            }
-
-            // 8) Φέρε όλα τα onboarding για τις εταιρείες
-            const { data: onboardingList, error: onboardingErr } = await supabase
-                .from("onboarding")
-                .select("company_id, current_step, max_step_reached, is_completed")
-                .in("company_id", companyIds);
-
-            if (onboardingErr) {
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα ανάγνωσης onboarding",
-                    code: "DB_ERROR_ONBOARDING",
-                });
-            }
-
-            // ---- LOOKUP MAPS ----
-
-            // Companies lookup
-            const companiesById = {};
-            companies.forEach(c => {
-                companiesById[c.id] = c;
-            });
-
-            // Roles lookup
-            const rolesById = {};
-            roles.forEach(r => {
-                rolesById[r.id] = r;
-            });
-
-            // Permissions by role lookup
-            const permissionsByRole = {};
-            rolePermissions.forEach(rp => {
-                if (!permissionsByRole[rp.role_id]) {
-                    permissionsByRole[rp.role_id] = [];
-                }
-
-                // case 1: { permissions: { key: "xxx" } }
-                if (rp.permissions?.key) {
-                    permissionsByRole[rp.role_id].push(rp.permissions.key);
-                    return;
-                }
-
-                // case 2: { permissions: [ { key: "xxx" }, { key: "yyy" } ] }
-                if (Array.isArray(rp.permissions)) {
-                    rp.permissions.forEach(p => permissionsByRole[rp.role_id].push(p.key));
-                }
-            });
-
-            // Onboarding lookup
-            const onboardingMap = {};
-            onboardingList?.forEach(o => {
-                onboardingMap[o.company_id] = {
-                    current_step: o.current_step,
-                    max_step_reached: o.max_step_reached,
-                    is_completed: o.is_completed
-                };
-            });
-
-            // ---- BUILD FINAL PAYLOAD ----
-
-            // 9) Χτίσε το τελικό companies payload
-            companiesPayload = companyUsers.map(cu => {
-
-                const company = companiesById[cu.company_id];
-                const role = rolesById[cu.role_id];
-                const permsForRole = permissionsByRole[cu.role_id] ?? [];
-
-                const onboarding = onboardingMap[cu.company_id] ?? {
-                    current_step: 1,
-                    max_step_reached: 1,
-                    is_completed: false
-                };
-
-                return {
-                    id: company.id,
-                    name: company.name,
-
-                    onboarding,
-
-                    membership: {
-                        is_owner: cu.is_owner,
-                        status: cu.status,
-
-                        role: {
-                            id: role.id,
-                            key: role.key,
-                            name: role.name
-                        },
-
-                        permissions: permsForRole
-                    }
-                };
+        if (!companyUsers || companyUsers.length === 0) {
+            console.log("NO COMPANIES FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκε καμία εταιρεία",
+                code: "NO_COMPANIES",
             });
         }
 
-        // 10) Sessions / refresh token όπως τα είχες
+        const companyIds = companyUsers.map(cu => cu.company_id);
+        const companyLevelRoleIds = companyUsers
+            .map(cu => cu.role_id)
+            .filter(Boolean); // Φίλτραρε τα null
 
-        // TODO: Πάρε info συσκευής
-        // const parser = new UAParser(req.headers["user-agent"]);
-        // const ua = parser.getResult();
+        // ============================================
+        // 5) Φέρε company info
+        // ============================================
+        const { data: companies, error: companiesErr } = await supabase
+            .from("companies")
+            .select("id, name, logo_url")
+            .in("id", companyIds);
 
-        // const deviceName = ua.device.model || "Desktop";
-        // const browser = ua.browser.name || "Unknown Browser";
-        // const os = ua.os.name || "Unknown OS";
+        if (companiesErr) {
+            console.error("DB SELECT ERROR (companies):", companiesErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση companies",
+                code: "DB_ERROR",
+            });
+        }
         
-        // create or update session + refresh cookie
+        if(!companies || companies.length === 0){
+            console.log("COMPANIES NOT FOUND");
+            return res.status(404).json({
+                success: false,
+                message: "Δεν βρέθηκαν εταιρείες",
+                code: "COMPANIES_NOT_FOUND",
+            });
+        }
+
+        // ============================================
+        // 6) Φέρε onboarding info
+        // ============================================
+        const { data: onboardingList, error: onboardingErr } = await supabase
+            .from("onboarding")
+            .select("company_id, current_step, max_step_reached, is_completed")
+            .in("company_id", companyIds);
+
+        if (onboardingErr) {
+            console.error("DB SELECT ERROR (onboarding):", onboardingErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης onboarding",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // 7) Φέρε όλα τα stores των εταιρειών
+        // ============================================
+        const { data: allStores, error: allStoresErr } = await supabase
+            .from("stores")
+            .select("id, company_id, name, address, city, is_main")
+            .in("company_id", companyIds);
+
+        if (allStoresErr) {
+            console.error("DB SELECT ERROR (stores):", allStoresErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης stores",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // 8) Φέρε user_store_roles (store-specific roles)
+        // ============================================
+        const { data: userStoreRoles, error: userStoreRolesErr } = await supabase
+            .from("user_store_roles")
+            .select("store_id, role_id, company_id")
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .in('company_id', companyIds);
+
+        if (userStoreRolesErr) {
+            console.error("DB SELECT ERROR (user_store_roles):", userStoreRolesErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης user_store_roles",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // 9) Φέρε όλα τα roles (company-level + store-level)
+        // ============================================
+        const storeLevelRoleIds = userStoreRoles?.map(usr => usr.role_id) || [];
+        const allRoleIds = [...new Set([...companyLevelRoleIds, ...storeLevelRoleIds])];
+
+        const { data: roles, error: rolesErr } = await supabase
+            .from("roles")
+            .select("id, key, name")
+            .in("id", allRoleIds);
+
+        if (rolesErr) {
+            console.error("DB SELECT ERROR (roles):", rolesErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση roles",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // 10) Φέρε permissions ανά role
+        // ============================================
+        const { data: rolePermissions, error: rolePermErr } = await supabase
+            .from("role_permissions")
+            .select("role_id, permission_key")
+            .in("role_id", allRoleIds);
+
+        if (rolePermErr) {
+            console.error("DB SELECT ERROR (role_permissions):", rolePermErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση role_permissions",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // BUILD LOOKUP MAPS
+        // ============================================
+        
+        // Companies lookup
+        const companiesById = {};
+        companies.forEach(c => {
+            companiesById[c.id] = c;
+        });
+
+        // Onboarding lookup
+        const onboardingMap = {};
+        onboardingList?.forEach(o => {
+            onboardingMap[o.company_id] = {
+                current_step: o.current_step,
+                max_step_reached: o.max_step_reached,
+                is_completed: o.is_completed
+            };
+        });
+
+        // Roles lookup
+        const rolesById = {};
+        roles?.forEach(r => {
+            rolesById[r.id] = r;
+        });
+
+        // Permissions by role lookup
+        const permissionsByRole = {};
+        rolePermissions?.forEach(rp => {
+            if (!permissionsByRole[rp.role_id]) {
+                permissionsByRole[rp.role_id] = [];
+            }
+            permissionsByRole[rp.role_id].push(rp.permission_key);
+        });
+
+        // All stores grouped by company
+        const storesByCompany = {};
+        allStores?.forEach(store => {
+            if (!storesByCompany[store.company_id]) {
+                storesByCompany[store.company_id] = [];
+            }
+            storesByCompany[store.company_id].push(store);
+        });
+
+        // Store-specific roles lookup
+        const storeRolesMap = {}; // { "store-id": role_id }
+        userStoreRoles?.forEach(usr => {
+            storeRolesMap[usr.store_id] = usr.role_id;
+        });
+
+        // ============================================
+        // BUILD FINAL PAYLOAD
+        // ============================================
+        const companiesPayload = companyUsers.map(cu => {
+            const company = companiesById[cu.company_id];
+            const companyLevelRole = cu.role_id ? rolesById[cu.role_id] : null;
+            const companyLevelPermissions = cu.role_id ? (permissionsByRole[cu.role_id] || []) : [];
+
+            const onboarding = onboardingMap[cu.company_id] || {
+                current_step: 1,
+                max_step_reached: 1,
+                is_completed: false
+            };
+
+            // Όλα τα stores της εταιρείας
+            const companyStores = storesByCompany[cu.company_id] || [];
+
+            // Build stores array με role resolution
+            const stores = companyStores.map(store => {
+                let finalRole = null;
+                let finalPermissions = [];
+
+                // ✅ Priority 1: Store-specific role (override)
+                if (storeRolesMap[store.id]) {
+                    const storeRoleId = storeRolesMap[store.id];
+                    finalRole = rolesById[storeRoleId];
+                    finalPermissions = permissionsByRole[storeRoleId] || [];
+                }
+                // ✅ Priority 2: Company-level role (default)
+                else if (companyLevelRole) {
+                    finalRole = companyLevelRole;
+                    finalPermissions = companyLevelPermissions;
+                }
+                // ✅ Priority 3: No access (shouldn't happen if DB is consistent)
+                else {
+                    return null; // Skip this store
+                }
+
+                return {
+                    id: store.id,
+                    name: store.name,
+                    address: store.address,
+                    city: store.city,
+                    is_main: store.is_main,
+                    
+                    role: {
+                        id: finalRole.id,
+                        key: finalRole.key,
+                        name: finalRole.name
+                    },
+                    
+                    permissions: finalPermissions
+                };
+            }).filter(Boolean); // Remove nulls
+
+            return {
+                id: company.id,
+                name: company.name,
+                logo_url: company.logo_url,
+
+                onboarding,
+
+                membership: {
+                    is_owner: cu.is_owner,
+                    status: cu.status,
+
+                    role: companyLevelRole ? {
+                        id: companyLevelRole.id,
+                        key: companyLevelRole.key,
+                        name: companyLevelRole.name
+                    } : null,
+                    
+                    permissions: companyLevelRole ? companyLevelPermissions : null
+                },
+
+                stores // ✅ All stores με resolved roles & permissions
+            };
+        });
+
+        // ============================================
+        // 11) SESSION MANAGEMENT
+        // ============================================
         const refreshToken = generateRefreshToken();
         const refreshTokenHash = hashRefreshToken(refreshToken);
 
-        // Παλιές συσκευές -> revoke
+        // Revoke old sessions from other devices
         const { error: revokeOldSessionsError } = await supabase
             .from("user_sessions")
             .update({ 
@@ -1873,9 +2071,9 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                 message: "Σφάλμα κατά την ενημέρωση user_sessions",
                 code: "DB_ERROR",
             });
-        };
+        }
 
-        // Έλεγχος υπάρχοντος session για το συγκεκριμένο fingerprint
+        // Check for existing session on this device
         const { data: existingSessions, error: existingSessionsError } = await supabase
             .from("user_sessions")
             .select("id")
@@ -1891,7 +2089,7 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                 message: "Σφάλμα κατά την ανάγνωση user_sessions",
                 code: "DB_ERROR",
             });
-        };
+        }
 
         const existingSession = existingSessions?.[0];
 
@@ -1899,7 +2097,7 @@ router.post("/login", baseRateLimiter, async (req, res) => {
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
         if (existingSession) {
-            // Υπάρχει session για αυτή τη συσκευή -> ανανέωσε το token
+            // Update existing session
             const { error: updateError } = await supabase
                 .from("user_sessions")
                 .update({
@@ -1909,9 +2107,6 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                     expires_at: expires_at.toISOString(),
                     last_login_at: new Date().toISOString(),
                     last_activity_at: new Date().toISOString(),
-                    // user_agent: req.headers["user-agent"],
-                    // device: deviceName,
-                    // platform: `${browser} on ${os}`,
                 })
                 .eq("id", existingSession.id);
 
@@ -1922,17 +2117,17 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                     message: "Σφάλμα κατά την ενημέρωση user_sessions",
                     code: "DB_ERROR",
                 });
-            };
+            }
 
         } else {
-            // Νέα συσκευή -> δημιουργία session
+            // Create new session
             const { error: insertError } = await supabase
                 .from("user_sessions")
                 .insert({
                     user_id: userId,
                     refresh_token_hash: refreshTokenHash,
                     fingerprint,
-                    expires_at: expires_at
+                    expires_at: expires_at.toISOString()
                 });
 
             if (insertError){
@@ -1942,14 +2137,14 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                     message: "Σφάλμα κατά την καταχώρηση user_sessions",
                     code: "DB_ERROR",
                 });
-            };
+            }
         }
 
         setRefreshCookie(res, refreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
-        // -------------------------------------
-        // 11) RETURN RESPONSE
-        // -------------------------------------
+        // ============================================
+        // 12) RETURN RESPONSE
+        // ============================================
         return res.json({
             success: true,
             message: "OK",
@@ -1957,8 +2152,11 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                 access_token: generateAccessToken(userId),
 
                 user: {
+                    id: user.id,
                     email: user.email,
-                    phone: user.phone
+                    phone: user.phone,
+                    first_name: user.first_name,
+                    last_name: user.last_name
                 },
 
                 companies: companiesPayload
@@ -1968,7 +2166,11 @@ router.post("/login", baseRateLimiter, async (req, res) => {
         
     } catch (error) {
         console.error('Log in error', error);
-        return res.status(500).json({ success: false, message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', code: "SERVER_ERROR" });
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Αποτυχία διακομιστή. Προσπαθήστε ξανά.', 
+            code: "SERVER_ERROR" 
+        });
     }
 });
 
@@ -1986,9 +2188,9 @@ router.post("/google", baseRateLimiter, async (req, res) => {
     }
 
     try {
-        // ---------------------------------------------
+        // ============================================
         // 1. VERIFY GOOGLE TOKEN
-        // ---------------------------------------------
+        // ============================================
         let payload;
         try {
             const ticket = await googleClient.verifyIdToken({
@@ -2005,7 +2207,7 @@ router.post("/google", baseRateLimiter, async (req, res) => {
             });
         }
 
-        const { email, email_verified, sub: googleId, name, given_name, family_name, picture } = payload;
+        const { email, email_verified, sub: googleId, given_name, family_name, picture } = payload;
 
         if (!email || !email_verified) {
             console.log("EMAIL NOT VERIFIED BY GOOGLE");
@@ -2016,12 +2218,12 @@ router.post("/google", baseRateLimiter, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
+        // ============================================
         // 2. CHECK IF USER EXISTS
-        // ---------------------------------------------
+        // ============================================
         const { data: existingUser, error: userError } = await supabase
             .from("users")
-            .select("id, email, phone, google_id")
+            .select("id, email, phone, first_name, last_name, google_id")
             .eq("email", email)
             .maybeSingle();
 
@@ -2038,9 +2240,9 @@ router.post("/google", baseRateLimiter, async (req, res) => {
         let isNewUser = false;
 
         if (existingUser) {
-            // ---------------------------------------------
+            // ============================================
             // USER EXISTS - LOGIN FLOW
-            // ---------------------------------------------
+            // ============================================
             userId = existingUser.id;
 
             // Update google_id if not set
@@ -2059,9 +2261,9 @@ router.post("/google", baseRateLimiter, async (req, res) => {
             console.log("EXISTING USER LOGGED IN:", userId);
 
         } else {
-            // ---------------------------------------------
+            // ============================================
             // USER DOESN'T EXIST - SIGNUP FLOW
-            // ---------------------------------------------
+            // ============================================
             const { data: newUser, error: insertError } = await supabase
                 .from("users")
                 .insert([
@@ -2070,7 +2272,6 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                         google_id: googleId,
                         email_verified: true,
                         phone_verified: false,
-                        // password_hash is null for Google users
                         first_name: given_name || null,
                         last_name: family_name || null,
                         profile_photo_url: picture || null,
@@ -2093,13 +2294,14 @@ router.post("/google", baseRateLimiter, async (req, res) => {
             console.log("NEW USER CREATED:", userId);
         }
 
-        // ---------------------------------------------
-        // 3. FETCH USER COMPANIES (same as login)
-        // ---------------------------------------------
+        // ============================================
+        // 3. FETCH USER COMPANIES
+        // ============================================
         const { data: companyUsers, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .eq('status', 'active');
 
         if (companyUsersError) {
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
@@ -2111,15 +2313,20 @@ router.post("/google", baseRateLimiter, async (req, res) => {
         }
 
         let companiesPayload = [];
+        
         if (companyUsers && companyUsers.length > 0) {
 
             const companyIds = companyUsers.map(cu => cu.company_id);
-            const roleIds = companyUsers.map(cu => cu.role_id);
+            const companyLevelRoleIds = companyUsers
+                .map(cu => cu.role_id)
+                .filter(Boolean);
 
-            // Fetch companies
+            // ============================================
+            // 4. FETCH COMPANY INFO
+            // ============================================
             const { data: companies, error: companiesErr } = await supabase
                 .from("companies")
-                .select("id, name")
+                .select("id, name, logo_url")
                 .in("id", companyIds);
 
             if (companiesErr) {
@@ -2131,20 +2338,78 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                 });
             }
             
-            if (!companies) {
-                console.log("NONE COMPANY FOUND");
+            if (!companies || companies.length === 0) {
+                console.log("COMPANIES NOT FOUND");
                 return res.status(404).json({
                     success: false,
-                    message: "Δεν βρέθηκε καμία εταιρεία",
+                    message: "Δεν βρέθηκαν εταιρείες",
                     code: "COMPANIES_NOT_FOUND",
                 });
             }
 
-            // Fetch roles
+            // ============================================
+            // 5. FETCH ONBOARDING INFO
+            // ============================================
+            const { data: onboardingList, error: onboardingErr } = await supabase
+                .from("onboarding")
+                .select("company_id, current_step, max_step_reached, is_completed")
+                .in("company_id", companyIds);
+
+            if (onboardingErr) {
+                console.error("DB SELECT ERROR (onboarding):", onboardingErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης onboarding",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // ============================================
+            // 6. FETCH ALL STORES
+            // ============================================
+            const { data: allStores, error: allStoresErr } = await supabase
+                .from("stores")
+                .select("id, company_id, name, address, city, is_main")
+                .in("company_id", companyIds);
+
+            if (allStoresErr) {
+                console.error("DB SELECT ERROR (stores):", allStoresErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης stores",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // ============================================
+            // 7. FETCH USER_STORE_ROLES
+            // ============================================
+            const { data: userStoreRoles, error: userStoreRolesErr } = await supabase
+                .from("user_store_roles")
+                .select("store_id, role_id, company_id")
+                .eq('user_id', userId)
+                .eq('status', 'active')
+                .in('company_id', companyIds);
+
+            if (userStoreRolesErr) {
+                console.error("DB SELECT ERROR (user_store_roles):", userStoreRolesErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα ανάγνωσης user_store_roles",
+                    code: "DB_ERROR",
+                });
+            }
+
+            // ============================================
+            // 8. FETCH ALL ROLES
+            // ============================================
+            const storeLevelRoleIds = userStoreRoles?.map(usr => usr.role_id) || [];
+            const allRoleIds = [...new Set([...companyLevelRoleIds, ...storeLevelRoleIds])];
+
             const { data: roles, error: rolesErr } = await supabase
                 .from("roles")
                 .select("id, key, name")
-                .in("id", roleIds);
+                .in("id", allRoleIds);
 
             if (rolesErr) {
                 console.error("DB SELECT ERROR (roles):", rolesErr);
@@ -2155,11 +2420,13 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                 });
             }
 
-            // Fetch permissions per role
+            // ============================================
+            // 9. FETCH PERMISSIONS PER ROLE
+            // ============================================
             const { data: rolePermissions, error: rolePermErr } = await supabase
                 .from("role_permissions")
-                .select("role_id, permissions(key)")
-                .in("role_id", roleIds);
+                .select("role_id, permission_key")
+                .in("role_id", allRoleIds);
 
             if (rolePermErr) {
                 console.error("DB SELECT ERROR (role_permissions):", rolePermErr);
@@ -2170,51 +2437,14 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                 });
             }
 
-            // Fetch onboarding for all companies
-            const { data: onboardingList, error: onboardingErr } = await supabase
-                .from("onboarding")
-                .select("company_id, current_step, max_step_reached, is_completed")
-                .in("company_id", companyIds);
-
-            if (onboardingErr) {
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα ανάγνωσης onboarding",
-                    code: "DB_ERROR_ONBOARDING",
-                });
-            }
-
-            // ---- LOOKUP MAPS ----
-
+            // ============================================
+            // BUILD LOOKUP MAPS
+            // ============================================
+            
             // Companies lookup
             const companiesById = {};
             companies.forEach(c => {
                 companiesById[c.id] = c;
-            });
-
-            // Roles lookup
-            const rolesById = {};
-            roles.forEach(r => {
-                rolesById[r.id] = r;
-            });
-
-            // Permissions by role lookup
-            const permissionsByRole = {};
-            rolePermissions.forEach(rp => {
-                if (!permissionsByRole[rp.role_id]) {
-                    permissionsByRole[rp.role_id] = [];
-                }
-
-                // case 1: { permissions: { key: "xxx" } }
-                if (rp.permissions?.key) {
-                    permissionsByRole[rp.role_id].push(rp.permissions.key);
-                    return;
-                }
-
-                // case 2: { permissions: [ { key: "xxx" }, { key: "yyy" } ] }
-                if (Array.isArray(rp.permissions)) {
-                    rp.permissions.forEach(p => permissionsByRole[rp.role_id].push(p.key));
-                }
             });
 
             // Onboarding lookup
@@ -2227,23 +2457,95 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                 };
             });
 
-            // ---- BUILD FINAL PAYLOAD ----
+            // Roles lookup
+            const rolesById = {};
+            roles?.forEach(r => {
+                rolesById[r.id] = r;
+            });
 
+            // Permissions by role lookup
+            const permissionsByRole = {};
+            rolePermissions?.forEach(rp => {
+                if (!permissionsByRole[rp.role_id]) {
+                    permissionsByRole[rp.role_id] = [];
+                }
+                permissionsByRole[rp.role_id].push(rp.permission_key);
+            });
+
+            // All stores grouped by company
+            const storesByCompany = {};
+            allStores?.forEach(store => {
+                if (!storesByCompany[store.company_id]) {
+                    storesByCompany[store.company_id] = [];
+                }
+                storesByCompany[store.company_id].push(store);
+            });
+
+            // Store-specific roles lookup
+            const storeRolesMap = {};
+            userStoreRoles?.forEach(usr => {
+                storeRolesMap[usr.store_id] = usr.role_id;
+            });
+
+            // ============================================
+            // BUILD FINAL PAYLOAD
+            // ============================================
             companiesPayload = companyUsers.map(cu => {
-
                 const company = companiesById[cu.company_id];
-                const role = rolesById[cu.role_id];
-                const permsForRole = permissionsByRole[cu.role_id] ?? [];
+                const companyLevelRole = cu.role_id ? rolesById[cu.role_id] : null;
+                const companyLevelPermissions = cu.role_id ? (permissionsByRole[cu.role_id] || []) : [];
 
-                const onboarding = onboardingMap[cu.company_id] ?? {
+                const onboarding = onboardingMap[cu.company_id] || {
                     current_step: 1,
                     max_step_reached: 1,
                     is_completed: false
                 };
 
+                // Όλα τα stores της εταιρείας
+                const companyStores = storesByCompany[cu.company_id] || [];
+
+                // Build stores array με role resolution
+                const stores = companyStores.map(store => {
+                    let finalRole = null;
+                    let finalPermissions = [];
+
+                    // Priority 1: Store-specific role (override)
+                    if (storeRolesMap[store.id]) {
+                        const storeRoleId = storeRolesMap[store.id];
+                        finalRole = rolesById[storeRoleId];
+                        finalPermissions = permissionsByRole[storeRoleId] || [];
+                    }
+                    // Priority 2: Company-level role (default)
+                    else if (companyLevelRole) {
+                        finalRole = companyLevelRole;
+                        finalPermissions = companyLevelPermissions;
+                    }
+                    // Priority 3: No access
+                    else {
+                        return null;
+                    }
+
+                    return {
+                        id: store.id,
+                        name: store.name,
+                        address: store.address,
+                        city: store.city,
+                        is_main: store.is_main,
+                        
+                        role: {
+                            id: finalRole.id,
+                            key: finalRole.key,
+                            name: finalRole.name
+                        },
+                        
+                        permissions: finalPermissions
+                    };
+                }).filter(Boolean);
+
                 return {
                     id: company.id,
                     name: company.name,
+                    logo_url: company.logo_url,
 
                     onboarding,
 
@@ -2251,21 +2553,23 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                         is_owner: cu.is_owner,
                         status: cu.status,
 
-                        role: {
-                            id: role.id,
-                            key: role.key,
-                            name: role.name
-                        },
+                        role: companyLevelRole ? {
+                            id: companyLevelRole.id,
+                            key: companyLevelRole.key,
+                            name: companyLevelRole.name
+                        } : null,
+                        
+                        permissions: companyLevelRole ? companyLevelPermissions : null
+                    },
 
-                        permissions: permsForRole
-                    }
+                    stores
                 };
             });
         }
 
-        // ---------------------------------------------
-        // 4. CREATE OR UPDATE USER SESSION
-        // ---------------------------------------------
+        // ============================================
+        // 10. SESSION MANAGEMENT
+        // ============================================
         const refreshToken = generateRefreshToken();
         const refreshTokenHash = hashRefreshToken(refreshToken);
 
@@ -2312,7 +2616,7 @@ router.post("/google", baseRateLimiter, async (req, res) => {
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
         if (existingSession) {
-            // Existing session for this device -> refresh token
+            // Update existing session
             const { error: updateError } = await supabase
                 .from("user_sessions")
                 .update({
@@ -2335,14 +2639,14 @@ router.post("/google", baseRateLimiter, async (req, res) => {
             }
 
         } else {
-            // New device -> create session
+            // Create new session
             const { error: insertError } = await supabase
                 .from("user_sessions")
                 .insert({
                     user_id: userId,
                     refresh_token_hash: refreshTokenHash,
                     fingerprint,
-                    expires_at: expires_at
+                    expires_at: expires_at.toISOString()
                 });
 
             if (insertError) {
@@ -2357,12 +2661,12 @@ router.post("/google", baseRateLimiter, async (req, res) => {
 
         setRefreshCookie(res, refreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
-        // ---------------------------------------------
-        // 5. FETCH FULL USER DATA FOR RESPONSE
-        // ---------------------------------------------
+        // ============================================
+        // 11. FETCH FULL USER DATA FOR RESPONSE
+        // ============================================
         const { data: fullUser, error: fullUserError } = await supabase
             .from("users")
-            .select("email, phone")
+            .select("id, email, phone, first_name, last_name")
             .eq("id", userId)
             .single();
 
@@ -2375,9 +2679,9 @@ router.post("/google", baseRateLimiter, async (req, res) => {
             });
         }
 
-        // ---------------------------------------------
-        // SUCCESS
-        // ---------------------------------------------
+        // ============================================
+        // 12. RETURN RESPONSE
+        // ============================================
         return res.json({
             success: true,
             message: isNewUser ? "Επιτυχής εγγραφή με Google" : "Επιτυχής σύνδεση με Google",
@@ -2385,8 +2689,11 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                 access_token: generateAccessToken(userId),
 
                 user: {
+                    id: fullUser.id,
                     email: fullUser.email,
-                    phone: fullUser.phone
+                    phone: fullUser.phone,
+                    first_name: fullUser.first_name,
+                    last_name: fullUser.last_name
                 },
 
                 companies: companiesPayload
@@ -2429,7 +2736,7 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
     // --
 
     const refreshToken = req.cookies.refresh_token;
-    const { companyId } = req.body; // Optional - για contextual refresh
+    const { companyId, storeId } = req.body; // ✅ Both optional - για contextual refresh
 
     if (!refreshToken) {
         console.log("NO REFRESH TOKEN");
@@ -2444,7 +2751,9 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
     try {
         const refreshHash = hashRefreshToken(refreshToken);
 
-        // 1) Find and validate session
+        // ============================================
+        // 1. FIND AND VALIDATE SESSION
+        // ============================================
         const { data: session, error: sessionError } = await supabase
             .from("user_sessions")
             .select("id, user_id")
@@ -2475,7 +2784,9 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
 
         const userId = session.user_id;
 
-        // 2) Rotate refresh token
+        // ============================================
+        // 2. ROTATE REFRESH TOKEN
+        // ============================================
         const newRefreshToken = generateRefreshToken();
         const newHash = hashRefreshToken(newRefreshToken);
 
@@ -2500,12 +2811,14 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
             });
         }
 
-        // 3) Set new refresh cookie
+        // Set new refresh cookie
         setRefreshCookie(res, newRefreshToken, Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
-        // 4) Check if contextual refresh requested
+        // ============================================
+        // 3. CASE 1: NAKED REFRESH (No company context)
+        // ============================================
         if (!companyId) {
-            // NAKED TOKEN - No company context
+            console.log("NAKED TOKEN REFRESH");
             return res.json({
                 success: true,
                 data: {
@@ -2514,14 +2827,15 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
             });
         }
 
-        // 5) CONTEXTUAL TOKEN - Fetch company context
-        
-        // 5.1) Verify user has access to this company
+        // ============================================
+        // 4. VERIFY USER HAS ACCESS TO COMPANY
+        // ============================================
         const { data: companyUser, error: cuError } = await supabase
             .from("company_users")
-            .select("role_id, status")
+            .select("role_id, is_owner, status")
             .eq("user_id", userId)
             .eq("company_id", companyId)
+            .eq("status", "active")
             .maybeSingle();
 
         if (cuError) {
@@ -2544,79 +2858,160 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
             });
         }
 
-        if (companyUser.status !== 'active') {
-            console.log("USER NOT ACTIVE IN COMPANY:", userId, companyId);
-            // User is disabled - return naked token
+        // ============================================
+        // 5. GET COMPANY-LEVEL ROLE (if exists)
+        // ============================================
+        let companyLevelRole = null;
+        let companyLevelPermissions = [];
+
+        if (companyUser.role_id) {
+            const { data: roleData, error: roleError } = await supabase
+                .from("roles")
+                .select("id, key, name")
+                .eq("id", companyUser.role_id)
+                .maybeSingle();
+
+            if (roleError) {
+                console.error("DB SELECT ERROR (roles):", roleError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση roles",
+                    code: "DB_ERROR",
+                });
+            }
+
+            if (roleData) {
+                companyLevelRole = roleData;
+
+                const { data: rolePerms, error: permError } = await supabase
+                    .from("role_permissions")
+                    .select("permission_key")
+                    .eq("role_id", roleData.id);
+
+                if (permError) {
+                    console.error("DB SELECT ERROR (role_permissions):", permError);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Σφάλμα κατά την ανάγνωση permissions",
+                        code: "DB_ERROR",
+                    });
+                }
+
+                companyLevelPermissions = rolePerms?.map(rp => rp.permission_key) || [];
+            }
+        }
+
+        // ============================================
+        // 6. CASE 2: COMPANY-LEVEL REFRESH (No store)
+        // ============================================
+        if (!storeId) {
+            console.log("COMPANY-LEVEL TOKEN REFRESH");
+            
+            // Return company-level token (owner or company-wide role)
+            const access_token = generateAccessToken(
+                userId,
+                companyId,
+                companyLevelRole?.key || 'user',
+                companyLevelPermissions
+                // NO storeId
+            );
+
             return res.json({
                 success: true,
-                data: {
-                    access_token: generateAccessToken(userId)
-                }
+                data: { access_token }
             });
         }
 
-        // 5.2) Get role
-        const { data: role, error: roleError } = await supabase
-            .from("roles")
-            .select("key")
-            .eq("id", companyUser.role_id)
+        // ============================================
+        // 7. CASE 3: STORE-SPECIFIC REFRESH
+        // ============================================
+        console.log("STORE-SPECIFIC TOKEN REFRESH");
+
+        // Check if user has store-specific role
+        const { data: userStoreRole, error: usrError } = await supabase
+            .from("user_store_roles")
+            .select("role_id")
+            .eq("user_id", userId)
+            .eq("store_id", storeId)
+            .eq("status", "active")
             .maybeSingle();
 
-        if (roleError) {
-            console.error("DB SELECT ERROR (roles):", roleError);
+        if (usrError) {
+            console.error("DB SELECT ERROR (user_store_roles):", usrError);
             return res.status(500).json({
                 success: false,
-                message: "Σφάλμα κατά την ανάγνωση roles",
+                message: "Σφάλμα κατά την ανάγνωση user_store_roles",
                 code: "DB_ERROR",
             });
         }
 
-        if (!role) {
-            console.log("ROLE NOT FOUND:", companyUser.role_id);
-            // No role - return naked token
+        let finalRole = companyLevelRole;
+        let finalPermissions = companyLevelPermissions;
+
+        // Priority 1: Store-specific role (override)
+        if (userStoreRole) {
+            const { data: storeRoleData, error: storeRoleError } = await supabase
+                .from("roles")
+                .select("id, key, name")
+                .eq("id", userStoreRole.role_id)
+                .maybeSingle();
+
+            if (storeRoleError) {
+                console.error("DB SELECT ERROR (roles):", storeRoleError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση store role",
+                    code: "DB_ERROR",
+                });
+            }
+
+            if (storeRoleData) {
+                const { data: storeRolePerms, error: storePermError } = await supabase
+                    .from("role_permissions")
+                    .select("permission_key")
+                    .eq("role_id", storeRoleData.id);
+
+                if (storePermError) {
+                    console.error("DB SELECT ERROR (role_permissions):", storePermError);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Σφάλμα κατά την ανάγνωση store permissions",
+                        code: "DB_ERROR",
+                    });
+                }
+
+                finalRole = storeRoleData;
+                finalPermissions = storeRolePerms?.map(rp => rp.permission_key) || [];
+            }
+        }
+
+        // Priority 2: Company-level role (already set above)
+        // If no store-specific role, use company-level role
+
+        // Validate user has access to this store
+        if (!finalRole) {
+            console.log("USER HAS NO ROLE FOR STORE:", userId, storeId);
+            // No access - return company-level token (or naked)
             return res.json({
                 success: true,
                 data: {
-                    access_token: generateAccessToken(userId)
+                    access_token: generateAccessToken(userId, companyId, 'user', [])
                 }
             });
         }
 
-        // 5.3) Get permissions
-        const { data: rolePermissions, error: permError } = await supabase
-            .from("role_permissions")
-            .select("permissions(key)")
-            .eq("role_id", companyUser.role_id);
+        // Generate store-specific contextual token
+        const access_token = generateAccessToken(
+            userId,
+            companyId,
+            finalRole.key,
+            finalPermissions,
+            storeId // ✅ Include storeId
+        );
 
-        if (permError) {
-            console.error("DB SELECT ERROR (role_permissions):", permError);
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την ανάγνωση permissions",
-                code: "DB_ERROR",
-            });
-        }
-
-        const permissions = rolePermissions.flatMap(rp => {
-            if (!rp.permissions) return [];
-
-            // CASE 1: permissions = { key: "xxx" }
-            if (rp.permissions.key) return [rp.permissions.key];
-
-            // CASE 2: permissions = [ {key:"xxx"}, {key:"yyy"} ]
-            if (Array.isArray(rp.permissions)) {
-                return rp.permissions.map(p => p.key);
-            }
-
-            return [];
-        });
-
-        // 6) Return CONTEXTUAL access token
         return res.json({
             success: true,
-            data: {
-                access_token: generateAccessToken(userId, companyId, role.key, permissions)
-            }
+            data: { access_token }
         });
 
     } catch (err) {
@@ -2746,7 +3141,7 @@ router.post("/logout-all", requireAuth, async (req, res) => {
 });
 
 router.post("/switch-company", requireAuth, async (req, res) => {
-    const { companyId } = req.body;
+    const { companyId, storeId } = req.body;
     const userId = req.user.id;
 
     if (!companyId) {
@@ -2758,12 +3153,15 @@ router.post("/switch-company", requireAuth, async (req, res) => {
     }
 
     try {
-        // 1) Έλεγξε ότι ο χρήστης ανήκει στην εταιρεία
+        // ============================================
+        // 1. CHECK USER MEMBERSHIP
+        // ============================================
         const { data: membership, error: membershipErr } = await supabase
             .from("company_users")
-            .select("role_id, is_owner")
+            .select("role_id, is_owner, status")
             .eq("company_id", companyId)
             .eq("user_id", userId)
+            .eq("status", "active")
             .maybeSingle();
 
         if (membershipErr) {
@@ -2783,62 +3181,268 @@ router.post("/switch-company", requireAuth, async (req, res) => {
             });
         }
 
-        const roleId = membership.role_id;
+        // ============================================
+        // 2. GET COMPANY-LEVEL ROLE (if exists)
+        // ============================================
+        let companyLevelRole = null;
+        let companyLevelPermissions = [];
 
-        // 2) Πάρε τον ρόλο
-        const { data: roleData, error: roleErr } = await supabase
-            .from("roles")
-            .select("id, key")
-            .eq("id", roleId)
-            .maybeSingle();
+        if (membership.role_id) {
+            const { data: roleData, error: roleErr } = await supabase
+                .from("roles")
+                .select("id, key, name")
+                .eq("id", membership.role_id)
+                .maybeSingle();
 
-        if (roleErr || !roleData) {
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα κατά την ανάγνωση ρόλου",
-                code: "DB_ERROR_ROLE"
-            });
+            if (roleErr) {
+                console.error("DB ERROR (roles):", roleErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση ρόλου",
+                    code: "DB_ERROR"
+                });
+            }
+
+            if (roleData) {
+                companyLevelRole = roleData;
+
+                const { data: rolePerms, error: permsErr } = await supabase
+                    .from("role_permissions")
+                    .select("permission_key")
+                    .eq("role_id", roleData.id);
+
+                if (permsErr) {
+                    console.error("DB ERROR (role_permissions):", permsErr);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Σφάλμα κατά την ανάγνωση permissions",
+                        code: "DB_ERROR"
+                    });
+                }
+
+                companyLevelPermissions = rolePerms?.map(rp => rp.permission_key) || [];
+            }
         }
+
+        // ============================================
+        // 3. GET USER'S ACCESSIBLE STORES
+        // ============================================
         
-        // 3) Πάρε permissions του ρόλου
-        const { data: rolePerms, error: permsErr } = await supabase
-            .from("role_permissions")
-            .select("permissions(key)")
-            .eq("role_id", roleData.id);
+        // Get all stores for company
+        const { data: allStores, error: allStoresErr } = await supabase
+            .from("stores")
+            .select("id, name, is_main")
+            .eq("company_id", companyId)
+            .order("is_main", { ascending: false });
 
-        if (permsErr) {
-            console.error("DB ERROR (role_permissions):", permsErr);
+        if (allStoresErr) {
+            console.error("DB ERROR (stores):", allStoresErr);
             return res.status(500).json({
                 success: false,
-                message: "Σφάλμα κατά την ανάγνωση permissions",
-                code: "DB_ERROR_PERMISSIONS"
+                message: "Σφάλμα κατά την ανάγνωση stores",
+                code: "DB_ERROR"
             });
         }
 
-        const permissions = rolePerms
-            .map(rp => rp.permissions?.key)
-            .filter(Boolean); // Χωρίς το .filter(Boolean) μπορεί να επιστρέψει με: ["sales.read", undefined, null]
+        // Get store-specific roles
+        const { data: userStoreRoles, error: userStoreRolesErr } = await supabase
+            .from("user_store_roles")
+            .select("store_id, role_id")
+            .eq("user_id", userId)
+            .eq("company_id", companyId)
+            .eq("status", "active");
 
-        // 4) Φτιάξε contextual access token
+        if (userStoreRolesErr) {
+            console.error("DB ERROR (user_store_roles):", userStoreRolesErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα κατά την ανάγνωση user_store_roles",
+                code: "DB_ERROR"
+            });
+        }
+
+        // Build store-specific roles map
+        const storeRolesMap = {};
+        userStoreRoles?.forEach(usr => {
+            storeRolesMap[usr.store_id] = usr.role_id;
+        });
+
+        // ============================================
+        // 4. DETERMINE ACCESSIBLE STORES
+        // ============================================
+        
+        // Filter stores based on access (company-level role OR store-specific role)
+        const accessibleStoreIds = allStores
+            .filter(store => {
+                // Has company-level role (applies to all stores)
+                if (companyLevelRole) return true;
+                
+                // Has store-specific role for this store
+                if (storeRolesMap[store.id]) return true;
+                
+                // No access
+                return false;
+            })
+            .map(store => store.id);
+
+        // Handle onboarding case (no stores yet)
+        if (accessibleStoreIds.length === 0) {
+            // Check if onboarding is incomplete
+            const { data: onboarding, error: onboardingErr } = await supabase
+                .from("onboarding")
+                .select("is_completed")
+                .eq("company_id", companyId)
+                .single();
+
+            if (onboardingErr) {
+                console.error("DB ERROR (onboarding):", onboardingErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση onboarding",
+                    code: "DB_ERROR"
+                });
+            }
+
+            // ✅ ONBOARDING MODE: Allow access with company-level role
+            if (!onboarding?.is_completed && companyLevelRole) {
+                const access_token = generateAccessToken(
+                    userId,
+                    companyId,
+                    companyLevelRole.key,
+                    companyLevelPermissions
+                    // NO storeId - onboarding mode
+                );
+
+                return res.json({
+                    success: true,
+                    message: "Επιτυχής αλλαγή εταιρείας (onboarding mode)",
+                    data: {
+                        access_token,
+                        selected_store_id: null // ✅ No store yet
+                    }
+                });
+            }
+
+            // ❌ NOT onboarding - no access to any stores
+            return res.status(403).json({
+                success: false,
+                message: "Δεν έχετε πρόσβαση σε κανένα κατάστημα αυτής της εταιρείας",
+                code: "NO_STORE_ACCESS"
+            });
+        }
+
+        // ============================================
+        // 5. SELECT TARGET STORE
+        // ============================================
+        
+        let selectedStoreId = storeId;
+
+        // Case 1: User specified a storeId
+        if (selectedStoreId) {
+            // Validate user has access
+            if (!accessibleStoreIds.includes(selectedStoreId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Δεν έχετε πρόσβαση σε αυτό το κατάστημα: ${selectedStoreId} `,
+                    code: "STORE_ACCESS_DENIED"
+                });
+            }
+        }
+        // Case 2: Auto-select default store
+        else {
+            // Select main store if accessible, otherwise first accessible store
+            const mainStore = allStores.find(s => s.is_main && accessibleStoreIds.includes(s.id));
+            selectedStoreId = mainStore?.id || accessibleStoreIds[0];
+        }
+
+        // ============================================
+        // 6. GET ROLE & PERMISSIONS FOR SELECTED STORE
+        // ============================================
+        
+        let finalRole = null;
+        let finalPermissions = [];
+
+        // Priority 1: Store-specific role (override)
+        if (storeRolesMap[selectedStoreId]) {
+            const storeRoleId = storeRolesMap[selectedStoreId];
+            
+            const { data: storeRoleData, error: storeRoleErr } = await supabase
+                .from("roles")
+                .select("id, key, name")
+                .eq("id", storeRoleId)
+                .maybeSingle();
+
+            if (storeRoleErr) {
+                console.error("DB ERROR (store role):", storeRoleErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Σφάλμα κατά την ανάγνωση store role",
+                    code: "DB_ERROR"
+                });
+            }
+
+            if (storeRoleData) {
+                finalRole = storeRoleData;
+
+                const { data: storeRolePerms, error: storePermsErr } = await supabase
+                    .from("role_permissions")
+                    .select("permission_key")
+                    .eq("role_id", storeRoleId);
+
+                if (storePermsErr) {
+                    console.error("DB ERROR (store permissions):", storePermsErr);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Σφάλμα κατά την ανάγνωση store permissions",
+                        code: "DB_ERROR"
+                    });
+                }
+
+                finalPermissions = storeRolePerms?.map(rp => rp.permission_key) || [];
+            }
+        }
+        // Priority 2: Company-level role (default)
+        else if (companyLevelRole) {
+            finalRole = companyLevelRole;
+            finalPermissions = companyLevelPermissions;
+        }
+
+        // Validate we have a role
+        if (!finalRole) {
+            return res.status(500).json({
+                success: false,
+                message: "Δεν βρέθηκε ρόλος για το κατάστημα",
+                code: "NO_ROLE_FOUND"
+            });
+        }
+
+        // ============================================
+        // 7. GENERATE CONTEXTUAL TOKEN FOR SELECTED STORE
+        // ============================================
+        
         const access_token = generateAccessToken(
             userId,
             companyId,
-            roleData.key,
-            permissions
+            finalRole.key,
+            finalPermissions,
+            selectedStoreId
         );
 
-        // 5) Return response
+        // ============================================
+        // 8. RETURN MINIMAL RESPONSE
+        // ============================================
+        
         return res.json({
             success: true,
             message: "Επιτυχής αλλαγή εταιρείας",
             data: {
-                access_token
+                access_token,
+                selected_store_id: selectedStoreId
             }
         });
 
     } catch (err) {
         console.error("SWITCH-COMPANY SERVER ERROR:", err);
-
         return res.status(500).json({
             success: false,
             message: "Server Error",
@@ -2852,14 +3456,17 @@ router.get("/me", requireAuth, async (req, res) => {
     const userId = req.user.id;
 
     try {
-        // User
+        // ============================================
+        // 1. FETCH USER
+        // ============================================
         const { data: user, error: userErr } = await supabase
             .from("users")
-            .select("id, email, phone")
+            .select("id, email, phone, first_name, last_name")
             .eq("id", userId)
             .maybeSingle();
 
         if (userErr || !user) {
+            console.error("DB SELECT ERROR (users):", userErr);
             return res.status(500).json({
                 success: false,
                 message: "Σφάλμα ανάγνωσης χρήστη",
@@ -2867,29 +3474,38 @@ router.get("/me", requireAuth, async (req, res) => {
             });
         }
 
-        // 4) Φέρε τις εταιρείες του χρήστη
+        // ============================================
+        // 2. FETCH USER COMPANIES
+        // ============================================
         const { data: companyUsers, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .eq('status', 'active');
 
-        if (companyUsersError){
+        if (companyUsersError) {
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
             return res.status(500).json({
                 success: false,
                 message: "Σφάλμα κατά την ανάγνωση company_users",
                 code: "DB_ERROR",
             });
-        };
+        }
 
-        if(!companyUsers || companyUsers.length === 0){
+        // ============================================
+        // 3. HANDLE NO COMPANIES CASE
+        // ============================================
+        if (!companyUsers || companyUsers.length === 0) {
             return res.json({
                 success: true,
-                message: "Επιτυχής λήψη στοιχείων χρήστη με καμία εταιρεία",
+                message: "Επιτυχής λήψη στοιχείων χρήστη χωρίς εταιρείες",
                 data: {
                     user: {
+                        id: user.id,
                         email: user.email,
-                        phone: user.phone
+                        phone: user.phone,
+                        first_name: user.first_name,
+                        last_name: user.last_name
                     },
                     companies: []
                 }
@@ -2897,12 +3513,16 @@ router.get("/me", requireAuth, async (req, res) => {
         }
 
         const companyIds = companyUsers.map(cu => cu.company_id);
-        const roleIds = companyUsers.map(cu => cu.role_id);
+        const companyLevelRoleIds = companyUsers
+            .map(cu => cu.role_id)
+            .filter(Boolean);
 
-        // 5) Φέρε τις εταιρείες
+        // ============================================
+        // 4. FETCH COMPANY INFO
+        // ============================================
         const { data: companies, error: companiesErr } = await supabase
             .from("companies")
-            .select("id, name")
+            .select("id, name, logo_url")
             .in("id", companyIds);
 
         if (companiesErr) {
@@ -2914,22 +3534,80 @@ router.get("/me", requireAuth, async (req, res) => {
             });
         }
         
-        if(!companies){
-            console.log("NONE COMPANY FOUND");
+        if (!companies || companies.length === 0) {
+            console.log("COMPANIES NOT FOUND");
             return res.status(404).json({
                 success: false,
-                message: "Δεν βρέθηκε καμία εταιρεία",
+                message: "Δεν βρέθηκαν εταιρείες",
                 code: "COMPANIES_NOT_FOUND",
             });
         }
 
-        // 6) Φέρε roles
+        // ============================================
+        // 5. FETCH ONBOARDING INFO
+        // ============================================
+        const { data: onboardingList, error: onboardingErr } = await supabase
+            .from("onboarding")
+            .select("company_id, current_step, max_step_reached, is_completed")
+            .in("company_id", companyIds);
+
+        if (onboardingErr) {
+            console.error("DB SELECT ERROR (onboarding):", onboardingErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης onboarding",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // 6. FETCH ALL STORES
+        // ============================================
+        const { data: allStores, error: allStoresErr } = await supabase
+            .from("stores")
+            .select("id, company_id, name, address, city, is_main")
+            .in("company_id", companyIds);
+
+        if (allStoresErr) {
+            console.error("DB SELECT ERROR (stores):", allStoresErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης stores",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // 7. FETCH USER_STORE_ROLES
+        // ============================================
+        const { data: userStoreRoles, error: userStoreRolesErr } = await supabase
+            .from("user_store_roles")
+            .select("store_id, role_id, company_id")
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .in('company_id', companyIds);
+
+        if (userStoreRolesErr) {
+            console.error("DB SELECT ERROR (user_store_roles):", userStoreRolesErr);
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης user_store_roles",
+                code: "DB_ERROR",
+            });
+        }
+
+        // ============================================
+        // 8. FETCH ALL ROLES
+        // ============================================
+        const storeLevelRoleIds = userStoreRoles?.map(usr => usr.role_id) || [];
+        const allRoleIds = [...new Set([...companyLevelRoleIds, ...storeLevelRoleIds])];
+
         const { data: roles, error: rolesErr } = await supabase
             .from("roles")
             .select("id, key, name")
-            .in("id", roleIds);
+            .in("id", allRoleIds);
 
-        if (rolesErr || !roles) {
+        if (rolesErr) {
             console.error("DB SELECT ERROR (roles):", rolesErr);
             return res.status(500).json({
                 success: false,
@@ -2938,13 +3616,15 @@ router.get("/me", requireAuth, async (req, res) => {
             });
         }
 
-        // 7) Φέρε permissions ανά ρόλο
+        // ============================================
+        // 9. FETCH PERMISSIONS PER ROLE
+        // ============================================
         const { data: rolePermissions, error: rolePermErr } = await supabase
             .from("role_permissions")
-            .select("role_id, permissions(key)")
-            .in("role_id", roleIds);
+            .select("role_id, permission_key")
+            .in("role_id", allRoleIds);
 
-        if (rolePermErr || !rolePermissions) {
+        if (rolePermErr) {
             console.error("DB SELECT ERROR (role_permissions):", rolePermErr);
             return res.status(500).json({
                 success: false,
@@ -2953,51 +3633,14 @@ router.get("/me", requireAuth, async (req, res) => {
             });
         }
 
-        // 8) Φέρε όλα τα onboarding για τις εταιρείες
-        const { data: onboardingList, error: onboardingErr } = await supabase
-            .from("onboarding")
-            .select("company_id, current_step, max_step_reached, is_completed")
-            .in("company_id", companyIds);
-
-        if (onboardingErr) {
-            return res.status(500).json({
-                success: false,
-                message: "Σφάλμα ανάγνωσης onboarding",
-                code: "DB_ERROR_ONBOARDING",
-            });
-        }
-
-        // ---- LOOKUP MAPS ----
-
+        // ============================================
+        // BUILD LOOKUP MAPS
+        // ============================================
+        
         // Companies lookup
         const companiesById = {};
         companies.forEach(c => {
             companiesById[c.id] = c;
-        });
-
-        // Roles lookup
-        const rolesById = {};
-        roles.forEach(r => {
-            rolesById[r.id] = r;
-        });
-
-        // Permissions by role lookup
-        const permissionsByRole = {};
-        rolePermissions.forEach(rp => {
-            if (!permissionsByRole[rp.role_id]) {
-                permissionsByRole[rp.role_id] = [];
-            }
-
-            // case 1: { permissions: { key: "xxx" } }
-            if (rp.permissions?.key) {
-                permissionsByRole[rp.role_id].push(rp.permissions.key);
-                return;
-            }
-
-            // case 2: { permissions: [ { key: "xxx" }, { key: "yyy" } ] }
-            if (Array.isArray(rp.permissions)) {
-                rp.permissions.forEach(p => permissionsByRole[rp.role_id].push(p.key));
-            }
         });
 
         // Onboarding lookup
@@ -3010,24 +3653,95 @@ router.get("/me", requireAuth, async (req, res) => {
             };
         });
 
-        // ---- BUILD FINAL PAYLOAD ----
+        // Roles lookup
+        const rolesById = {};
+        roles?.forEach(r => {
+            rolesById[r.id] = r;
+        });
 
-        // 9) Χτίσε το τελικό companies payload
+        // Permissions by role lookup
+        const permissionsByRole = {};
+        rolePermissions?.forEach(rp => {
+            if (!permissionsByRole[rp.role_id]) {
+                permissionsByRole[rp.role_id] = [];
+            }
+            permissionsByRole[rp.role_id].push(rp.permission_key);
+        });
+
+        // All stores grouped by company
+        const storesByCompany = {};
+        allStores?.forEach(store => {
+            if (!storesByCompany[store.company_id]) {
+                storesByCompany[store.company_id] = [];
+            }
+            storesByCompany[store.company_id].push(store);
+        });
+
+        // Store-specific roles lookup
+        const storeRolesMap = {};
+        userStoreRoles?.forEach(usr => {
+            storeRolesMap[usr.store_id] = usr.role_id;
+        });
+
+        // ============================================
+        // BUILD FINAL PAYLOAD
+        // ============================================
         const companiesPayload = companyUsers.map(cu => {
-
             const company = companiesById[cu.company_id];
-            const role = rolesById[cu.role_id];
-            const permsForRole = permissionsByRole[cu.role_id] ?? [];
+            const companyLevelRole = cu.role_id ? rolesById[cu.role_id] : null;
+            const companyLevelPermissions = cu.role_id ? (permissionsByRole[cu.role_id] || []) : [];
 
-            const onboarding = onboardingMap[cu.company_id] ?? {
+            const onboarding = onboardingMap[cu.company_id] || {
                 current_step: 1,
                 max_step_reached: 1,
                 is_completed: false
             };
 
+            // Όλα τα stores της εταιρείας
+            const companyStores = storesByCompany[cu.company_id] || [];
+
+            // Build stores array με role resolution
+            const stores = companyStores.map(store => {
+                let finalRole = null;
+                let finalPermissions = [];
+
+                // Priority 1: Store-specific role (override)
+                if (storeRolesMap[store.id]) {
+                    const storeRoleId = storeRolesMap[store.id];
+                    finalRole = rolesById[storeRoleId];
+                    finalPermissions = permissionsByRole[storeRoleId] || [];
+                }
+                // Priority 2: Company-level role (default)
+                else if (companyLevelRole) {
+                    finalRole = companyLevelRole;
+                    finalPermissions = companyLevelPermissions;
+                }
+                // Priority 3: No access
+                else {
+                    return null;
+                }
+
+                return {
+                    id: store.id,
+                    name: store.name,
+                    address: store.address,
+                    city: store.city,
+                    is_main: store.is_main,
+                    
+                    role: {
+                        id: finalRole.id,
+                        key: finalRole.key,
+                        name: finalRole.name
+                    },
+                    
+                    permissions: finalPermissions
+                };
+            }).filter(Boolean);
+
             return {
                 id: company.id,
                 name: company.name,
+                logo_url: company.logo_url,
 
                 onboarding,
 
@@ -3035,26 +3749,32 @@ router.get("/me", requireAuth, async (req, res) => {
                     is_owner: cu.is_owner,
                     status: cu.status,
 
-                    role: {
-                        id: role.id,
-                        key: role.key,
-                        name: role.name
-                    },
+                    role: companyLevelRole ? {
+                        id: companyLevelRole.id,
+                        key: companyLevelRole.key,
+                        name: companyLevelRole.name
+                    } : null,
+                    
+                    permissions: companyLevelRole ? companyLevelPermissions : null
+                },
 
-                    permissions: permsForRole
-                }
+                stores
             };
         });
 
-
-        // Return only user & companies
+        // ============================================
+        // RETURN RESPONSE
+        // ============================================
         return res.json({
             success: true,
-            message: "Επιτυχής λήψη στοιχείων χρήστη με εταρείες",
+            message: "Επιτυχής λήψη στοιχείων χρήστη με εταιρείες",
             data: {
                 user: {
+                    id: user.id,
                     email: user.email,
-                    phone: user.phone
+                    phone: user.phone,
+                    first_name: user.first_name,
+                    last_name: user.last_name
                 },
                 companies: companiesPayload
             }
@@ -3062,7 +3782,6 @@ router.get("/me", requireAuth, async (req, res) => {
 
     } catch (err) {
         console.error("ME ERROR:", err);
-
         return res.status(500).json({
             success: false,
             message: "Server error",

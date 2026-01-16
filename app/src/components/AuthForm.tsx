@@ -8,7 +8,7 @@ import LoginForm from './LoginForm';
 import SignupForm from './SignupForm';
 import { getFingerprint } from '../auth/getFingerprint';
 import ResetPasswordForm from './ResetPasswordForm';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 type VerificationType = 'signup' | 'password_reset';
 type VerificationDeliveryMethod = 'email' | 'sms';

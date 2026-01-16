@@ -10,6 +10,7 @@ interface ButtonProps {
     disabled?: boolean;
     loading?: boolean;
     widthFull?: boolean;
+    title?: string;
 }
 
 const Button: React.FC<ButtonProps> = ({
@@ -19,11 +20,13 @@ const Button: React.FC<ButtonProps> = ({
     variant = "primary",
     disabled = false,
     loading = false,
-    widthFull = false
+    widthFull = false,
+    title = ""
 }) => {
     return (
         <button
             type={type}
+            title={title}
             onClick={onClick}
             disabled={disabled}
             className={`${styles.button} ${styles[variant]} ${

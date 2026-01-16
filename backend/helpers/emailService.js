@@ -70,7 +70,47 @@ async function sendPaymentReceiptEmail(userEmail, companyName, paymentDetails) {
     }
 }
 
+/**
+ * Send payment failed email - όταν αποτυγχάνει renewal payment
+ */
+async function sendPaymentFailedEmail(userEmail, companyName, failureDetails) {
+    try {
+        const { 
+            amount, 
+            currency, 
+            invoiceNumber, 
+            failureReason, 
+            retryDate 
+        } = failureDetails;
+        
+        const emailContent = getPaymentFailedEmail(
+            companyName,
+            amount,
+            currency,
+            invoiceNumber,
+            failureReason,
+            retryDate
+        );
+
+        const { data, error } = await resend.emails.send({
+            from: `Logistok <${process.env.RESEND_EMAIL}>`,
+            to: userEmail,
+            ...emailContent
+        });
+
+        if (error) {
+            console.error('Resend API error:', error);
+            return;
+        }
+
+        console.log(`Payment failed email sent to ${userEmail}`, data);
+    } catch (error) {
+        console.error('Failed to send payment failed email:', error);
+    }
+}
+
 module.exports = {
     sendWelcomeEmail,
-    sendPaymentReceiptEmail
+    sendPaymentReceiptEmail,
+    sendPaymentFailedEmail
 };

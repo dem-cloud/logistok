@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Input from "../../components/reusable/Input";
 import Button from "../../components/reusable/Button";
 import styles from '../OnboardingLayout.module.css'
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useOnboarding } from "../OnboardingContext";
 
 
