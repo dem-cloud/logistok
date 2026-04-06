@@ -69,7 +69,8 @@ CREATE TABLE plans (
 
   -- Business logic
   included_branches INT NOT NULL DEFAULT 0,
-  max_users_per_store INT NULL CHECK (max_users_per_store > 0),
+  max_users INT NULL CHECK (max_users > 0),
+  max_products INT NULL CHECK (max_products > 0),
   allows_paid_plugins BOOLEAN NOT NULL DEFAULT TRUE,
   is_free BOOLEAN NOT NULL DEFAULT FALSE,
 

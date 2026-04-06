@@ -45,7 +45,7 @@ export function PluginsStep() {
     };
 
     return (
-        <main className={styles.content}>
+        <main className={styles.pluginsStepContent}>
             <div className={styles.title}>Επιλέξτε τα πρόσθετα που θα απογειώσουν την επιχείρησή σας</div>
             <div className={styles.tagline}>Με κάθε πρόσθετο εξοπλίζεται την επιχείρησή σας με σημαντίκα εργαλεία</div>
 

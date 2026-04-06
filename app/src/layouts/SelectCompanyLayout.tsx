@@ -12,10 +12,10 @@ export const SelectCompanyLayout: React.FC<SelectCompanyLayoutProps> = ({ childr
         <div className={styles.selectCompanyContainer}>
             <header className={styles.simpleTopbar}>
                 <div className={styles.brand}>
-                    <span className={styles.brandIcon}>L</span>
-                    <span className={styles.brandName}>Logistok</span>
+                    <span className={styles.brandIcon}>O</span>
+                    <span className={styles.brandName}>Olyntos ERP</span>
                 </div>
-                <button className={styles.logoutButton} onClick={logout}>
+                <button className={styles.logoutButton} onClick={() => logout()}>
                     Αποσύνδεση
                 </button>
             </header>

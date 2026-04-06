@@ -18,6 +18,7 @@ export interface OnboardingData {
     company: {
         name: string;
         phone: string;
+        country: string;
     };
     industries: string[];
     plan: {
@@ -37,36 +38,6 @@ export interface Industry {
     name: string;
     description: string;
     photo_url: string;
-}
-
-export interface Plan {
-    id: string;
-    key: string;
-    name: string;
-    description: string;
-
-    max_users_per_store: number;
-    features: string[];
-    included_stores: number;
-
-    pricing: {
-        monthly: number;
-        yearly: number;
-        display_monthly_from_yearly: number;
-        yearly_discount_percent: number;
-    },
-
-    extra_store_pricing: {
-        monthly: number;
-        yearly: number;
-        display_monthly_from_yearly: number;
-        yearly_discount_percent: number;
-    },
-
-    is_free: boolean;
-    is_popular: boolean;
-    allows_paid_plugins: boolean;
-    rank: number;
 }
 
 export interface Plugin {

@@ -1,0 +1,317 @@
+.previewContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 4px;
+}
+
+.previewSection {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.previewSectionTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.previewCard {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.previewRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.previewLabel {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.previewValue {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.previewBadge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #2563eb;
+    background: #dbeafe;
+    padding: 2px 7px;
+    border-radius: 4px;
+}
+
+.previewBreakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.previewBreakdownRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.previewBreakdownRow span:last-child {
+    font-weight: 600;
+    color: #374151;
+}
+
+.previewArrow {
+    text-align: center;
+    font-size: 20px;
+    color: #9ca3af;
+    margin: -6px 0;
+}
+
+.previewNotice {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.previewNotice p {
+    margin: 0;
+    font-size: 13px;
+    color: #1e40af;
+    line-height: 1.5;
+}
+
+.previewNotice strong {
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.warningNotice {
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.warningTitle {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #92400e;
+    line-height: 1.5;
+}
+
+.paymentMethodOptions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.paymentOption {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    gap: 12px;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: 0.2s;
+    min-height: 72px;
+}
+
+.paymentOption:hover {
+    background: #f8f9fb;
+}
+
+.paymentOption.active {
+    border-color: #4c7af1;
+    background: #f0f5ff;
+}
+
+.radioOuter {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.paymentOption.active .radioOuter {
+    border-color: #4c7af1;
+}
+
+.radioInner {
+    width: 9px;
+    height: 9px;
+    background: #4c7af1;
+    border-radius: 50%;
+}
+
+.paymentOptionInfo {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+    text-align: start;
+}
+
+.paymentOptionInfo strong {
+    font-size: 15px;
+}
+
+.paymentOptionInfo span {
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.cardRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.expiry {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.paymentFormWrapper {
+    margin-top: 8px;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fafafa;
+}
+
+.billingMethodOptions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.optionsRow {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
+}
+
+.billingOption {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    gap: 12px;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: 0.2s;
+    min-height: 72px;
+}
+
+.billingOption:hover {
+    background: #f8f9fb;
+}
+
+.billingOption.active {
+    border-color: #4c7af1;
+    background: #f0f5ff;
+}
+
+.billingOptionInfo {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.4;
+    text-align: start;
+}
+
+.billingOptionInfo strong {
+    font-size: 15px;
+    color: #1a1a1a;
+}
+
+.billingOptionInfo span {
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.billingAddress {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.billingFormWrapper {
+    margin-top: 8px;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fafafa;
+}
+
+.saveCheckbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    cursor: pointer;
+    font-size: 14px;
+    color: #374151;
+}
+
+.skeleton {
+    height: 16px;
+    background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.scheduledInfo {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #f3f4f6;
+    border-radius: 6px;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}

@@ -43,7 +43,7 @@
 | phone_verified | BOOLEAN | NOT NULL | FALSE | Whether the user's phone is verified |
 | status | TEXT | NOT NULL | 'active' | User status |
 | is_active | BOOLEAN | NOT NULL | TRUE | Whether the user is active |
-| profile_photo_url | TEXT | NULL | — | Photo profile |
+| avatar_url | TEXT | NULL | — | Photo profile |
 | created_at | TIMESTAMP | NOT NULL | NOW() | Creation timestamp |
 | updated_at | TIMESTAMP | NOT NULL | NOW() | Last update timestamp |
 
@@ -51,7 +51,7 @@
 
 ## 📌 2. Example Rows
 
-| id       | first_name | last_name    | email                                               | password_hash        | phone             | email_verified | phone_verified | status     | is_active | profile_photo_url                                                        | created_at          | updated_at          |
+| id       | first_name | last_name    | email                                               | password_hash        | phone             | email_verified | phone_verified | status     | is_active | avatar_url                                                        | created_at          | updated_at          |
 | -------- | ---------- | ------------ | --------------------------------------------------- | -------------------- | ----------------- | -------------- | -------------- | ---------- | --------- | ------------------------------------------------------------------------ | ------------------- | ------------------- |
 | user-aaa | Nikos    | Economakis | [nikos@example.com](mailto:nikos@example.com)     | $2b$10$9sd09fsd... | +30 694 0000001 | TRUE           | FALSE          | active   | TRUE      | NULL                                                                     | 2025-01-01 09:00:00 | 2025-01-01 09:00:00 |
 | user-bbb | Eleni    | Papas      | [eleni@example.com](mailto:eleni@example.com)     | $2b$10$8sdfkj23... | NULL              | TRUE           | TRUE           | active   | TRUE      | [https://cdn.app.com/pfp/eleni.png](https://cdn.app.com/pfp/eleni.png) | 2025-01-02 10:15:00 | 2025-01-03 09:00:00 |
@@ -77,7 +77,7 @@ CREATE TABLE users (
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
 
-  profile_photo_url TEXT NULL,
+  avatar_url TEXT NULL,
 
   google_id TEXT NULL UNIQUE,
 
@@ -102,7 +102,7 @@ CREATE INDEX idx_users_status ON users(status) WHERE is_active = TRUE;
 
 ```sql
 INSERT INTO users
-  (first_name, last_name, email, password_hash, phone, email_verified, phone_verified, status, is_active, profile_photo_url)
+  (first_name, last_name, email, password_hash, phone, email_verified, phone_verified, status, is_active, avatar_url)
 VALUES
   -- Active verified user
   (

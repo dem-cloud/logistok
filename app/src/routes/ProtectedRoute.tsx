@@ -1,17 +1,16 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuth } from '@/contexts/AuthContext';
 
 
 export default function ProtectedRoute() {
     
-    const { loading, token } = useAuth();
+    const { token, user } = useAuth();
 
     // if (loading) {
     //     return <LoadingSpinner />;
     // }
 
-    if (!token) {
+    if (!token || !user) {
         return <Navigate to="/auth" replace />;
     }
 

@@ -31,11 +31,13 @@ interface AuthContextType {
 
     createCompany: () => Promise<void>;
     selectCompany: (companyId: string) => Promise<void>;
+    clearActiveCompany: () => void;
 
     login: (data: AuthResponseData) => void;
-    logout: () => Promise<void>;
+    logout: (opts?: { skipNavigate?: boolean }) => Promise<void>;
     refresh: () => Promise<RefreshResponseData>;
-    me: () => Promise<MeResponse>
+    me: () => Promise<MeResponse>;
+    applyTokenAndRefresh: (accessToken: string) => Promise<void>;
 
     loading: boolean;
     showToast: (data: ToastData) => void;
@@ -246,6 +248,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return data;
     };
 
+    const applyTokenAndRefresh = async (accessToken: string) => {
+        setToken(accessToken);
+        const { user: u, companies: c } = await me();
+        setUser(u);
+        setCompanies(c);
+        schedule();
+    };
+
     const createCompany = async () => {
         try {
             const response = await axiosPrivate.post("/api/auth/create-company", {});
@@ -361,6 +371,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
             return;
         }
 
+        if (activeStoreRef.current?.id === storeId) {
+            console.log("Already on this store, skipping switch");
+            return;
+        }
+
         const store = activeCompany.stores?.find(s => s.id === storeId);
         if (!store) {
             showToast({ message: "Το κατάστημα δεν βρέθηκε", type: "error" });
@@ -378,7 +393,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
     };
 
-    const logout = async () => {
+    const clearActiveCompany = () => {
+        const companyId = activeCompanyRef.current?.id;
+        
+        setActiveCompany(null);
+        setActiveStore(null);
+        
+        localStorage.removeItem("activeCompanyId");
+        
+        if (companyId) {
+            localStorage.removeItem(`activeStoreId_${companyId}`);
+        }
+    };
+
+    const logout = async (opts?: { skipNavigate?: boolean }) => {
         try {
             await axiosPublic.post('/api/auth/logout', {}, { withCredentials: true });
         } catch (error) {
@@ -402,7 +430,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 }
             });
 
-            navigate("/auth", { replace: true });
+            if (!opts?.skipNavigate) {
+                navigate("/auth", { replace: true });
+            }
         }
     };
 
@@ -454,10 +484,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
             switchStore,
             createCompany, 
             selectCompany, 
-            login, 
-            logout, 
-            refresh, 
-            me, 
+            clearActiveCompany,
+            login,
+            logout,
+            refresh,
+            me,
+            applyTokenAndRefresh,
             loading, 
             showToast 
         }}>
@@ -472,7 +504,7 @@ export const useAuth = () => {
     
     if (!context) {
         if (import.meta.env.DEV) {
-            const defaultUser: User = { id: '', email: null, phone: null, first_name: null, last_name: null };
+            const defaultUser: User = { id: '', email: null, phone: null, first_name: null, last_name: null, avatar_url: null };
             return {
                 token: null,
                 user: null,
@@ -487,10 +519,12 @@ export const useAuth = () => {
                 switchStore: async () => {},
                 createCompany: async () => {},
                 selectCompany: async () => {},
+                clearActiveCompany: () => {},
                 login: () => {},
                 logout: async () => {},
                 refresh: async () => ({ access_token: '' }),
                 me: async () => ({ user: defaultUser, companies: [] }),
+                applyTokenAndRefresh: async () => {},
                 loading: true,
                 showToast: () => {},
             } as AuthContextType;

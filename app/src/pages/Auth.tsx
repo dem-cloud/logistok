@@ -25,7 +25,7 @@ export default function Auth() {
                 >
                     <img alt="" src={LogoIcon} className={styles.logo} />
                 </div>
-                <div className={styles.title}>Καλώς Ήρθατε στο Logistok!</div>
+                <div className={styles.title}>Καλώς Ήρθατε στο Olyntos ERP!</div>
                 <div className={styles.tagline}>Όλα όσα χρειάζεστε, σε ένα μέρος.</div>
 
 

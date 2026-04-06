@@ -46,7 +46,7 @@ export function hashRefreshToken(token) {
 
 // cookie options για refresh
 const refreshCookieOpts = {
-    // domain: '.logistok.gr',
+    // domain: '.olyntos.gr',
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     // sameSite: "strict",      // ή 'lax' αν χρειάζεσαι cross-site redirects

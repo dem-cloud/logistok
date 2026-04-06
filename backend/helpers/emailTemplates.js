@@ -9,7 +9,7 @@ function generateVerificationEmail(code) {
 
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">
             Γεια σας,<br><br>
-            Για να ολοκληρώσετε την εγγραφή σας στο <strong>Logistok</strong>,
+            Για να ολοκληρώσετε την εγγραφή σας στο <strong>Olyntos</strong>,
             χρησιμοποιήστε τον παρακάτω κωδικό επιβεβαίωσης:
         </p>
 
@@ -26,7 +26,7 @@ function generateVerificationEmail(code) {
 
         <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
             Καλή συνέχεια,<br>
-            Η ομάδα του <strong>Logistok</strong>
+            Η ομάδα του <strong>Olyntos</strong>
         </p>
     </div>
     `;
@@ -42,7 +42,7 @@ function generatePasswordResetEmail(code) {
 
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">
             Γεια σας,<br><br>
-            Έχετε ζητήσει επαναφορά του κωδικού πρόσβασής σας στο <strong>Logistok</strong>.
+            Έχετε ζητήσει επαναφορά του κωδικού πρόσβασής σας στο <strong>Olyntos</strong>.
             Χρησιμοποιήστε τον παρακάτω κωδικό για να προχωρήσετε:
         </p>
 
@@ -59,7 +59,7 @@ function generatePasswordResetEmail(code) {
 
         <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
             Με εκτίμηση,<br>
-            Η ομάδα του <strong>Logistok</strong>
+            Η ομάδα του <strong>Olyntos</strong>
         </p>
     </div>
     `;
@@ -67,7 +67,7 @@ function generatePasswordResetEmail(code) {
 
 // Welcome Email - Dynamic for Free & Paid plans
 const getWelcomeEmail = (companyName, planName, isFree, nextPaymentDate = null) => ({
-    subject: `Welcome to Logistok - ${planName} plan`,
+    subject: `Welcome to Olyntos - ${planName} plan`,
     html: `
         <!DOCTYPE html>
         <html>
@@ -88,10 +88,10 @@ const getWelcomeEmail = (companyName, planName, isFree, nextPaymentDate = null) 
         <body>
             <div class="container">
                 <div class="header">
-                    <div class="logo">Logistok</div>
+                    <div class="logo">Olyntos</div>
                 </div>
                 <div class="content">
-                    <h1>🎉 Καλωσήρθες στο Logistok!</h1>
+                    <h1>🎉 Καλωσήρθες στο Olyntos!</h1>
                     <p>Γεια σας,</p>
                     <p>Χαιρόμαστε που η εταιρεία <strong>${companyName}</strong> ξεκίνησε τη χρήση του <strong>${planName}</strong> plan!</p>
                     
@@ -125,7 +125,7 @@ const getWelcomeEmail = (companyName, planName, isFree, nextPaymentDate = null) 
 
 // Payment Receipt Email (για κάθε μηνιαία χρέωση)
 const getPaymentReceiptEmail = (companyName, amount, currency, invoiceNumber, periodStart, periodEnd, receiptUrl, invoiceUrl) => ({
-    subject: `Απόδειξη πληρωμής #${invoiceNumber} - Logistok`,
+    subject: `Απόδειξη πληρωμής #${invoiceNumber} - Olyntos`,
     html: `
         <!DOCTYPE html>
         <html>
@@ -148,7 +148,7 @@ const getPaymentReceiptEmail = (companyName, amount, currency, invoiceNumber, pe
         <body>
             <div class="container">
                 <div class="header">
-                    <div class="logo">Logistok</div>
+                    <div class="logo">Olyntos</div>
                     <p style="color: #666; margin: 5px 0;">Απόδειξη Πληρωμής</p>
                     <div class="amount">€${amount}</div>
                     <p style="color: #666; font-size: 14px;">Πληρώθηκε στις ${new Date().toLocaleDateString('el-GR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
@@ -182,7 +182,7 @@ const getPaymentReceiptEmail = (companyName, amount, currency, invoiceNumber, pe
                 
                 <div class="footer">
                     <p>Ερωτήσεις; <a href="${process.env.FRONTEND_URL}/support" style="color: #666;">Επισκεφθείτε το support</a></p>
-                    <p style="margin-top: 20px;">© ${new Date().getFullYear()} Logistok. All rights reserved.</p>
+                    <p style="margin-top: 20px;">© ${new Date().getFullYear()} Olyntos. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -223,7 +223,7 @@ const getPaymentFailedEmail = (companyName, amount, currency, invoiceNumber, fai
             <div class="container">
                 <div class="header">
                     <div class="warning-icon">⚠️</div>
-                    <div class="logo">Logistok</div>
+                    <div class="logo">Olyntos</div>
                     <h2>Αποτυχία Πληρωμής</h2>
                     <div class="amount">€${amount}</div>
                     <p style="color: #666; font-size: 14px; margin: 5px 0;">Invoice #${invoiceNumber}</p>
@@ -232,7 +232,7 @@ const getPaymentFailedEmail = (companyName, amount, currency, invoiceNumber, fai
                 <div class="content">
                     <p style="font-size: 16px; margin-bottom: 15px;">Αγαπητέ πελάτη της <strong>${companyName}</strong>,</p>
                     
-                    <p>Δυστυχώς, δεν μπορέσαμε να ολοκληρώσουμε την ανανέωση της συνδρομής σας στο Logistok.</p>
+                    <p>Δυστυχώς, δεν μπορέσαμε να ολοκληρώσουμε την ανανέωση της συνδρομής σας στο Olyntos.</p>
                     
                     <div class="alert-box">
                         <p style="margin: 0; font-weight: 600;">⚡ Λόγος αποτυχίας:</p>
@@ -282,7 +282,61 @@ const getPaymentFailedEmail = (companyName, amount, currency, invoiceNumber, fai
                 
                 <div class="footer">
                     <p>Χρειάζεστε βοήθεια; <a href="${process.env.FRONTEND_URL}/support" class="support-link">Επικοινωνήστε με το Support</a></p>
-                    <p style="margin-top: 20px;">© ${new Date().getFullYear()} Logistok. All rights reserved.</p>
+                    <p style="margin-top: 20px;">© ${new Date().getFullYear()} Olyntos. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `
+});
+
+// Subscription Canceled Email
+const getSubscriptionCanceledEmail = (companyName) => ({
+    subject: `Η συνδρομή σας ακυρώθηκε - ${companyName}`,
+    html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+                .header { text-align: center; margin-bottom: 40px; }
+                .logo { font-size: 24px; font-weight: bold; color: #3F72E7; }
+                .content { background: #f9fafb; padding: 30px; border-radius: 8px; }
+                .button { background: #3F72E7; color: #fff !important; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 20px; font-weight: 600; }
+                .footer { text-align: center; margin-top: 40px; color: #999; font-size: 12px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="logo">Olyntos</div>
+                </div>
+                
+                <div class="content">
+                    <h2>Η συνδρομή σας ακυρώθηκε</h2>
+                    
+                    <p>Αγαπητέ πελάτη της <strong>${companyName}</strong>,</p>
+                    
+                    <p>Η συνδρομή σας στο Olyntos έχει ακυρωθεί. Ο λογαριασμός σας έχει μεταφερθεί στο δωρεάν πλάνο Basic.</p>
+                    
+                    <p><strong>Τι σημαίνει αυτό:</strong></p>
+                    <ul>
+                        <li>Τα premium features έχουν απενεργοποιηθεί</li>
+                        <li>Τα πρόσθετα (plugins) έχουν απενεργοποιηθεί</li>
+                        <li>Τα δεδομένα σας παραμένουν ασφαλή</li>
+                    </ul>
+                    
+                    <p>Μπορείτε να επανενεργοποιήσετε τη συνδρομή σας ανά πάσα στιγμή.</p>
+                    
+                    <div style="text-align: center;">
+                        <a href="${process.env.FRONTEND_URL}/settings/subscription" class="button">Επανενεργοποίηση Συνδρομής</a>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <p>Ευχαριστούμε που χρησιμοποιήσατε το Olyntos.</p>
+                    <p>© ${new Date().getFullYear()} Olyntos. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -295,5 +349,6 @@ module.exports = {
     generatePasswordResetEmail,
     getWelcomeEmail,
     getPaymentReceiptEmail,
-    getPaymentFailedEmail
+    getPaymentFailedEmail,
+    getSubscriptionCanceledEmail
 };

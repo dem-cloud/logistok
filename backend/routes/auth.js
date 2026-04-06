@@ -16,9 +16,34 @@ const { checkAuth } = require('../middlewares/authOptional.js');
 const { OAuth2Client } = require('google-auth-library');
 // const UAParser = require('ua-parser-js');
 
+const multer = require('multer');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const avatarUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 } // 2MB
+});
+const uploadAvatarMw = (req, res, next) => {
+    avatarUpload.single("avatar")(req, res, (err) => {
+        if (err) {
+            if (err.code === "LIMIT_FILE_SIZE") {
+                return res.status(413).json({
+                    success: false,
+                    message: "Μέγιστο μέγεθος αρχείου: 2MB",
+                    code: "FILE_TOO_LARGE"
+                });
+            }
+            return res.status(400).json({
+                success: false,
+                message: err.message || "Αποτυχία μεταφόρτωσης",
+                code: "UPLOAD_ERROR"
+            });
+        }
+        next();
+    });
+};
 
 // ## Rate Limiting (ανά IP) -> Προστατεύει τον server από spam & network floods από DoS / Botnets
 // ## Brute-force ανά Fingerprint -> Προστατεύει τον λογαριασμό από token/password guessing από Account takeover
@@ -45,6 +70,15 @@ const refreshRateLimiter = rateLimit({
 });
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function getSessionMetadata(req) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'] || null;
+    return {
+        ip_address: ip || null,
+        user_agent: userAgent
+    };
+}
 
 router.post("/check-user", baseRateLimiter, async (req, res) => {
 
@@ -409,7 +443,7 @@ router.post("/send-code", baseRateLimiter, checkAuth, async (req, res) => {
         if (delivery_method === VERIFICATION_DELIVERY_METHODS.SMS) {
 
             // TODO: Implement SMS sending with your SMS provider
-            // await sendSMS(phone, `Logistok verification code: ${code}`);
+            // await sendSMS(phone, `Olyntos verification code: ${code}`);
             return res.status(501).json({
                 success: false,
                 message: "Η αποστολή SMS δεν είναι ακόμα διαθέσιμη",
@@ -420,11 +454,11 @@ router.post("/send-code", baseRateLimiter, checkAuth, async (req, res) => {
 
             const messages = {
                 [VERIFICATION_TYPES.SIGNUP]: {
-                    subject: 'Logistok - Verify Your Email',
+                    subject: 'Olyntos - Verify Your Email',
                     html: generateVerificationEmail(code)
                 },
                 [VERIFICATION_TYPES.PASSWORD_RESET]: {
-                    subject: 'Logistok - Reset Your Password',
+                    subject: 'Olyntos - Reset Your Password',
                     html: generatePasswordResetEmail(code)
                 }
             };
@@ -432,7 +466,7 @@ router.post("/send-code", baseRateLimiter, checkAuth, async (req, res) => {
             const msgData = messages[type];
 
             await resend.emails.send({
-                from: `Logistok <${process.env.RESEND_EMAIL}>`,
+                from: `Olyntos <${process.env.RESEND_EMAIL}>`,
                 to: email,
                 ...msgData
             });
@@ -483,7 +517,7 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         // ============================================
         let userQuery = supabase
             .from("users")
-            .select("id, email, phone, first_name, last_name");
+            .select("id, email, phone, first_name, last_name, avatar_url");
 
         if (email) {
             userQuery = userQuery.eq("email", email);
@@ -658,11 +692,10 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         // ============================================
         // 5. FETCH USER COMPANIES
         // ============================================
-        const { data: companyUsers, error: companyUsersError } = await supabase
+        const { data: companyUsersRaw, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId)
-            .eq('status', 'active');
+            .eq('user_id', userId);
 
         if (companyUsersError) {
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
@@ -672,6 +705,9 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                 code: "DB_ERROR",
             });
         }
+
+        // Only show companies where user has active status (hide disabled)
+        const companyUsers = (companyUsersRaw || []).filter(cu => cu.status === 'active');
 
         let companiesPayload = [];
         
@@ -726,12 +762,54 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
             }
 
             // ============================================
+            // 7.5 FETCH SUBSCRIPTIONS (for plan features - all users need for UI gating)
+            // ============================================
+            let subscriptionsMap = {};
+
+            if (companyIds.length > 0) {
+                const { data: subscriptions, error: subscriptionsErr } = await supabase
+                    .from("subscriptions")
+                    .select(`
+                        company_id,
+                        billing_status,
+                        plans (
+                            name,
+                            key,
+                            features,
+                            included_branches,
+                            max_users
+                        )
+                    `)
+                    .in("company_id", companyIds);
+
+                if (subscriptionsErr) {
+                    console.error("DB SELECT ERROR (subscriptions):", subscriptionsErr);
+                    // Non-critical - continue without subscription data
+                } else {
+                    subscriptions?.forEach(sub => {
+                        subscriptionsMap[sub.company_id] = {
+                            plan: {
+                                name: sub.plans?.name || "Unknown",
+                                key: sub.plans?.key || null,
+                                features: sub.plans?.features || null,
+                                included_branches: sub.plans?.included_branches ?? 0,
+                                max_users: sub.plans?.max_users ?? null
+                            },
+                            status: sub.billing_status
+                        };
+                    });
+                }
+            }
+
+            // ============================================
             // 8. FETCH ALL STORES
             // ============================================
             const { data: allStores, error: allStoresErr } = await supabase
                 .from("stores")
-                .select("id, company_id, name, address, city, is_main")
-                .in("company_id", companyIds);
+                .select("id, company_id, name, address, city, country, is_main, is_active, scheduled_deactivate_at")
+                .in("company_id", companyIds)
+                .order("is_main", { ascending: false }) // Main store first
+                .order("created_at", { ascending: true }); // Then by creation date
 
             if (allStoresErr) {
                 console.error("DB SELECT ERROR (stores):", allStoresErr);
@@ -891,7 +969,10 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                         name: store.name,
                         address: store.address,
                         city: store.city,
+                        country: store.country ?? null,
                         is_main: store.is_main,
+                        is_active: store.is_active ?? true,
+                        scheduled_deactivate_at: store.scheduled_deactivate_at ?? null,
                         
                         role: {
                             id: finalRole.id,
@@ -903,7 +984,7 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                     };
                 }).filter(Boolean);
 
-                return {
+                const result = {
                     id: company.id,
                     name: company.name,
                     logo_url: company.logo_url,
@@ -925,6 +1006,13 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
 
                     stores
                 };
+
+                // Add subscription (plan features needed for all users for UI gating)
+                if (subscriptionsMap[cu.company_id]) {
+                    result.subscription = subscriptionsMap[cu.company_id];
+                }
+
+                return result;
             });
         }
 
@@ -976,6 +1064,8 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
         const expires_at = new Date();
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
+        const { ip_address, user_agent } = getSessionMetadata(req);
+
         if (existingSession) {
             // Update existing session
             const { error: updateError } = await supabase
@@ -987,6 +1077,8 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                     expires_at: expires_at.toISOString(),
                     last_login_at: new Date().toISOString(),
                     last_activity_at: new Date().toISOString(),
+                    ip_address,
+                    user_agent,
                 })
                 .eq("id", existingSession.id);
 
@@ -1007,7 +1099,9 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                     user_id: userId,
                     refresh_token_hash: refreshTokenHash,
                     fingerprint,
-                    expires_at: expires_at.toISOString()
+                    expires_at: expires_at.toISOString(),
+                    ip_address,
+                    user_agent,
                 });
 
             if (insertError) {
@@ -1036,7 +1130,8 @@ router.post("/password-reset", baseRateLimiter, async (req, res) => {
                     email: userFound.email,
                     phone: userFound.phone,
                     first_name: userFound.first_name,
-                    last_name: userFound.last_name
+                    last_name: userFound.last_name,
+                    avatar_url: userFound.avatar_url
                 },
 
                 companies: companiesPayload
@@ -1267,6 +1362,8 @@ router.post("/signup", baseRateLimiter, async (req, res) => {
         const expires_at = new Date();
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
+        const { ip_address, user_agent } = getSessionMetadata(req);
+
         const { error: userSessionsError } = await supabase
             .from("user_sessions")
             .insert({
@@ -1274,6 +1371,8 @@ router.post("/signup", baseRateLimiter, async (req, res) => {
                 refresh_token_hash: refreshTokenHash,
                 fingerprint,
                 expires_at: expires_at.toISOString(),
+                ip_address,
+                user_agent,
             });
 
         if (userSessionsError){
@@ -1300,8 +1399,9 @@ router.post("/signup", baseRateLimiter, async (req, res) => {
                     id: userCreated.id,
                     email: userCreated.email,
                     phone: userCreated.phone,
-                    first_name: userCreated.first_name || null,
-                    last_name: userCreated.last_name || null,
+                    first_name: userCreated.first_name,
+                    last_name: userCreated.last_name,
+                    avatar_url: userCreated.avatar_url
                 },
 
                 companies: [],
@@ -1414,9 +1514,22 @@ router.post("/create-company", requireAuth, async (req, res) => {
             });
         }
 
+        // Detect Country
+        const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip;
+        let detectedCountry = 'GR';
+        try {
+            const ipRes = await fetch(`https://api.country.is/${ip}`);
+            const data = await ipRes.json();
+
+            if (data?.country) {
+                detectedCountry = data.country;
+            }
+        } catch {}
+
         const customer = await stripe.customers.create({
             name: companyCreated.name,
             email: user.email,
+            address: { country: detectedCountry },
             metadata: {
                 company_id: companyCreated.id
             }
@@ -1707,7 +1820,7 @@ router.post("/login", baseRateLimiter, async (req, res) => {
         // ============================================
         let userQuery = supabase
             .from("users")
-            .select("id, email, phone, first_name, last_name, password_hash, email_verified, phone_verified");
+            .select("id, email, phone, first_name, last_name, password_hash, email_verified, phone_verified, avatar_url");
 
         if (email) {
             userQuery = userQuery.eq("email", email);
@@ -1774,11 +1887,10 @@ router.post("/login", baseRateLimiter, async (req, res) => {
         // ============================================
         // 4) Φέρε τις εταιρείες του χρήστη
         // ============================================
-        const { data: companyUsers, error: companyUsersError } = await supabase
+        const { data: companyUsersRaw, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId)
-            .eq('status', 'active'); // Μόνο active memberships
+            .eq('user_id', userId);
 
         if (companyUsersError){
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
@@ -1788,6 +1900,9 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                 code: "DB_ERROR",
             });
         }
+
+        // Only show companies where user has active status (hide disabled)
+        const companyUsers = (companyUsersRaw || []).filter(cu => cu.status === 'active');
 
         if (!companyUsers || companyUsers.length === 0) {
             console.log("NO COMPANIES FOUND");
@@ -1847,12 +1962,50 @@ router.post("/login", baseRateLimiter, async (req, res) => {
         }
 
         // ============================================
+        // 6.5) Φέρε subscriptions (ΜΟΝΟ ΓΙΑ OWNERS)
+        // ============================================
+        const ownerCompanyIds = companyUsers
+            .filter(cu => cu.is_owner)
+            .map(cu => cu.company_id);
+
+        let subscriptionsMap = {};
+
+        if (ownerCompanyIds.length > 0) {
+            const { data: subscriptions, error: subscriptionsErr } = await supabase
+                .from("subscriptions")
+                .select(`
+                    company_id,
+                    billing_status,
+                    plans (
+                        name
+                    )
+                `)
+                .in("company_id", ownerCompanyIds);
+
+            if (subscriptionsErr) {
+                console.error("DB SELECT ERROR (subscriptions):", subscriptionsErr);
+                // Non-critical - continue without subscription data
+            } else {
+                subscriptions?.forEach(sub => {
+                    subscriptionsMap[sub.company_id] = {
+                        plan: {
+                            name: sub.plans?.name || "Unknown"
+                        },
+                        status: sub.billing_status
+                    };
+                });
+            }
+        }
+
+        // ============================================
         // 7) Φέρε όλα τα stores των εταιρειών
         // ============================================
         const { data: allStores, error: allStoresErr } = await supabase
             .from("stores")
-            .select("id, company_id, name, address, city, is_main")
-            .in("company_id", companyIds);
+            .select("id, company_id, name, address, city, country, is_main, is_active, scheduled_deactivate_at")
+            .in("company_id", companyIds)
+            .order("is_main", { ascending: false }) // Main store first
+            .order("created_at", { ascending: true }); // Then by creation date
 
         if (allStoresErr) {
             console.error("DB SELECT ERROR (stores):", allStoresErr);
@@ -2012,19 +2165,23 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                     name: store.name,
                     address: store.address,
                     city: store.city,
+                    country: store.country ?? null,
                     is_main: store.is_main,
-                    
+                    is_active: store.is_active ?? true,
+                    scheduled_deactivate_at: store.scheduled_deactivate_at ?? null,
+
                     role: {
                         id: finalRole.id,
                         key: finalRole.key,
                         name: finalRole.name
                     },
-                    
+
                     permissions: finalPermissions
                 };
             }).filter(Boolean); // Remove nulls
 
-            return {
+
+            const result = {
                 id: company.id,
                 name: company.name,
                 logo_url: company.logo_url,
@@ -2046,6 +2203,13 @@ router.post("/login", baseRateLimiter, async (req, res) => {
 
                 stores // ✅ All stores με resolved roles & permissions
             };
+
+            // ✅ Add subscription only if owner
+            if (subscriptionsMap[cu.company_id]) {
+                result.subscription = subscriptionsMap[cu.company_id];
+            }
+
+            return result;
         });
 
         // ============================================
@@ -2096,6 +2260,8 @@ router.post("/login", baseRateLimiter, async (req, res) => {
         const expires_at = new Date();
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
+        const { ip_address, user_agent } = getSessionMetadata(req);
+
         if (existingSession) {
             // Update existing session
             const { error: updateError } = await supabase
@@ -2107,6 +2273,8 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                     expires_at: expires_at.toISOString(),
                     last_login_at: new Date().toISOString(),
                     last_activity_at: new Date().toISOString(),
+                    ip_address,
+                    user_agent,
                 })
                 .eq("id", existingSession.id);
 
@@ -2127,7 +2295,9 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                     user_id: userId,
                     refresh_token_hash: refreshTokenHash,
                     fingerprint,
-                    expires_at: expires_at.toISOString()
+                    expires_at: expires_at.toISOString(),
+                    ip_address,
+                    user_agent,
                 });
 
             if (insertError){
@@ -2156,7 +2326,8 @@ router.post("/login", baseRateLimiter, async (req, res) => {
                     email: user.email,
                     phone: user.phone,
                     first_name: user.first_name,
-                    last_name: user.last_name
+                    last_name: user.last_name,
+                    avatar_url: user.avatar_url
                 },
 
                 companies: companiesPayload
@@ -2274,7 +2445,7 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                         phone_verified: false,
                         first_name: given_name || null,
                         last_name: family_name || null,
-                        profile_photo_url: picture || null,
+                        avatar_url: picture || null,
                     }
                 ])
                 .select()
@@ -2297,11 +2468,10 @@ router.post("/google", baseRateLimiter, async (req, res) => {
         // ============================================
         // 3. FETCH USER COMPANIES
         // ============================================
-        const { data: companyUsers, error: companyUsersError } = await supabase
+        const { data: companyUsersRaw, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId)
-            .eq('status', 'active');
+            .eq('user_id', userId);
 
         if (companyUsersError) {
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
@@ -2311,6 +2481,9 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                 code: "DB_ERROR",
             });
         }
+
+        // Only show companies where user has active status (hide disabled)
+        const companyUsers = (companyUsersRaw || []).filter(cu => cu.status === 'active');
 
         let companiesPayload = [];
         
@@ -2365,12 +2538,54 @@ router.post("/google", baseRateLimiter, async (req, res) => {
             }
 
             // ============================================
+            // 5.5 FETCH SUBSCRIPTIONS (for plan features - all users need for UI gating)
+            // ============================================
+            let subscriptionsMap = {};
+
+            if (companyIds.length > 0) {
+                const { data: subscriptions, error: subscriptionsErr } = await supabase
+                    .from("subscriptions")
+                    .select(`
+                        company_id,
+                        billing_status,
+                        plans (
+                            name,
+                            key,
+                            features,
+                            included_branches,
+                            max_users
+                        )
+                    `)
+                    .in("company_id", companyIds);
+
+                if (subscriptionsErr) {
+                    console.error("DB SELECT ERROR (subscriptions):", subscriptionsErr);
+                    // Non-critical, continue without subscription data
+                } else {
+                    subscriptions?.forEach(sub => {
+                        subscriptionsMap[sub.company_id] = {
+                            plan: {
+                                name: sub.plans?.name || "Unknown",
+                                key: sub.plans?.key || null,
+                                features: sub.plans?.features || null,
+                                included_branches: sub.plans?.included_branches ?? 0,
+                                max_users: sub.plans?.max_users ?? null
+                            },
+                            status: sub.billing_status
+                        };
+                    });
+                }
+            }
+
+            // ============================================
             // 6. FETCH ALL STORES
             // ============================================
             const { data: allStores, error: allStoresErr } = await supabase
                 .from("stores")
-                .select("id, company_id, name, address, city, is_main")
-                .in("company_id", companyIds);
+                .select("id, company_id, name, address, city, country, is_main, is_active, scheduled_deactivate_at")
+                .in("company_id", companyIds)
+                .order("is_main", { ascending: false }) // Main store first
+                .order("created_at", { ascending: true }); // Then by creation date
 
             if (allStoresErr) {
                 console.error("DB SELECT ERROR (stores):", allStoresErr);
@@ -2530,7 +2745,10 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                         name: store.name,
                         address: store.address,
                         city: store.city,
+                        country: store.country ?? null,
                         is_main: store.is_main,
+                        is_active: store.is_active ?? true,
+                        scheduled_deactivate_at: store.scheduled_deactivate_at ?? null,
                         
                         role: {
                             id: finalRole.id,
@@ -2542,7 +2760,7 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                     };
                 }).filter(Boolean);
 
-                return {
+                const result = {
                     id: company.id,
                     name: company.name,
                     logo_url: company.logo_url,
@@ -2564,6 +2782,12 @@ router.post("/google", baseRateLimiter, async (req, res) => {
 
                     stores
                 };
+
+                if (subscriptionsMap[cu.company_id]) {
+                    result.subscription = subscriptionsMap[cu.company_id];
+                }
+
+                return result;
             });
         }
 
@@ -2615,6 +2839,8 @@ router.post("/google", baseRateLimiter, async (req, res) => {
         const expires_at = new Date();
         expires_at.setDate(expires_at.getDate() + Number(process.env.REFRESH_TOKEN_LIFETIME_DAYS));
 
+        const { ip_address, user_agent } = getSessionMetadata(req);
+
         if (existingSession) {
             // Update existing session
             const { error: updateError } = await supabase
@@ -2626,6 +2852,8 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                     expires_at: expires_at.toISOString(),
                     last_login_at: new Date().toISOString(),
                     last_activity_at: new Date().toISOString(),
+                    ip_address,
+                    user_agent,
                 })
                 .eq("id", existingSession.id);
 
@@ -2646,7 +2874,9 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                     user_id: userId,
                     refresh_token_hash: refreshTokenHash,
                     fingerprint,
-                    expires_at: expires_at.toISOString()
+                    expires_at: expires_at.toISOString(),
+                    ip_address,
+                    user_agent,
                 });
 
             if (insertError) {
@@ -2666,7 +2896,7 @@ router.post("/google", baseRateLimiter, async (req, res) => {
         // ============================================
         const { data: fullUser, error: fullUserError } = await supabase
             .from("users")
-            .select("id, email, phone, first_name, last_name")
+            .select("id, email, phone, first_name, last_name, avatar_url")
             .eq("id", userId)
             .single();
 
@@ -2693,7 +2923,8 @@ router.post("/google", baseRateLimiter, async (req, res) => {
                     email: fullUser.email,
                     phone: fullUser.phone,
                     first_name: fullUser.first_name,
-                    last_name: fullUser.last_name
+                    last_name: fullUser.last_name,
+                    avatar_url: fullUser.avatar_url
                 },
 
                 companies: companiesPayload
@@ -2716,10 +2947,10 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
 
     // -- Anti-CSRF
     // const allowedOrigins = [
-    //     "https://logistok.com",
-    //     "https://logistok.gr",
-    //     "https://app.logistok.com",
-    //     "https://app.logistok.gr",
+    //     "https://olyntos.com",
+    //     "https://olyntos.gr",
+    //     "https://app.olyntos.com",
+    //     "https://app.olyntos.gr",
     //     "http://localhost:5173",
     //     "http://localhost:3000"
     // ];
@@ -2836,6 +3067,7 @@ router.post("/refresh", refreshRateLimiter, async (req, res) => {
             .eq("user_id", userId)
             .eq("company_id", companyId)
             .eq("status", "active")
+            .is("disabled_reason", null)
             .maybeSingle();
 
         if (cuError) {
@@ -3162,6 +3394,7 @@ router.post("/switch-company", requireAuth, async (req, res) => {
             .eq("company_id", companyId)
             .eq("user_id", userId)
             .eq("status", "active")
+            .is("disabled_reason", null)
             .maybeSingle();
 
         if (membershipErr) {
@@ -3451,6 +3684,390 @@ router.post("/switch-company", requireAuth, async (req, res) => {
     }
 });
 
+// PATCH /me/profile - Update user profile (first_name, last_name, phone, avatar_url)
+router.patch("/me/profile", requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const { first_name, last_name, phone, avatar_url } = req.body;
+
+    const updates = {};
+    if (first_name !== undefined) updates.first_name = first_name ? String(first_name).trim() : null;
+    if (last_name !== undefined) updates.last_name = last_name ? String(last_name).trim() : null;
+    if (phone !== undefined) updates.phone = phone ? String(phone).trim() : null;
+    if (avatar_url !== undefined) updates.avatar_url = (avatar_url === null || avatar_url === "") ? null : String(avatar_url).trim();
+
+    if (Object.keys(updates).length === 0) {
+        return res.json({ success: true, message: "Δεν υπάρχουν αλλαγές" });
+    }
+
+    try {
+        const { data: user, error } = await supabase
+            .from("users")
+            .update({ ...updates, updated_at: new Date().toISOString() })
+            .eq("id", userId)
+            .select("id, email, phone, first_name, last_name, avatar_url")
+            .single();
+
+        if (error) throw error;
+        return res.json({ success: true, data: { user } });
+    } catch (err) {
+        console.error("PATCH /me/profile ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Σφάλμα ενημέρωσης προφίλ",
+            code: "SERVER_ERROR"
+        });
+    }
+});
+
+// POST /me/avatar-upload - Upload user avatar to Supabase Storage
+// Requires Supabase Storage bucket "user-avatars" (public) to exist
+router.post("/me/avatar-upload", requireAuth, uploadAvatarMw, async (req, res) => {
+    const userId = req.user.id;
+    if (!req.file || !req.file.buffer) {
+        return res.status(400).json({
+            success: false,
+            message: "Δεν επιλέχθηκε αρχείο",
+            code: "NO_FILE"
+        });
+    }
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!allowed.includes(req.file.mimetype)) {
+        return res.status(400).json({
+            success: false,
+            message: "Μόνο εικόνες (JPEG, PNG, GIF, WebP) επιτρέπονται",
+            code: "INVALID_FILE_TYPE"
+        });
+    }
+    const ext = req.file.originalname?.match(/\.(jpe?g|png|gif|webp)$/i)?.[1] || "png";
+    const path = `${userId}/${Date.now()}-avatar.${ext}`;
+    try {
+        const { data, error } = await supabase.storage
+            .from("user-avatars")
+            .upload(path, req.file.buffer, {
+                contentType: req.file.mimetype,
+                upsert: true
+            });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage.from("user-avatars").getPublicUrl(data.path);
+        return res.json({
+            success: true,
+            data: { avatar_url: urlData.publicUrl }
+        });
+    } catch (err) {
+        console.error("POST /me/avatar-upload ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: err.message || "Αποτυχία μεταφόρτωσης",
+            code: "UPLOAD_ERROR"
+        });
+    }
+});
+
+// POST /me/change-password - Change password (authenticated)
+router.post("/me/change-password", requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+            success: false,
+            message: "Τρέχων και νέος κωδικός απαιτούνται",
+            code: "MISSING_VALUES"
+        });
+    }
+
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
+    if (!passwordRegex.test(newPassword)) {
+        return res.status(400).json({
+            success: false,
+            message: "Ο νέος κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες, 1 κεφαλαίο, 1 πεζό και 1 αριθμό.",
+            code: "INVALID_PASSWORD"
+        });
+    }
+
+    try {
+        const { data: user, error: userErr } = await supabase
+            .from("users")
+            .select("id, password_hash, google_id")
+            .eq("id", userId)
+            .maybeSingle();
+
+        if (userErr || !user) {
+            return res.status(500).json({
+                success: false,
+                message: "Σφάλμα ανάγνωσης χρήστη",
+                code: "DB_ERROR"
+            });
+        }
+
+        if (user.google_id) {
+            return res.status(400).json({
+                success: false,
+                message: "Ο λογαριασμός συνδέεται με Google. Άλλαξτε τον κωδικό από τις ρυθμίσεις του Google.",
+                code: "GOOGLE_ACCOUNT"
+            });
+        }
+
+        if (!user.password_hash) {
+            return res.status(400).json({
+                success: false,
+                message: "Ο λογαριασμός δεν έχει κωδικό",
+                code: "NO_PASSWORD"
+            });
+        }
+
+        const match = await bcrypt.compare(currentPassword, user.password_hash);
+        if (!match) {
+            return res.status(400).json({
+                success: false,
+                message: "Λάθος τρέχων κωδικός",
+                code: "WRONG_PASSWORD"
+            });
+        }
+
+        const password_hash = await bcrypt.hash(newPassword, 10);
+        const { error: updErr } = await supabase
+            .from("users")
+            .update({ password_hash, updated_at: new Date().toISOString() })
+            .eq("id", userId);
+
+        if (updErr) throw updErr;
+
+        const { error: revokeErr } = await supabase
+            .from("user_sessions")
+            .update({ revoked: true, revoked_at: new Date().toISOString() })
+            .eq("user_id", userId);
+
+        if (revokeErr) console.error("Revoke sessions on password change:", revokeErr);
+
+        clearRefreshCookie(res);
+        return res.json({ success: true, message: "Ο κωδικός ενημερώθηκε. Συνδεθείτε ξανά." });
+    } catch (err) {
+        console.error("POST /me/change-password ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Σφάλμα ενημέρωσης κωδικού",
+            code: "SERVER_ERROR"
+        });
+    }
+});
+
+// GET /me/sessions - List active sessions
+router.get("/me/sessions", requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const refreshToken = req.cookies?.refresh_token;
+
+    let currentSessionId = null;
+    if (refreshToken) {
+        const refreshHash = hashRefreshToken(refreshToken);
+        const { data: currentSession } = await supabase
+            .from("user_sessions")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("refresh_token_hash", refreshHash)
+            .eq("revoked", false)
+            .gt("expires_at", new Date().toISOString())
+            .maybeSingle();
+        if (currentSession) currentSessionId = currentSession.id;
+    }
+
+    try {
+        const { data: sessions, error } = await supabase
+            .from("user_sessions")
+            .select("id, fingerprint, ip_address, user_agent, last_activity_at, last_login_at, revoked")
+            .eq("user_id", userId)
+            .eq("revoked", false)
+            .gt("expires_at", new Date().toISOString())
+            .order("last_activity_at", { ascending: false });
+
+        if (error) throw error;
+
+        const list = (sessions || []).map((s) => ({
+            id: s.id,
+            fingerprint: s.fingerprint,
+            ip_address: s.ip_address,
+            user_agent: s.user_agent,
+            last_activity_at: s.last_activity_at,
+            last_login_at: s.last_login_at,
+            is_current: s.id === currentSessionId
+        }));
+
+        return res.json({ success: true, data: { sessions: list } });
+    } catch (err) {
+        console.error("GET /me/sessions ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Σφάλμα ανάγνωσης συνεδριών",
+            code: "SERVER_ERROR"
+        });
+    }
+});
+
+// DELETE /me/sessions/:sessionId - Revoke one session
+router.delete("/me/sessions/:sessionId", requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const { sessionId } = req.params;
+
+    try {
+        const { data: session, error: selErr } = await supabase
+            .from("user_sessions")
+            .select("id")
+            .eq("id", sessionId)
+            .eq("user_id", userId)
+            .maybeSingle();
+
+        if (selErr || !session) {
+            return res.status(404).json({
+                success: false,
+                message: "Η συνεδρία δεν βρέθηκε",
+                code: "SESSION_NOT_FOUND"
+            });
+        }
+
+        const { error: updErr } = await supabase
+            .from("user_sessions")
+            .update({ revoked: true, revoked_at: new Date().toISOString() })
+            .eq("id", sessionId);
+
+        if (updErr) throw updErr;
+
+        return res.json({ success: true, message: "Η συνεδρία τερματίστηκε" });
+    } catch (err) {
+        console.error("DELETE /me/sessions/:sessionId ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Σφάλμα τερματισμού συνεδρίας",
+            code: "SERVER_ERROR"
+        });
+    }
+});
+
+// POST /me/sessions/revoke-all - Revoke all sessions except current
+router.post("/me/sessions/revoke-all", requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const refreshToken = req.cookies?.refresh_token;
+
+    let currentSessionId = null;
+    if (refreshToken) {
+        const refreshHash = hashRefreshToken(refreshToken);
+        const { data: currentSession } = await supabase
+            .from("user_sessions")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("refresh_token_hash", refreshHash)
+            .eq("revoked", false)
+            .gt("expires_at", new Date().toISOString())
+            .maybeSingle();
+        if (currentSession) currentSessionId = currentSession.id;
+    }
+
+    try {
+        let query = supabase
+            .from("user_sessions")
+            .update({ revoked: true, revoked_at: new Date().toISOString() })
+            .eq("user_id", userId)
+            .eq("revoked", false)
+            .gt("expires_at", new Date().toISOString());
+
+        if (currentSessionId) {
+            query = query.neq("id", currentSessionId);
+        }
+
+        const { error } = await query;
+
+        if (error) throw error;
+
+        return res.json({ success: true, message: "Όλες οι άλλες συνεδρίες τερματίστηκαν" });
+    } catch (err) {
+        console.error("POST /me/sessions/revoke-all ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Σφάλμα τερματισμού συνεδριών",
+            code: "SERVER_ERROR"
+        });
+    }
+});
+
+// GET /me/preferences - Get notification preferences
+router.get("/me/preferences", requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    try {
+        const { data: user, error } = await supabase
+            .from("users")
+            .select("notification_preferences")
+            .eq("id", userId)
+            .maybeSingle();
+
+        if (error) throw error;
+        const prefs = user?.notification_preferences || {};
+        const defaults = { email_invitations: true, email_marketing: true };
+        const merged = { ...defaults, ...(typeof prefs === "object" ? prefs : {}) };
+        // Migrate: email_subscription -> email_marketing (backwards compat)
+        if (merged.email_marketing === undefined && typeof merged.email_subscription === "boolean") {
+            merged.email_marketing = merged.email_subscription;
+        }
+        const response = {
+            email_invitations: merged.email_invitations !== false,
+            email_marketing: merged.email_marketing !== false
+        };
+        return res.json({ success: true, data: { preferences: response } });
+    } catch (err) {
+        console.error("GET /me/preferences ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Σφάλμα ανάγνωσης προτιμήσεων",
+            code: "SERVER_ERROR"
+        });
+    }
+});
+
+// PATCH /me/preferences - Update notification preferences
+router.patch("/me/preferences", requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const { email_invitations, email_marketing } = req.body;
+
+    const updates = {};
+    if (typeof email_invitations === "boolean") updates.email_invitations = email_invitations;
+    if (typeof email_marketing === "boolean") updates.email_marketing = email_marketing;
+
+    if (Object.keys(updates).length === 0) {
+        return res.json({ success: true, message: "Δεν υπάρχουν αλλαγές" });
+    }
+
+    try {
+        const { data: user, error: selErr } = await supabase
+            .from("users")
+            .select("notification_preferences")
+            .eq("id", userId)
+            .maybeSingle();
+
+        if (selErr) throw selErr;
+
+        const current = user?.notification_preferences || {};
+        const merged = { ...current, ...updates };
+
+        const { error: updErr } = await supabase
+            .from("users")
+            .update({ notification_preferences: merged, updated_at: new Date().toISOString() })
+            .eq("id", userId);
+
+        if (updErr) throw updErr;
+
+        const response = {
+            email_invitations: merged.email_invitations !== false,
+            email_marketing: merged.email_marketing !== false
+        };
+        return res.json({ success: true, data: { preferences: response } });
+    } catch (err) {
+        console.error("PATCH /me/preferences ERROR:", err);
+        return res.status(500).json({
+            success: false,
+            message: "Σφάλμα ενημέρωσης προτιμήσεων",
+            code: "SERVER_ERROR"
+        });
+    }
+});
+
 router.get("/me", requireAuth, async (req, res) => {
 
     const userId = req.user.id;
@@ -3461,7 +4078,7 @@ router.get("/me", requireAuth, async (req, res) => {
         // ============================================
         const { data: user, error: userErr } = await supabase
             .from("users")
-            .select("id, email, phone, first_name, last_name")
+            .select("id, email, phone, first_name, last_name, avatar_url")
             .eq("id", userId)
             .maybeSingle();
 
@@ -3477,11 +4094,10 @@ router.get("/me", requireAuth, async (req, res) => {
         // ============================================
         // 2. FETCH USER COMPANIES
         // ============================================
-        const { data: companyUsers, error: companyUsersError } = await supabase
+        const { data: companyUsersRaw, error: companyUsersError } = await supabase
             .from('company_users')
             .select('company_id, role_id, is_owner, status')
-            .eq('user_id', userId)
-            .eq('status', 'active');
+            .eq('user_id', userId);
 
         if (companyUsersError) {
             console.error("DB SELECT ERROR (company_users):", companyUsersError);
@@ -3491,6 +4107,9 @@ router.get("/me", requireAuth, async (req, res) => {
                 code: "DB_ERROR",
             });
         }
+
+        // Only show companies where user has active status (hide disabled)
+        const companyUsers = (companyUsersRaw || []).filter(cu => cu.status === 'active');
 
         // ============================================
         // 3. HANDLE NO COMPANIES CASE
@@ -3505,7 +4124,8 @@ router.get("/me", requireAuth, async (req, res) => {
                         email: user.email,
                         phone: user.phone,
                         first_name: user.first_name,
-                        last_name: user.last_name
+                        last_name: user.last_name,
+                        avatar_url: user.avatar_url
                     },
                     companies: []
                 }
@@ -3565,8 +4185,10 @@ router.get("/me", requireAuth, async (req, res) => {
         // ============================================
         const { data: allStores, error: allStoresErr } = await supabase
             .from("stores")
-            .select("id, company_id, name, address, city, is_main")
-            .in("company_id", companyIds);
+            .select("id, company_id, name, address, city, country, is_main, is_active, scheduled_deactivate_at")
+            .in("company_id", companyIds)
+            .order("is_main", { ascending: false }) // Main store first
+            .order("created_at", { ascending: true }); // Then by creation date
 
         if (allStoresErr) {
             console.error("DB SELECT ERROR (stores):", allStoresErr);
@@ -3631,6 +4253,46 @@ router.get("/me", requireAuth, async (req, res) => {
                 message: "Σφάλμα κατά την ανάγνωση role_permissions",
                 code: "DB_ERROR",
             });
+        }
+
+        // ============================================
+        // 10. FETCH SUBSCRIPTIONS (for plan features - all users need for UI gating)
+        // ============================================
+        let subscriptionsMap = {};
+
+        if (companyIds.length > 0) {
+            const { data: subscriptions, error: subscriptionsErr } = await supabase
+                .from("subscriptions")
+                .select(`
+                    company_id,
+                    billing_status,
+                    plans (
+                        name,
+                        key,
+                        features,
+                        included_branches,
+                        max_users
+                    )
+                `)
+                .in("company_id", companyIds);
+
+            if (subscriptionsErr) {
+                console.error("DB SELECT ERROR (subscriptions):", subscriptionsErr);
+                // Don't fail, just skip subscriptions
+            } else {
+                subscriptions?.forEach(sub => {
+                    subscriptionsMap[sub.company_id] = {
+                        plan: {
+                            name: sub.plans?.name || "Unknown",
+                            key: sub.plans?.key || null,
+                            features: sub.plans?.features || null,
+                            included_branches: sub.plans?.included_branches ?? 0,
+                            max_users: sub.plans?.max_users ?? null
+                        },
+                        status: sub.billing_status
+                    };
+                });
+            }
         }
 
         // ============================================
@@ -3726,8 +4388,11 @@ router.get("/me", requireAuth, async (req, res) => {
                     name: store.name,
                     address: store.address,
                     city: store.city,
+                    country: store.country ?? null,
                     is_main: store.is_main,
-                    
+                    is_active: store.is_active ?? true,
+                    scheduled_deactivate_at: store.scheduled_deactivate_at ?? null,
+
                     role: {
                         id: finalRole.id,
                         key: finalRole.key,
@@ -3738,7 +4403,7 @@ router.get("/me", requireAuth, async (req, res) => {
                 };
             }).filter(Boolean);
 
-            return {
+            const result = {
                 id: company.id,
                 name: company.name,
                 logo_url: company.logo_url,
@@ -3760,6 +4425,12 @@ router.get("/me", requireAuth, async (req, res) => {
 
                 stores
             };
+
+            if (subscriptionsMap[cu.company_id]) {
+                result.subscription = subscriptionsMap[cu.company_id];
+            }
+
+            return result;
         });
 
         // ============================================
@@ -3774,7 +4445,8 @@ router.get("/me", requireAuth, async (req, res) => {
                     email: user.email,
                     phone: user.phone,
                     first_name: user.first_name,
-                    last_name: user.last_name
+                    last_name: user.last_name,
+                    avatar_url: user.avatar_url
                 },
                 companies: companiesPayload
             }

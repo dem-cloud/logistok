@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 import { STEP_ROUTES } from "./steps";
 import { useAuth } from "@/contexts/AuthContext";
 import { StoreRole } from "@/types/auth.types";
-import { Stripe } from "@stripe/stripe-js";
 
 export function useOnboardingInternal() {
 
@@ -16,6 +15,7 @@ export function useOnboardingInternal() {
         company: {
             name: '',
             phone: '',
+            country: '',
         },
         industries: [],
         plan: null,
@@ -134,13 +134,13 @@ export function useOnboardingInternal() {
 
     const completeOnboarding = async (data: any) => {
 
-        const { is_completed, stores } = data;
+        const { is_completed, stores, subscription } = data;
 
         // Update activeCompany
         updateActiveCompany(prev => {
             if (!prev) return prev;
 
-            return {
+            const updated = {
                 ...prev,
                 onboarding: {
                     ...prev.onboarding,
@@ -148,14 +148,32 @@ export function useOnboardingInternal() {
                 },
                 stores: stores
             };
+
+            // ✅ Add subscription if exists
+            if (subscription) {
+                updated.subscription = subscription;
+            }
+
+            return updated;
         });
 
         setCompanies(prev =>
-            prev.map(c =>
-                c.id === activeCompany?.id
-                    ? { ...c, onboarding: { ...c.onboarding, is_completed: is_completed }, stores: stores }
-                    : c
-            )
+            prev.map(c => {
+                if (c.id !== activeCompany?.id) return c;
+                
+                const updated = {
+                    ...c, 
+                    onboarding: { ...c.onboarding, is_completed: is_completed }, 
+                    stores: stores
+                };
+                
+                // ✅ Only add subscription if it exists
+                if (subscription) {
+                    updated.subscription = subscription;
+                }
+                
+                return updated;
+            })
         );
 
         // Set first/main store as active

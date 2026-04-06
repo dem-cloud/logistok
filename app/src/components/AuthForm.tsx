@@ -23,7 +23,7 @@ export default function AuthForm({ verificationType, setTagline }: AuthFormProps
     const { login, showToast } = useAuth();
 
     const [email, setEmail] = useState('');
-    const [phone, setPhone] = useState('');
+    const [phone] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
@@ -105,7 +105,7 @@ export default function AuthForm({ verificationType, setTagline }: AuthFormProps
             setIsResending(true);
 
             const response = await axiosPublic.post("/api/auth/send-code", { delivery_method, email, phone, type })
-            const { success, message, code, data = {} } = response.data;
+            const { success, message, data = {} } = response.data;
             const { remaining = 0 } = data;
 
             if(!success){

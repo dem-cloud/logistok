@@ -5,9 +5,9 @@ import { STEP_ROUTES } from "../onboarding/steps";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function RequireFinishedOnboarding() {
-    const { activeCompany } = useAuth();
+    const { activeCompany, activeStore  } = useAuth();
 
-    if (!activeCompany) {
+    if (!activeCompany || !activeStore ) {
         return <Navigate to="/select-company" replace />;
     }
 

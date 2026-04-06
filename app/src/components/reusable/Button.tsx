@@ -6,7 +6,7 @@ interface ButtonProps {
     children: ReactNode;
     onClick?: (() => void) | ((e: React.MouseEvent<HTMLButtonElement>) => void);
     type?: "button" | "submit" | "reset";
-    variant?: "primary" | "secondary" | "dark" | "outline" | "current";
+    variant?: "primary" | "secondary" | "dark" | "outline" | "current" | "danger";
     disabled?: boolean;
     loading?: boolean;
     widthFull?: boolean;

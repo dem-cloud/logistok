@@ -1,0 +1,711 @@
+*** SALES ***
+
+## Προσφορα - Quote (QUO) | Προσφορά, μπορεί να μετατραπεί σε INV/REC
+
+1. Δημιουργία (New)
+Status options:   Draft, Sent
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+expiry_date:      Ενεργό (optional)
+invoice_date:     Ενεργό (default σήμερα)
+customer:         Ενεργό (optional)
+line items:       Ενεργά
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+
+2. Update — Current Status: Draft
+Status options:   Draft, Sent
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+expiry_date:      Ενεργό
+invoice_date:     Ενεργό
+customer:         Ενεργό
+line items:       Ενεργά
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ✅ show
+
+3. Update — Current Status: Sent
+Status options:   Sent, Expired, Cancelled
+Πεδία:            Όλα ενεργά (μπορεί να διορθώσει)
+invoice_type:     ❌ Disabled (immutable)
+expiry_date:      Ενεργό
+invoice_date:     Ενεργό
+customer:         Ενεργό
+line items:       Ενεργά
+PDF button:       ✅ show
+Send email:       ✅ show
+Conversion:       ✅ show
+Delete:           ❌ not show
+
+4. Update — Current Status: Converted
+Status options:   converted (Disabled)
+Πεδία:            Όλα disabled
+invoice_type:     Disabled
+expiry_date:      Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Μετατράπηκε σε [INV/REC-2026-0001]" (clickable link μεσα στο SidePopup)
+
+5. Update — Current Status: Expired
+Status options:   expired (Disabled)
+Πεδία:            Όλα disabled
+invoice_type:     Disabled
+expiry_date:      Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+
+6. Update — Current Status: Cancelled
+Status options:   canceled (Disabled)
+Πεδία:            Όλα disabled
+invoice_type:     Disabled
+expiry_date:      Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+
+## Αποδειξη - Receipt (REC) | Απόδειξη πώλησης 
+
+1. Δημιουργία (New)
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+invoice_date:     Ενεργό (default σήμερα)
+customer:         Ενεργό (optional)
+payment_method:   Ενεργό (required)
+line items:       Ενεργά
+amount_paid:      Ενεργό (optional)
+change_returned:  Auto-calculated
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Return button:    ❌ not show
+Delete:           ❌ not show
+
+2. Update — Current Status: Draft
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+invoice_date:     Ενεργό
+customer:         Ενεργό
+payment_method:   Ενεργό
+line items:       Ενεργά
+amount_paid:      Ενεργό
+change_returned:  Auto-calculated
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Return button:    ❌ not show
+Delete:           ✅ show
+
+3. Update — Current Status: Completed
+Status options:   Completed, Cancelled
+Πεδία:            Όλα disabled (read-only)
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+payment_method:   Disabled
+line items:       Disabled
+amount_paid:      Disabled
+change_returned:  Disabled
+PDF button:       ✅ show
+Send email:       ✅ show
+Return button:    ✅ show ("Επιστροφή Προϊόντων")
+Delete:           ❌ not show
+
+4. Update — Current Status: Cancelled
+Status options:   Cancelled (Disabled)
+Πεδία:            Όλα disabled
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+payment_method:   Disabled
+line items:       Disabled
+amount_paid:      Disabled
+change_returned:  Disabled
+PDF button:       ✅ show (με watermark ΑΚΥΡΩΘΗΚΕ)
+Send email:       ❌ not show
+Return button:    ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Ακυρώθηκε → CRN-2026-0001" (clickable link)
+
+## Τιμολογιο - Invoice (INV) | Τιμολόγιο πώλησης
+
+1. Δημιουργία (New)
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+invoice_date:     Ενεργό (default σήμερα)
+customer:         Ενεργό (optional)
+payment_method:   Ενεργό (required)
+payment_terms:    Ενεργό (auto-load από πελάτη, default immediate)
+due_date:         Read-only auto-calculated (time should not be displayed)
+line items:       Ενεργά
+amount_paid:      Ενεργό (optional)
+change_returned:  Auto-calculated
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Return button:    ❌ not show
+Receipt panel:    ❌ not show
+Delete:           ❌ not show
+
+2. Update — Current Status: Draft
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+invoice_date:     Ενεργό
+customer:         Ενεργό
+payment_method:   Ενεργό
+payment_terms:    Ενεργό
+due_date:         Read-only auto-calculated
+line items:       Ενεργά
+amount_paid:      Ενεργό
+change_returned:  Auto-calculated
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Return button:    ❌ not show
+Receipt panel:    ❌ not show
+Delete:           ✅ show
+
+3. Update — Current Status: Completed
+Status options:   Completed, Cancelled
+Πεδία:            Όλα disabled (read-only)
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+payment_method:   Disabled
+payment_terms:    Disabled
+due_date:         Disabled
+line items:       Disabled
+amount_paid:      Disabled
+change_returned:  Disabled
+PDF button:       ✅ show
+Send email:       ✅ show
+Return button:    ✅ show ("Επιστροφή Προϊόντων")
+Receipt panel:    ✅ show (payment_status badge, amount_due, 
+                          λίστα εισπράξεων, κουμπί 
+                          "Καταχώρηση Είσπραξης")
+Delete:           ❌ not show
+
+4. Update — Current Status: Cancelled
+Status options:   Cancelled (Disabled)
+Πεδία:            Όλα disabled
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+payment_method:   Disabled
+payment_terms:    Disabled
+due_date:         Disabled
+line items:       Disabled
+amount_paid:      Disabled
+change_returned:  Disabled
+PDF button:       ✅ show (με watermark ΑΚΥΡΩΘΗΚΕ)
+Send email:       ❌ not show
+Return button:    ❌ not show
+Receipt panel:    ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Ακυρώθηκε → CRN-2026-0001" (clickable link)
+
+## Πιστωτικο Τιμολογιο - Credit Note (CRN) | για επιστροφές/ακυρώσεις
+
+1. Δημιουργία (New) — από κουμπί "Επιστροφή Προϊόντων"
+Status options:   Draft, Completed
+invoice_type:     Disabled (πάντα CRN, ορίζεται αυτόματα)
+invoice_date:     Ενεργό (default σήμερα)
+customer:         Disabled (auto-filled από original INV/REC)
+line items:       Ποσότητες ενεργές (max = original quantity)
+                  Είδη/τιμές disabled (από original)
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Delete:           ❌ not show (δεν έχει σωθεί ακόμα)
+Reference:        ✅ "Επιστροφή από [INV/REC-2026-0001]" (read-only)
+
+2. Update — Current Status: Draft
+Status options:   Draft, Completed
+invoice_type:     Disabled (immutable)
+invoice_date:     Ενεργό
+customer:         Disabled (από original)
+line items:       Ποσότητες ενεργές (max = original quantity)
+                  Είδη/τιμές disabled
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Delete:           ✅ show
+Reference:        ✅ "Επιστροφή από [INV/REC-2026-0001]" (read-only)
+
+3. Update — Current Status: Completed
+Status options:   Completed (Disabled)
+Πεδία:            Όλα disabled (read-only)
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Send email:       ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Επιστροφή από [INV/REC-2026-0001]" (clickable link)
+
+4. Auto-created CRN (από ακύρωση Completed REC/INV)
+Status:           Completed (αυτόματα, skip Draft)
+Πεδία:            Όλα disabled (read-only)
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Send email:       ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Ακύρωση [INV/REC-2026-0001]" (clickable link)
+
+In the Sales module, remove CRN (Πιστωτικό Τιμολόγιο) from the 
+invoice_type dropdown. CRN documents cannot be created manually.
+
+Instead, add a "Επιστροφή Προϊόντων" button that appears only on 
+rows in the sales list where invoice_type is REC or INV and status 
+is "completed". This button should appear in the actions menu of 
+each row (same place as other row actions).
+
+When the user clicks "Επιστροφή Προϊόντων" from the list:
+1. Fetch the full sale data for that row
+2. Open the sidepopup in "new CRN" mode with the following pre-filled 
+   and disabled fields:
+   - invoice_type: "CRN" (disabled, not changeable)
+   - customer: auto-filled from original sale (disabled)
+   - line items: all items from original sale, with:
+     - product/variant/price: disabled (from original)
+     - quantity: editable, default = original quantity, 
+       max = original quantity, min = 1
+   - invoice_date: today (editable)
+   - converted_from_id: set to original sale id (hidden field)
+3. Show read-only reference: "Επιστροφή από [REC/INV-2026-0001]"
+4. Status options: Draft, Completed
+5. On save: create CRN, apply stock IN for returned quantities,
+   update original sale to show related CRN
+
+The same "Επιστροφή Προϊόντων" button should also appear inside 
+the sidepopup when viewing a Completed REC or INV (not just in 
+the list row).
+
+Server-side: POST /company/sales with invoice_type = "CRN" should 
+require converted_from_id. Validate that quantities do not exceed 
+original sale item quantities. Apply stock IN movements for each 
+returned item.
+
+## Δελτιο Αποστολης - Delivery Note (DNO) | για αποστολή εμπορευμάτων χωρίς τιμολόγιο,  χωρίς πληρωμή
+
+1. Δημιουργία (New)
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+invoice_date:     Ενεργό (default σήμερα)
+customer:         Ενεργό (optional)
+line items:       Ενεργά (ποσότητες, χωρίς τιμές)
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+
+2. Update — Current Status: Draft
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+invoice_type:     Ενεργό
+invoice_date:     Ενεργό
+customer:         Ενεργό
+line items:       Ενεργά
+PDF button:       ❌ not show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ✅ show
+
+3. Update — Current Status: Completed
+Status options:   Completed, Cancelled
+Πεδία:            Όλα disabled (read-only)
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Send email:       ✅ show
+Conversion:       ✅ show ("Μετατροπή σε Τιμολόγιο")
+Delete:           ❌ not show
+
+4. Update — Current Status: Invoiced
+Status options:   Invoiced (Disabled)
+Πεδία:            Όλα disabled (read-only)
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Τιμολογήθηκε → INV-2026-0001" (clickable link)
+
+5. Update — Current Status: Cancelled
+Status options:   Cancelled (Disabled)
+Πεδία:            Όλα disabled (read-only)
+invoice_type:     Disabled
+invoice_date:     Disabled
+customer:         Disabled
+line items:       Disabled
+PDF button:       ✅ show (με watermark ΑΚΥΡΩΘΗΚΕ)
+Send email:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+
+Button Μετατροπή σε Τιμολόγιο should be like the Μετατροπή button in quote. a button with an icon and when they click it,
+it appears a popup with the option Τιμολόγιο
+
+*** PURCHASES ***
+
+## Τιμολογιο Αγορας - Purchase Invoice (PUR) | Κανονική αγορά
+
+1. Δημιουργία (New)
+Status options:   Draft, Ordered, Received, Completed
+Πεδία:            Όλα ενεργά
+document_type:    Ενεργό
+invoice_date:     Ενεργό (default σήμερα)
+vendor:           Ενεργό (optional)
+payment_method:   Ενεργό (required)
+payment_terms:    Ενεργό (auto-load από vendor, default immediate)
+due_date:         Read-only auto-calculated
+line items:       Ενεργά
+PDF button:       ❌ not show
+Payment panel:    ❌ not show
+Delete:           ❌ not show
+
+2. Update — Current Status: Draft
+Status options:   Draft, Ordered, Received, Completed
+Πεδία:            Όλα ενεργά
+document_type:    Ενεργό
+invoice_date:     Ενεργό
+vendor:           Ενεργό
+payment_method:   Ενεργό
+payment_terms:    Ενεργό
+due_date:         Read-only auto-calculated
+line items:       Ενεργά
+PDF button:       ❌ not show
+Payment panel:    ❌ not show
+Delete:           ✅ show
+
+3. Update — Current Status: Ordered
+Status options:   Ordered, Received, Cancelled
+Πεδία:            Όλα ενεργά (μπορεί να διορθώσει)
+document_type:    Disabled (immutable)
+invoice_date:     Ενεργό
+vendor:           Ενεργό
+payment_method:   Ενεργό
+payment_terms:    Ενεργό
+due_date:         Read-only auto-calculated
+line items:       Ενεργά
+PDF button:       ❌ not show
+Payment panel:    ❌ not show
+Delete:           ❌ not show
+
+4. Update — Current Status: Received
+Status options:   Received, Completed, Cancelled
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+payment_method:   Disabled
+payment_terms:    Disabled
+due_date:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Payment panel:    ❌ not show
+Delete:           ❌ not show
+
+5. Update — Current Status: Completed
+Status options:   Completed, Cancelled
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+payment_method:   Disabled
+payment_terms:    Disabled
+due_date:         Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Payment panel:    ✅ show (payment_status badge, amount_due,
+                          due_date, λίστα πληρωμών, κουμπί
+                          "Καταχώρηση Πληρωμής")
+Delete:           ❌ not show
+
+6. Update — Current Status: Cancelled
+Status options:   Cancelled (Disabled)
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+payment_method:   Disabled
+payment_terms:    Disabled
+due_date:         Disabled
+line items:       Disabled
+PDF button:       ✅ show (με watermark ΑΚΥΡΩΘΗΚΕ)
+Payment panel:    ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Ακυρώθηκε → DBN-2026-0001" (clickable link)
+
+## Δελτιο Παραλαβης - Goods Receipt Note (GRN) | Παραλαβή χωρίς τιμολόγιο ακόμα
+
+1. Δημιουργία (New)
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+document_type:    Ενεργό
+invoice_date:     Ενεργό (default σήμερα)
+vendor:           Ενεργό (optional)
+line items:       Ενεργά (ποσότητες, χωρίς τιμές)
+PDF button:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+
+2. Update — Current Status: Draft
+Status options:   Draft, Completed
+Πεδία:            Όλα ενεργά
+document_type:    Ενεργό
+invoice_date:     Ενεργό
+vendor:           Ενεργό
+line items:       Ενεργά
+PDF button:       ❌ not show
+Conversion:       ❌ not show
+Delete:           ✅ show
+
+3. Update — Current Status: Completed
+Status options:   Completed, Cancelled
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Conversion:       ✅ show ("Μετατροπή σε Τιμολόγιο Αγοράς")
+Delete:           ❌ not show
+
+4. Update — Current Status: Invoiced
+Status options:   Invoiced (Disabled)
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Conversion:       ❌ not show
+Delete:           ❌ not show
+Reference:        ✅ "Τιμολογήθηκε → PUR-2026-0001" (clickable link)
+
+5. Update — Current Status: Cancelled
+Status options:   Cancelled (Disabled)
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+line items:       Disabled
+PDF button:       ✅ show (με watermark ΑΚΥΡΩΘΗΚΕ)
+Conversion:       ❌ not show
+Delete:           ❌ not show
+
+## Χρεωστικό Σημείωμα - Debit Note (DBN) | για επιστροφές προς προμηθευτή
+
+Δημιουργία: Μόνο από κουμπί "Επιστροφή Προϊόντων" σε Completed/Received PUR
+            ΟΧΙ από dropdown τύπων
+
+1. Δημιουργία (New) — από κουμπί "Επιστροφή Προϊόντων"
+Status options:   Draft, Completed
+document_type:    Disabled (πάντα DBN, ορίζεται αυτόματα)
+invoice_date:     Ενεργό (default σήμερα)
+vendor:           Disabled (auto-filled από original PUR)
+line items:       Ποσότητες ενεργές (max = original quantity)
+                  Είδη/τιμές disabled (από original)
+PDF button:       ❌ not show
+Delete:           ❌ not show (δεν έχει σωθεί ακόμα)
+Reference:        ✅ "Επιστροφή από [PUR-2026-0001]" (read-only)
+
+2. Update — Current Status: Draft
+Status options:   Draft, Completed
+document_type:    Disabled (immutable)
+invoice_date:     Ενεργό
+vendor:           Disabled (από original)
+line items:       Ποσότητες ενεργές (max = original quantity)
+                  Είδη/τιμές disabled
+PDF button:       ❌ not show
+Delete:           ✅ show
+Reference:        ✅ "Επιστροφή από [PUR-2026-0001]" (read-only)
+
+3. Update — Current Status: Completed
+Status options:   Completed (Disabled)
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Delete:           ❌ not show
+Reference:        ✅ "Επιστροφή από [PUR-2026-0001]" (clickable link)
+
+4. Auto-created DBN (από ακύρωση Completed/Received PUR)
+Status:           Completed (αυτόματα, skip Draft)
+Πεδία:            Όλα disabled (read-only)
+document_type:    Disabled
+invoice_date:     Disabled
+vendor:           Disabled
+line items:       Disabled
+PDF button:       ✅ show
+Delete:           ❌ not show
+Reference:        ✅ "Ακύρωση [PUR-2026-0001]" (clickable link)
+
+
+
+
+## Καταστάσεις Αγορών
+1. Παραγγελία Αγοράς (Purchase Order - PO)
+Επειδή είναι προαιρετική και δεν αλλάζει το απόθεμα, οι καταστάσεις της αφορούν την πρόοδο της συνεννόησης:
+- Πρόχειρη (Draft): Ο χρήστης την επεξεργάζεται.
+- Ανοιχτή / Απεσταλμένη, Εκκρεμής (Open / Sent, Pending/Ordered): Έχει σταλεί στον προμηθευτή και περιμένουμε την παραλαβή.
+- Μερική Παραλαβή (Partially Received): Έχουν έρθει κάποια είδη, αλλά εκκρεμούν τα υπόλοιπα.
+- Ολοκληρωμένη (Received / Closed): Η πλήρης ποσότητα έχει παραληφθεί και εισαχθεί στην αποθήκη.
+- Ακυρωμένη (Cancelled): Η παραγγελία δεν θα εκτελεστεί ποτέ.
+
+2. Δελτίο Ποσοτικής Παραλαβής (GRN)
+Εδώ το κλειδί είναι η αύξηση του αποθέματος και η μετέπειτα τιμολόγηση:
+- Πρόχειρο (Draft): Δεν έχει ενημερώσει ακόμα το στοκ.
+- Προς Τιμολόγηση (Pending Invoice): Το στοκ αυξήθηκε, αλλά δεν έχουμε λάβει ακόμα το τιμολόγιο αγοράς.
+- Τιμολογημένο (Invoiced): Το Δελτίο συνδέθηκε με Τιμολόγιο Αγοράς και η ροή έκλεισε.
+
+3. Τιμολόγιο Αγοράς
+Αφορά την οικονομική υποχρέωση και την οριστική αποτίμηση:
+- Πρόχειρο (Draft): Έλεγχος στοιχείων και τιμών πριν την οριστικοποίηση.
+- Οριστικοποιημένο (Posted): Ενημέρωση αποθήκης (αν δεν προηγήθηκε GRN) και αύξηση του υπολοίπου του προμηθευτή.
+- Εξοφλημένο (Paid): Η πληρωμή προς τον προμηθευτή έχει ολοκληρωθεί.
+
+4. Πιστωτικό Αγοράς
+Αντιστρέφει κινήσεις, άρα πρέπει να είναι κλειδωμένο:
+- Πρόχειρο (Draft): Προετοιμασία της επιστροφής.
+- Οριστικοποιημένο (Posted): Το απόθεμα μειώνεται και μειώνεται η οφειλή προς τον προμηθευτή.
+
+5. Δελτίο Εισαγωγής (Λοιπά)
+Επειδή είναι "simple" flow για γρήγορη χρήση:
+- Πρόχειρο (Draft): Αποθήκευση για μελλοντική επεξεργασία.
+- Οριστικοποιημένο (Posted): Άμεση αύξηση αποθέματος με την ανάλογη αιτιολογία (π.χ. Αρχικό Απόθεμα).
+
+Σημαντικός Κανόνας: Μόλις ένα παραστατικό γίνει Posted (Οριστικοποιημένο), τα πεδία του πρέπει να "κλειδώνουν" για να μην μπορεί ο χρήστης να αλλάξει ποσότητες εκ των υστέρων και να χαλάσει την ιχνηλασιμότητα.
+
+--------
+Πότε και πώς αλλάζει ο χρήστης τις καταστάσεις;
+Ο κανόνας του επαγγελματικού ERP: Ο χρήστης δεν αλλάζει την κατάσταση χειροκίνητα με ένα απλό drop-down (π.χ. από "Εκκρεμής" σε "Ολοκληρωμένη"), αλλά η κατάσταση αλλάζει μέσω ενεργειών (Actions).
+- Μετασχηματισμός (Transformation): Όταν ο χρήστης πατάει "Παραλαβή" πάνω στην Παραγγελία, το σύστημα δημιουργεί το Δελτίο και η Παραγγελία γίνεται αυτόματα Completed.
+- Κλείδωμα (Locking): Μόλις ένα παραστατικό γίνει Posted (Οριστικοποιημένο) και ενημερώσει την αποθήκη, ο χρήστης δεν πρέπει να μπορεί να το αλλάξει ή να το διαγράψει.
+ -- Αν έκανε λάθος; Πρέπει να κάνει Ακύρωση ή Πιστωτικό, ώστε να υπάρχει ίχνος (audit trail).
+-------- 
+Η Μερική Παραλαβή (Partial Receiving) είναι το σημείο όπου ένα "ερασιτεχνικό" ERP ξεχωρίζει από ένα επαγγελματικό, γιατί λύνει το αιώνιο πρόβλημα: "Παρήγγειλα 10, μου έφεραν 3, πότε θα έρθουν τα άλλα 7;"
+Για να το υλοποιήσεις σωστά στο MVP, ακολούθησε αυτό το flow:
+
+1. Ο Μηχανισμός "Backorder"
+Όταν ο χρήστης κάνει παραλαβή από μια Παραγγελία Αγοράς:
+Το σύστημα συγκρίνει την Παραγγελθείσα Ποσότητα με την Παραληφθείσα.
+Αν Παραληφθείσα < Παραγγελθείσα, η Παραγγελία παίρνει αυτόματα status "Μερική Παραλαβή".
+Τα υπόλοιπα 7 τεμάχια μένουν "Ανοιχτά" (Backorder) και φαίνονται στα Reports ως "Αναμενόμενα".
+
+2. Οι Καταστάσεις (Statuses) στην Αγορά
+Για να έχει ο χρήστης πλήρη εικόνα, οι καταστάσεις πρέπει να είναι:
+Πρόχειρη (Draft): Δεν δεσμεύει τίποτα.
+Ανοιχτή (Open/Ordered): Περιμένουμε όλη την ποσότητα.
+Μερική (Partial): Έχουν έρθει κάποια, περιμένουμε τα υπόλοιπα.
+Ολοκληρωμένη (Closed/Received): Ήρθαν όλα ή ακυρώσαμε το υπόλοιπο.
+Ακυρωμένη (Cancelled): Δεν θα παραλάβουμε τίποτα.
+
+3. Πώς θα το βλέπει ο χρήστης;
+Στο UI, δίπλα σε κάθε κωδικό στην παραγγελία, βάλε τρεις στήλες:
+Ποσότητα Παραγγελίας (π.χ. 10)
+Ποσότητα που Παραλήφθηκε (π.χ. 3)
+Υπόλοιπο (π.χ. 7)
+
+4. Γιατί είναι "must" για τον επαγγελματία;
+Έλεγχος Προμηθευτών: Μπορεί να δει ποιος προμηθευτής του "χρωστάει" εμπορεύματα.
+Προγραμματισμός Πωλήσεων: Ξέρει ότι έχει 3 στο ράφι και 7 που έρχονται, οπότε μπορεί να υποσχεθεί στον πελάτη του μια ημερομηνία παράδοσης.
+Προσοχή: Πρέπει να δώσεις στον χρήστη ένα κουμπί "Κλείσιμο Παραγγελίας", ώστε αν ο προμηθευτής πει "δεν θα σου στείλω ποτέ τα υπόλοιπα 7", η παραγγελία να σταματήσει να φαίνεται ως εκκρεμής.
+---------
+
+
+## Καταστάσεις Πωλήσεων
+1. Προσφορά (Quote)
+Πρόχειρη (Draft): Προετοιμασία τιμών.
+Απεσταλμένη (Sent): Στάλθηκε στον πελάτη (δεν δεσμεύει απόθεμα).
+Αποδεκτή (Accepted): Ο πελάτης συμφώνησε. Μετατρέπεται σε Παραγγελία.
+Απορριφθείσα (Rejected): Η προσφορά "έκλεισε" χωρίς πώληση.
+Ληγμένη (Expired): Η προσφορά έχει λήξει.
+
+2. Παραγγελία Πώλησης (Sales Order)
+Πρόχειρη (Draft): Καταγραφή ειδών.
+Ανοιχτή (Open): Το απόθεμα δεσμεύεται (δεν μειώνεται το φυσικό, αλλά το "διαθέσιμο").
+Προς Παράδοση (Pending Delivery): Η αποθήκη ετοιμάζει το Picking.
+Μερική Παράδοση (Partially Shipped): Έφυγαν κάποια είδη με Δελτίο Αποστολής.
+Ολοκληρωμένη (Closed): Όλα τα είδη παραδόθηκαν.
+
+3. Δελτίο Αποστολής (Delivery Note)
+Εδώ εφαρμόζουμε τη minimal λογική που συζητήσαμε στις αγορές:
+Πρόχειρο (Draft): Ετοιμάζεται η λίστα φόρτωσης.
+Προς Τιμολόγηση (Pending Invoicing): Μόλις οριστικοποιηθεί.
+Το απόθεμα μειώνεται οριστικά.
+Το παραστατικό κλειδώνει.
+Ο χρήστης ξέρει ότι πρέπει να εκδώσει Τιμολόγιο.
+Τιμολογημένο (Invoiced): Συνδέθηκε με Τιμολόγιο Πώλησης. Η ροή έκλεισε.
+
+4. Τιμολόγιο Πώλησης (Invoice)
+- Πρόχειρο (Draft): Έλεγχος στοιχείων/ΦΠΑ.
+- Οριστικοποιημένο (Posted): Ενημερώνει τον τζίρο (και αργοτερα το myDATA).
+(Απλήρωτο (Unpaid): Ο πελάτης χρωστάει το ποσό.)
+(Εξοφλημένο (Paid): Η πληρωμή καταχωρήθηκε στο ταμείο.)
+
+Η Ροή του Τιμολογίου (UI & Logic)
+- Κατάσταση "Πρόχειρο" (Draft):
+Ο χρήστης συμπληρώνει είδη, ποσότητες και τιμές.
+Το dropdown γράφει Πρόχειρο.
+Δεν επηρεάζεται η αποθήκη, δεν πάει στο myDATA.
+- Η Ενέργεια "Οριστικοποίηση":
+Ο χρήστης πατάει το κουμπί «Οριστικοποίηση» (ή επιλέγει Οριστικοποιημένο από το dropdown).
+Το ERP ελέγχει το πεδίο "Τρόπος Πληρωμής":
+Αν ο Τρόπος είναι "Επί Πιστώσει" 
+ Το status αλλάζει αυτόματα σε Απλήρωτο.
+Αν ο Τρόπος είναι "Μετρητά" ή "Κάρτα" 
+ Το status αλλάζει αυτόματα σε Εξοφλημένο.
+
+5. Απόδειξη (Receipt)
+- Πρόχειρο (Draft): Έλεγχος στοιχείων/ΦΠΑ.
+- Οριστικοποιημένο (Posted): Ενημερώνει τον τζίρο (και αργοτερα το myDATA).
+
+6. Δελτίο Εξαγωγής (Λοιπά)
+- Πρόχειρο (Draft): Προετοιμασία.
+- Οριστικοποιημένο (Posted): Το απόθεμα μειώνεται με την ανάλογη Αιτιολογία (π.χ. Καταστροφή, Δείγμα). Δεν περιμένει τιμολόγηση, άρα η ροή κλείνει αμέσως.
+
+7. Πιστωτικό Πώλησης (Credit Note)
+- Πρόχειρο (Draft): Προετοιμασία.
+- Οριστικοποιημένο (Posted): Το εμπόρευμα επιστρέφει στην αποθήκη και μειώνεται η απαίτηση από τον πελάτη.
+
+
+----------
+
+
+
+
+COMMANDS:
+
+when I click Διαγραφη it opens a different SidePopup while I want to slide the current. like the new vendor logic. 
+every time that there is an action that opens a different sidepopup and the user has to decide I want to happen from 
+this SidePopup with slide so the user doesnt have to leave 
+

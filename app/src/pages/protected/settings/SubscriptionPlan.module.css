@@ -1,0 +1,550 @@
+/* ============================================ */
+/* WRAPPER */
+/* ============================================ */
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+/* ============================================ */
+/* CURRENT PLAN SUMMARY */
+/* ============================================ */
+
+.currentPlanSummary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 20px 24px;
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8f4ff 100%);
+    border: 1px solid #dbeafe;
+    border-radius: 12px;
+}
+
+.summaryHeader {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.summaryIcon {
+    width: 44px;
+    height: 44px;
+    background: #fff;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: #3b82f6;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+}
+
+.summaryInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.summaryLabel {
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.summaryPlan {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.billingBadge {
+    padding: 3px 8px;
+    background: #dbeafe;
+    color: #2563eb;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+}
+
+.summaryStats {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+}
+
+.statItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #6b7280;
+}
+
+.statItem svg {
+    color: #9ca3af;
+}
+
+.statLabel {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.statValue {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.cancelNotice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    border-radius: 8px;
+    margin-top: 4px;
+}
+
+.cancelIcon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.cancelText {
+    font-size: 13px;
+    color: #92400e;
+    line-height: 1.5;
+}
+
+.cancelText strong {
+    font-weight: 700;
+    color: #78350f;
+}
+
+.scheduledNotice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: #dbeafe;
+    border: 1px solid #3b82f6;
+    border-radius: 8px;
+    margin-top: 4px;
+}
+
+.scheduledIcon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.scheduledText {
+    font-size: 13px;
+    color: #1e40af;
+    line-height: 1.5;
+}
+
+.scheduledText strong {
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+/* ============================================ */
+/* CONTACT FOOTER */
+/* ============================================ */
+
+.footer {
+    margin-top: 8px;
+    padding: 20px 24px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+}
+
+.footerContent {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.footerContent > svg {
+    color: #6b7280;
+    flex-shrink: 0;
+}
+
+.footerContent > div {
+    flex: 1;
+}
+
+.footerTitle {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.footerText {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.contactButton {
+    padding: 10px 20px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.contactButton:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+/* ============================================ */
+/* PREVIEW POPUP */
+/* ============================================ */
+
+.previewContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 4px;
+}
+
+.previewSection {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.previewSectionTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.previewCard {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.previewRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.previewLabel {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.previewValue {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.previewBadge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #2563eb;
+    background: #dbeafe;
+    padding: 2px 7px;
+    border-radius: 4px;
+}
+
+.previewBreakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.previewBreakdownRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.previewBreakdownRow span:last-child {
+    font-weight: 600;
+    color: #374151;
+}
+
+.previewArrow {
+    text-align: center;
+    font-size: 20px;
+    color: #9ca3af;
+    margin: -6px 0;
+}
+
+.previewNotice {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.previewNotice p {
+    margin: 0;
+    font-size: 13px;
+    color: #1e40af;
+    line-height: 1.5;
+}
+
+.previewNotice strong {
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.warningNotice {
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.warningTitle {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #92400e;
+    line-height: 1.5;
+}
+
+/* .warningItem {
+    margin: 0;
+    font-size: 13px;
+    color: #92400e;
+    line-height: 1.5;
+}
+
+.warningFooter {
+    margin: 0;
+    font-size: 12px;
+    color: #b45309;
+    line-height: 1.5;
+    font-style: italic;
+} */
+
+.paymentMethodOptions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.paymentOption {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    gap: 12px;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.paymentOption:hover {
+    background: #f8f9fb;
+}
+
+.paymentOption.active {
+    border-color: #4c7af1;
+    background: #f0f5ff;
+}
+
+.radioOuter {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.paymentOption.active .radioOuter {
+    border-color: #4c7af1;
+}
+
+.radioInner {
+    width: 9px;
+    height: 9px;
+    background: #4c7af1;
+    border-radius: 50%;
+}
+
+.paymentOptionInfo {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+    text-align: start;
+}
+
+.paymentOptionInfo strong {
+    font-size: 15px;
+}
+
+.paymentOptionInfo span {
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.cardRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.expiry {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.paymentFormWrapper {
+    margin-top: 8px;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fafafa;
+}
+
+/* --------------- BILLING INFO SECTION ------------------- */
+
+.billingMethodOptions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.billingOption {
+    display: flex;
+    align-items: flex-start;
+    padding: 12px;
+    gap: 12px;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.billingOption:hover {
+    background: #f8f9fb;
+}
+
+.billingOption.active {
+    border-color: #4c7af1;
+    background: #f0f5ff;
+}
+
+.billingOptionInfo {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.4;
+    text-align: start;
+}
+
+.billingOptionInfo strong {
+    font-size: 15px;
+    color: #1a1a1a;
+}
+
+.billingOptionInfo span {
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.billingAddress {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.billingFormWrapper {
+    margin-top: 8px;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fafafa;
+}
+
+.saveCheckbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    cursor: pointer;
+    font-size: 14px;
+    color: #374151;
+}
+
+.saveCheckbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #4c7af1;
+    cursor: pointer;
+}
+
+/* ============================================ */
+/* RESPONSIVE */
+/* ============================================ */
+
+@media (max-width: 900px) {
+    .currentPlanSummary {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .summaryStats {
+        flex-wrap: wrap;
+        gap: 16px 24px;
+    }
+}
+
+@media (max-width: 640px) {
+    .footerContent {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .footerContent > svg {
+        display: none;
+    }
+}

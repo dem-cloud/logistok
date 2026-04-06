@@ -65,7 +65,8 @@ CREATE TABLE company_users (
 
   is_owner BOOLEAN NOT NULL DEFAULT FALSE,
 
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending', 'disabled')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'pending', 'disabled')),
+  disabled_reason TEXT NULL CHECK (disabled_reason IN ('plan_limit', 'user_action', 'system'))
 
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

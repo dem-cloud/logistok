@@ -17,8 +17,6 @@ export function OnboardingLayout() {
         exitSetup,
 
         onboardingDataLoading,
-        optionsLoading,
-        pluginsLoading,
 
         __internal
     } = useOnboarding();
@@ -54,7 +52,7 @@ export function OnboardingLayout() {
         }
     }, [stepNumber, activeCompany?.onboarding.current_step]);
 
-    if (onboardingDataLoading || optionsLoading || pluginsLoading) 
+    if (onboardingDataLoading) 
         return <LoadingSpinner />;
     
     return (
@@ -93,7 +91,9 @@ export function OnboardingLayout() {
             </header>
 
             {/* ===== Step ===== */}
-            <StepComponent />
+            <div className={styles.content}>
+                <StepComponent />
+            </div>
         </div>
     );
 }

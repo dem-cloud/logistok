@@ -1,0 +1,763 @@
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.headerRow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 20px;
+}
+
+.title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0;
+}
+
+.filtersRow {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.filterGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filterLabel {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.filterInput,
+.filterSelect {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    min-width: 160px;
+}
+
+.filterInput:focus,
+.filterSelect:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.section {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 24px;
+}
+
+.sectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.sectionTitle {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+}
+
+.sectionHint {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 0 0 20px 0;
+}
+
+.saleList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.saleCard {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+}
+
+.saleInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+}
+
+.saleId {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.saleMeta {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.saleTotal {
+    font-size: 15px;
+    font-weight: 600;
+    color: #059669;
+}
+
+.formGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.formRow {
+    display: flex;
+    gap: 12px;
+}
+
+.formRow .formGroup {
+    flex: 1;
+}
+
+.formLabel {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.formInput,
+.formSelect {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 20px;
+    box-sizing: border-box;
+    height: 42px;
+}
+
+textarea.formInput {
+    height: auto;
+    min-height: 60px;
+    resize: vertical;
+}
+
+.formInput:focus,
+.formSelect:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.formInput:disabled {
+    background: #f3f4f6;
+    color: #6b7280;
+    cursor: not-allowed;
+}
+
+.formSelect {
+    background: #fff;
+    color: #1a1a1a;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.formError {
+    font-size: 12px;
+    color: #dc2626;
+}
+
+.formReadOnly {
+    font-size: 14px;
+    font-weight: 500;
+    color: #111827;
+}
+
+.readOnlyInput {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 20px;
+    height: 42px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    background: #f9fafb;
+    color: #374151;
+    cursor: default;
+}
+
+.itemsSection {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.itemsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.itemsTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin: 0;
+}
+
+.addItemBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #6b7280;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+.addItemBtn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.itemRow {
+    display: grid;
+    grid-template-columns: 1fr 100px 110px 110px 100px 100px 36px;
+    gap: 8px;
+    align-items: start;
+    margin-bottom: 8px;
+}
+
+.removeItemBtn {
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #6b7280;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    box-sizing: border-box;
+}
+
+.removeItemBtn:hover {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.totalsRow {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    gap: 24px;
+}
+
+.totalsBox {
+    text-align: right;
+}
+
+.totalLabel {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.totalValue {
+    font-size: 18px;
+    font-weight: 700;
+    color: #059669;
+}
+
+/* Sliding panels for quick create */
+.slidingWrapper {
+    overflow: hidden;
+    width: 100%;
+}
+
+.slidingPanels {
+    display: flex;
+    width: 200%;
+    transition: transform 0.3s ease;
+}
+
+.slidingPanel {
+    flex: 0 0 50%;
+    width: 50%;
+    min-width: 50%;
+}
+
+.quickCreateForm {
+    display: flex;
+    flex-direction: column;
+}
+
+/* List toolbar + table (match Purchases) */
+.listToolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.listToolbar .filtersRow {
+    flex: 1;
+    min-width: 0;
+}
+
+.addBtn {
+    flex-shrink: 0;
+    position: relative;
+}
+
+.dropdownWrapper {
+    position: relative;
+}
+
+.dropdownMenu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 50;
+    min-width: 200px;
+}
+
+.dropdownItem {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    text-align: left;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.dropdownItem:hover {
+    background: #f3f4f6;
+}
+
+.dropdownItem:first-child {
+    border-radius: 8px 8px 0 0;
+}
+
+.dropdownItem:last-child {
+    border-radius: 0 0 8px 8px;
+}
+
+.statusReadOnly {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 42px;
+    height: 42px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 20px;
+    color: #374151;
+    background: #f9fafb;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+}
+
+.statusHint {
+    display: block;
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 4px;
+}
+
+.searchWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.searchIcon {
+    position: absolute;
+    left: 12px;
+    color: #9ca3af;
+    pointer-events: none;
+}
+
+.searchWrapper .filterInput {
+    padding-left: 36px;
+}
+
+/* Horizontal scroll wrapper: prevents first column shrink when scrollbar/dropdown appears */
+.tableScrollWrapper {
+    overflow-x: auto;
+}
+
+.tableWrapper {
+    position: relative;
+    min-width: 980px; /* Prevents table/column shrink when scrollbar appears or list updates */
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.tableOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.table {
+    width: 100%;
+    min-width: 980px; /* Keeps columns from compressing when parent scrollbar appears */
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+.table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.table th:first-child,
+.table td:first-child {
+    width: 180px;
+    min-width: 180px;
+    white-space: nowrap;
+}
+
+.table th:last-child,
+.table td:last-child {
+    width: 300px;
+    min-width: 300px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.table td {
+    padding: 14px 16px;
+    font-size: 14px;
+    color: #374151;
+    border-bottom: 1px solid #f3f4f6;
+    text-align: left;
+}
+
+.table td:last-child {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.table tr:last-child td {
+    border-bottom: none;
+}
+
+.table tbody tr:hover td {
+    background: #fafbfc;
+}
+
+.cellActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    min-width: min-content;
+    gap: 8px;
+}
+
+.editBtn,
+.deleteBtn,
+.pdfBtn,
+.mailSendBtn,
+.convertBtn {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #6b7280;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.convertBtn:hover:not(:disabled) {
+    background: #f3f4f6;
+    color: #8b5cf6;
+    border-color: #c4b5fd;
+}
+
+.convertBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.editBtn:hover {
+    background: #f3f4f6;
+    color: #3b82f6;
+    border-color: #93c5fd;
+}
+
+.deleteBtn:hover {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.pdfBtn:hover,
+.mailSendBtn:hover {
+    background: #f3f4f6;
+    color: #059669;
+    border-color: #a7f3d0;
+}
+
+.deleteConfirmText {
+    font-size: 14px;
+    color: #374151;
+    margin: 0;
+}
+
+.listLoading {
+    display: flex;
+    justify-content: center;
+    padding: 48px;
+}
+
+/* Variant search dropdown + line item grid */
+.formGroupRelative {
+    position: relative;
+}
+
+.variantDropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+}
+
+.variantDropdownItem {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    text-align: left;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.variantDropdownItem:hover {
+    background: #f3f4f6;
+}
+
+.variantDropdownEmpty {
+    padding: 12px;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.checkboxGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.checkboxWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+}
+
+.checkboxWrapper input {
+    margin: 0;
+    width: 18px;
+    height: 18px;
+}
+
+.lineTotalReadOnly {
+    padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #059669;
+    background: #f0fdf4;
+    border-radius: 8px;
+    border: 1px solid #bbf7d0;
+    height: 42px;
+    box-sizing: border-box;
+    line-height: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.removeItemCell {
+    display: flex;
+    align-items: flex-end;
+    align-self: end;
+}
+
+/* Convert dropdown (QUO → Receipt/Invoice) */
+.convertDropdownWrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.convertBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #6b7280;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.convertBtn:hover:not(:disabled) {
+    background: #f3f4f6;
+    color: #8b5cf6;
+    border-color: #c4b5fd;
+}
+
+.convertBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.convertDropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    min-width: 140px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 20;
+    overflow: hidden;
+}
+
+.convertDropdownItem {
+    display: block;
+    width: 100%;
+    padding: 10px 14px;
+    text-align: left;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.convertDropdownItem:hover:not(:disabled) {
+    background: #f3f4f6;
+}
+
+.convertDropdownItem:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* QUO converted: clickable "Μετατράπηκε σε [INV/REC-xxx]" link */
+.convertedToLink {
+    display: inline-block;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #3b82f6;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.convertedToLink:hover {
+    color: #2563eb;
+}
+
+/* Payment status badges (INV) */
+.paymentStatus_unpaid {
+    color: #dc2626;
+    font-weight: 600;
+}
+.paymentStatus_partial {
+    color: #f59e0b;
+    font-weight: 600;
+}
+.paymentStatus_paid {
+    color: #059669;
+    font-weight: 600;
+}
+.paymentStatus_overdue {
+    color: #dc2626;
+    font-weight: 700;
+}

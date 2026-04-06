@@ -1,0 +1,3934 @@
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.section {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 24px;
+}
+
+.sectionTitle {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.sectionHint {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 0 0 20px 0;
+}
+
+.headerRow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 20px;
+}
+
+.title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0;
+}
+
+.storeList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.storeCard {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+}
+
+.storeInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+}
+
+.storeName {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.storeAddress {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.mainBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #dbeafe;
+    color: #1d4ed8;
+    margin-left: 8px;
+}
+
+.editStoreBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #6b7280;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.editStoreBtn:hover {
+    background: #f3f4f6;
+    color: #3b82f6;
+    border-color: #93c5fd;
+}
+
+.upgradeNotice {
+    padding: 20px;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 10px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.upgradeNoticeIcon {
+    flex-shrink: 0;
+    color: #d97706;
+}
+
+.upgradeNoticeContent {
+    flex: 1;
+}
+
+.upgradeNoticeText {
+    font-size: 14px;
+    color: #92400e;
+    margin: 0 0 8px 0;
+}
+
+.upgradeLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    color: #4f46e5;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.upgradeLink:hover {
+    text-decoration: underline;
+}
+
+/* Add Store Form in Popup */
+.addStoreForm {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.formGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.formRow {
+    display: flex;
+    gap: 12px;
+}
+
+.formRow .formGroup {
+    flex: 1;
+}
+
+.formGroupSmall {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 120px;
+}
+
+.formLabel {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.formInput,
+.formSelect {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 20px;
+    box-sizing: border-box;
+    height: 42px;
+}
+
+.formInput:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.formError {
+    font-size: 12px;
+    color: #dc2626;
+}
+
+.formSelect {
+    background: #fff;
+    color: #1a1a1a;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.formSelect:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.checkboxRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+}
+
+.checkboxRow input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #3b82f6;
+}
+
+.checkboxLabel {
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.addressFormSection {
+    margin-top: 8px;
+    padding: 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.previewSection {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.previewSectionTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0 0 12px 0;
+}
+
+.prorationNotice {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 0;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #f3f4f6;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: #fff;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #059669;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    border-color: #34d399;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn,
+.cancelScheduleBtn,
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.removeBtn {
+    border: 1px solid #fca5a5;
+    background: #fff;
+    color: #b91c1c;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+}
+
+.cancelScheduleBtn {
+    border: 1px solid #fcd34d;
+    background: #fff;
+    color: #92400e;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+}
+
+.reactivateBtn {
+    border: 1px solid #86efac;
+    background: #fff;
+    color: #15803d;
+}
+
+.reactivateBtn:hover {
+    background: #dcfce7;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #f3f4f6;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    border-color: #d97706;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    border-color: #059669;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #fcd34d;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: #d1fae5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #a7f3d0;
+    border-color: #34d399;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Inactive / scheduled store states */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #b45309;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b45309;
+    background: transparent;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #fcd34d;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #ecfdf5;
+    border-color: #34d399;
+}
+
+.scheduledDate {
+    font-size: 13px;
+    color: #b45309;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #b45309;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b45309;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: #d1fae5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #a7f3d0;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #b45309;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #f59e0b;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #ecfdf5;
+    border-color: #34d399;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #e5e7eb;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.reactivateBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #b45309;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    background: #fff;
+    color: #dc2626;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    background: #fff;
+    color: #b45309;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    background: #dcfce7;
+    color: #15803d;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #bbf7d0;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #b45309;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #d97706;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #059669;
+    background: #d1fae5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #a7f3d0;
+    border-color: #059669;
+}
+
+.reactivateBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 13px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #b45309;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn,
+.cancelScheduleBtn,
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.removeBtn {
+    border: 1px solid #fca5a5;
+    background: #fff;
+    color: #dc2626;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    border: 1px solid #fcd34d;
+    background: #fff;
+    color: #b45309;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #f59e0b;
+}
+
+.reactivateBtn {
+    border: 1px solid #86efac;
+    background: #fff;
+    color: #15803d;
+}
+
+.reactivateBtn:hover {
+    background: #f0fdf4;
+    border-color: #22c55e;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #b45309;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    border-color: #f87171;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    border-color: #f59e0b;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    border-color: #34d399;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 13px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #b45309;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b45309;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: #d1fae5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #a7f3d0;
+    color: #047857;
+}
+
+.reactivateBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    border-color: #f87171;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    border-color: #f59e0b;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    border-color: #34d399;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: #d1fae5;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #a7f3d0;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 13px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #f3f4f6;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fde68a;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: #d1fae5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #a7f3d0;
+    border-color: #059669;
+}
+
+.reactivateBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #f59e0b;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    border-color: #34d399;
+}
+
+.scheduledDate {
+    font-size: 13px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #e5e7eb;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeStoreBtn,
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.removeStoreBtn {
+    border: 1px solid #fca5a5;
+    background: #fff;
+    color: #dc2626;
+}
+
+.removeStoreBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    border: 1px solid #93c5fd;
+    background: #fff;
+    color: #2563eb;
+}
+
+.cancelScheduleBtn:hover {
+    background: #eff6ff;
+    border-color: #2563eb;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid #34d399;
+    background: #fff;
+    color: #059669;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #ecfdf5;
+    border-color: #059669;
+}
+
+.scheduledDate {
+    font-size: 13px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeStoreBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #dc2626;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.removeStoreBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    border-color: #d97706;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    border-color: #059669;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #b91c1c;
+    background: transparent;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.removeBtn:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #92400e;
+    background: transparent;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fef3c7;
+    color: #78350f;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #059669;
+    background: transparent;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.75;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardInactive .storeName,
+.storeCardInactive .storeAddress {
+    color: #6b7280;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #f3f4f6;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeStoreBtn,
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.removeStoreBtn {
+    border: 1px solid #fca5a5;
+    background: #fff;
+    color: #dc2626;
+}
+
+.removeStoreBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    border: 1px solid #fcd34d;
+    background: #fff;
+    color: #92400e;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #d97706;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid #34d399;
+    background: #fff;
+    color: #059669;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #ecfdf5;
+    border-color: #059669;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fee2e2;
+    color: #b91c1c;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeStoreBtn,
+.cancelScheduleBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #6b7280;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.removeStoreBtn:hover,
+.cancelScheduleBtn:hover {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.reactivateBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid #3b82f6;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.reactivateBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}
+
+/* Store card states: inactive, scheduled */
+.storeCardInactive {
+    opacity: 0.7;
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.storeCardScheduled {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.inactiveBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #e5e7eb;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.scheduledBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: 8px;
+}
+
+.storeCardActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.removeStoreBtn,
+.cancelScheduleBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.removeStoreBtn {
+    border: 1px solid #fca5a5;
+    background: #fff;
+    color: #dc2626;
+}
+
+.removeStoreBtn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+}
+
+.cancelScheduleBtn {
+    border: 1px solid #fcd34d;
+    background: #fff;
+    color: #92400e;
+}
+
+.cancelScheduleBtn:hover {
+    background: #fffbeb;
+    border-color: #d97706;
+}
+
+.reactivateBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid #86efac;
+    background: #22c55e;
+    color: #fff;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.reactivateBtn:hover {
+    background: #16a34a;
+    border-color: #22c55e;
+}
+
+.reactivateBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.scheduledDate {
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 4px;
+}

@@ -89,6 +89,7 @@ CREATE TABLE subscriptions (
   currency TEXT NOT NULL DEFAULT 'eur', -- 🆕 ΕΔΩ (το currency που χρεώθηκε)
 
   stripe_subscription_id TEXT NULL UNIQUE,
+  stripe_subscription_schedule_id TEXT NULL UNIQUE,
 
   billing_period TEXT NULL DEFAULT 'monthly'
     CHECK (billing_period IN ('monthly', 'yearly')),
@@ -98,8 +99,7 @@ CREATE TABLE subscriptions (
     'incomplete_expired',-- Αποτυχία πληρωμής
     'active', 
     'past_due', 
-    'canceled', '
-    incomplete', 
+    'canceled', 
     'trialing'
   )),
 

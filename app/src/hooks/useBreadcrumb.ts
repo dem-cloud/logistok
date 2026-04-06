@@ -1,5 +1,6 @@
 import { ROUTES } from "@/config/routes.config";
 import { useBreadcrumbContext } from "@/contexts/BreadcrumbContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -11,12 +12,21 @@ type BreadcrumbConfig = {
 export const useBreadcrumb = (): BreadcrumbConfig => {
     const location = useLocation();
     const context = useBreadcrumbContext();
+    const { activeCompany, activeStore } = useAuth();
 
     return useMemo(() => {
+        // Settings are company-wide (no store in breadcrumb)
+        const isCompanyScope = location.pathname.startsWith('/settings');
+
+        // Dynamic prefix based on scope
+        const dynamicPrefix = isCompanyScope
+            ? [activeCompany?.name || 'Company']
+            : [activeCompany?.name || 'Company', activeStore?.name || 'Store'];
+
         // 1. Context override (για dynamic pages)
         if (context?.breadcrumb && context.breadcrumb.length > 0) {
             return {
-                breadcrumb: context.breadcrumb,
+                breadcrumb: [...dynamicPrefix, ...context.breadcrumb],
                 title: context.title,
             };
         }
@@ -25,7 +35,7 @@ export const useBreadcrumb = (): BreadcrumbConfig => {
         const route = Object.values(ROUTES).find(r => r.path === location.pathname);
         if (route) {
             return {
-                breadcrumb: route.breadcrumb,
+                breadcrumb: [...dynamicPrefix, ...route.breadcrumbPath],
                 title: route.title,
             };
         }
@@ -38,7 +48,7 @@ export const useBreadcrumb = (): BreadcrumbConfig => {
             
             if (baseRoute) {
                 return {
-                    breadcrumb: baseRoute.breadcrumb,
+                    breadcrumb: [...dynamicPrefix, ...baseRoute.breadcrumbPath],
                     title: baseRoute.title,
                 };
             }
@@ -46,8 +56,8 @@ export const useBreadcrumb = (): BreadcrumbConfig => {
 
         // 4. Fallback
         return {
-            breadcrumb: ['Logistok'],
-            title: 'Logistok',
+            breadcrumb: dynamicPrefix,
+            title: activeCompany?.name || 'Πίνακας Ελέγχου',
         };
-    }, [location.pathname, context?.breadcrumb, context?.title]);
+    }, [location.pathname, context?.breadcrumb, context?.title, activeCompany?.name, activeStore?.name]);
 };

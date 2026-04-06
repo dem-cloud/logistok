@@ -1,0 +1,384 @@
+/* ============================================ */
+/* WRAPPER & LAYOUT */
+/* ============================================ */
+
+.wrapper {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  padding: 32px 12px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ============================================ */
+/* HEADER */
+/* ============================================ */
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.titleWrapper {
+  text-align: left;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.title {
+  margin: 4px 0 0;
+  font-size: 22px;
+  color: #1f2937;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.titleBadge {
+  background: #f0f4ff;
+  color: #3b82f6;
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.markAllLink {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.markAllLink:hover {
+  background: #f0f4ff;
+}
+
+/* ============================================ */
+/* FILTERS */
+/* ============================================ */
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+}
+
+.filterIcon {
+  color: #9ca3af;
+  margin-right: 4px;
+}
+
+.filterButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 13px;
+  border-radius: 20px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filterButton:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.filterButtonActive {
+  background: #f0f4ff;
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
+
+.filterButtonActive:hover {
+  background: #e0f2ff;
+  border-color: #93c5fd;
+}
+
+.filterBadge {
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ============================================ */
+/* NOTIFICATIONS LIST */
+/* ============================================ */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ============================================ */
+/* NOTIFICATION CARD */
+/* ============================================ */
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.08s ease, border-color 0.15s;
+  text-align: left;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  border-color: #dbeafe;
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.08);
+}
+
+.cardUnread {
+  background: #fafbff;
+}
+
+/* ============================================ */
+/* AVATAR */
+/* ============================================ */
+
+.avatarWrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+}
+
+.avatar_info {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.avatar_warning {
+  background: #fef3c7;
+  color: #e0b010;
+}
+
+.avatar_success {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.avatar_error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.unreadIndicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6366f1;
+  border: 2px solid #fff;
+}
+
+/* ============================================ */
+/* CARD BODY */
+/* ============================================ */
+
+.cardBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardTime {
+  font-size: 12px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.cardMessage {
+  margin: 0;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+/* ============================================ */
+/* CARD ACTIONS */
+/* ============================================ */
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.card:hover .cardActions {
+  opacity: 1;
+}
+
+.actionButton {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  transition: all 0.15s ease;
+}
+
+.actionButton:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.actionButtonDanger:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+/* ============================================ */
+/* EMPTY STATE */
+/* ============================================ */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.emptyIcon {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: #f3f4f6;
+  display: grid;
+  place-items: center;
+  color: #9ca3af;
+  margin-bottom: 16px;
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.emptyMessage {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* ============================================ */
+/* RESPONSIVE */
+/* ============================================ */
+
+@media (max-width: 640px) {
+  .wrapper {
+    padding: 20px 16px 32px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .filters {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .filterButton {
+    flex-shrink: 0;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .cardActions {
+    opacity: 1;
+  }
+
+  .cardTop {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}

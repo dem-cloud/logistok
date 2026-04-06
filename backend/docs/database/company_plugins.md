@@ -65,9 +65,8 @@ CREATE TABLE company_plugins (
 
   subscription_item_id UUID NULL REFERENCES subscription_items(id) ON DELETE CASCADE,
 
-  -- 🔄 ΒΕΛΤΙΩΣΗ: Πιο explicit status
-  status TEXT NOT NULL DEFAULT 'active' 
-    CHECK (status IN ('active', 'inactive', 'suspended')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'disabled')),
+  disabled_reason TEXT NULL CHECK (disabled_reason IN ('plan_limit', 'user_action', 'system'))
   
   activated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   deactivated_at TIMESTAMP NULL,
@@ -75,7 +74,7 @@ CREATE TABLE company_plugins (
   settings JSONB NULL,
 
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW(), -- 🆕 ΠΡΟΣΘΗΚΗ
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
 
   PRIMARY KEY (company_id, plugin_key)
 );

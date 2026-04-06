@@ -1,0 +1,357 @@
+/* ============================================ */
+/* WRAPPER */
+/* ============================================ */
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* ============================================ */
+/* CANCEL WARNING BANNER */
+/* ============================================ */
+
+.cancelBanner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 10px;
+    color: #92400e;
+    font-size: 14px;
+}
+
+.cancelBanner svg {
+    flex-shrink: 0;
+    color: #f59e0b;
+}
+
+.reactivateLink {
+    background: none;
+    border: none;
+    color: #d97706;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-left: 6px;
+}
+
+.reactivateLink:hover {
+    color: #b45309;
+}
+
+/* ============================================ */
+/* GRID LAYOUT */
+/* ============================================ */
+
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+}
+
+.leftColumn,
+.rightColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ============================================ */
+/* CARD */
+/* ============================================ */
+
+.card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.cardHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.cardHeader svg {
+    color: #6b7280;
+}
+
+.cardHeader h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2937;
+    flex: 1;
+}
+
+.editButton {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.editButton:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+    color: #374151;
+}
+
+/* ============================================ */
+/* BILLING LIST */
+/* ============================================ */
+
+.billingList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.billingItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: #f9fafb;
+    border-radius: 8px;
+}
+
+.billingItemLeft {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.billingItemIcon {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    color: #6b7280;
+}
+
+.billingItemLabel {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.billingItemQty {
+    color: #9ca3af;
+    font-weight: 400;
+}
+
+.billingItemAmount {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.billingDivider {
+    height: 1px;
+    background: #e5e7eb;
+    margin: 16px 0;
+}
+
+/* ============================================ */
+/* BILLING TOTALS */
+/* ============================================ */
+
+.billingTotals {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.billingTotalRow {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.billingTotalFinal {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+/* ============================================ */
+/* NEXT BILLING */
+/* ============================================ */
+
+.nextBilling {
+    text-align: center;
+    padding: 16px 0;
+}
+
+.nextBillingAmount {
+    font-size: 32px;
+    font-weight: 800;
+    color: #1f2937;
+}
+
+.nextBillingDate {
+    margin-top: 4px;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+/* ============================================ */
+/* PAYMENT METHOD */
+/* ============================================ */
+
+.paymentMethod {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    background: #f9fafb;
+    border-radius: 8px;
+}
+
+.cardBrand {
+    padding: 8px 12px;
+    background: #1f2937;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+.cardDetails {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cardNumber {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    font-family: monospace;
+}
+
+.cardExpiry {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.noPaymentMethod {
+    padding: 20px;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 14px;
+}
+
+/* ============================================ */
+/* BILLING INFO */
+/* ============================================ */
+
+.billingInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.billingInfoName {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.billingInfoVat,
+.billingInfoAddress,
+.billingInfoEmail {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.noBillingInfo {
+    padding: 20px;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 14px;
+}
+
+/* ============================================ */
+/* DANGER ZONE */
+/* ============================================ */
+
+.dangerZone {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.dangerZone h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #dc2626;
+}
+
+.dangerZone p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+/* ============================================ */
+/* CANCEL MODAL */
+/* ============================================ */
+
+.cancelModalContent {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.cancelModalIcon {
+    color: #f59e0b;
+    margin-bottom: 16px;
+}
+
+.cancelModalContent p {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: #374151;
+}
+
+.cancelModalNote {
+    font-size: 13px !important;
+    color: #6b7280 !important;
+}
+
+/* ============================================ */
+/* RESPONSIVE */
+/* ============================================ */
+
+@media (max-width: 900px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}

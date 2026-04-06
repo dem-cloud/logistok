@@ -3,69 +3,131 @@
     border-radius: 16px;
     padding: 2rem;
     width: 330px;
-    transition: 0.2s ease;
+    transition: all 0.2s ease;
     background: #fff;
     text-align: start;
-}
-
-.card:hover {
-    box-shadow: 0 0 20px rgba(0,0,0,0.08);
-}
-
-.popular {
-    border: 2px solid var(--primary-color);
+    display: flex;
+    flex-direction: column;
     position: relative;
 }
 
+.card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
+}
+
+.popular {
+    border: 2px solid var(--primary-color, #3b82f6);
+}
+
+.popular:hover {
+    box-shadow: 0 12px 32px rgba(59, 130, 246, 0.15);
+}
+
+.current {
+    border-color: #10b981;
+    background: #f0fdf4;
+}
+
+.current:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 .tag {
-    background: var(--primary-color);
+    background: var(--primary-color, #3b82f6);
     color: white;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 600;
     padding: 6px 16px;
     border-radius: 20px;
     position: absolute;
     top: -14px;
     left: 50%;
     transform: translateX(-50%);
+    white-space: nowrap;
 }
 
 .name {
     font-size: 1.4rem;
-    font-weight: 600;
+    font-weight: 700;
+    color: #1f2937;
+    margin: 0;
 }
 
 .description {
-    margin-top: 0.4rem;
+    margin-top: 0.5rem;
     font-size: 14px;
-    color: #999;
-    min-height: 2rem;
+    color: #6b7280;
+    min-height: 2.5rem;
+    line-height: 1.4;
 }
 
 .priceRow {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
+    align-items: baseline;
+    gap: 4px;
+    margin-top: 1.25rem;
 }
 
 .price {
-    font-size: 2rem;
-    font-weight: 700;
-    margin: 1.4rem 0;
+    font-size: 2.25rem;
+    font-weight: 800;
+    color: #1f2937;
+    line-height: 1;
+}
+
+.interval {
+    font-size: 14px;
+    font-weight: 500;
+    color: #9ca3af;
 }
 
 .oldPrice {
+    margin-left: 8px;
     text-decoration: line-through;
-    color: #999;
+    color: #9ca3af;
+    font-size: 1rem;
+}
+
+.yearlyTotal {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #059669;
+    font-weight: 500;
 }
 
 .featureList {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    color: #999;
+    gap: 0.65rem;
+    margin-top: 1.5rem;
+    flex: 1;
+}
+
+.featureItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    color: #4b5563;
+    line-height: 1.4;
+}
+
+.checkmark {
+    color: #10b981;
+    font-weight: 600;
+    flex-shrink: 0;
 }
 
 .card button {
-    margin-top: 1.4rem;
+    margin-top: 1.5rem;
     width: 100%;
+}
+
+@media (max-width: 768px) {
+    .card {
+        width: 100%;
+        max-width: 400px;
+    }
 }

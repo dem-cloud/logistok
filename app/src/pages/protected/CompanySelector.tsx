@@ -1,107 +1,64 @@
-import { useEffect, useState } from "react";
-import Spinner from "../../components/Spinner";
 import styles from './CompanySelector.module.css';
-import { Crown, Hourglass } from "lucide-react";
+import { Crown, Hourglass, Check } from "lucide-react";
+import Spinner from "@/components/Spinner";
 import { useAuth } from "@/contexts/AuthContext";
+import useMyInvitations from "@/hooks/useMyInvitations";
 import { CompanySessionInfo } from "@/types/auth.types";
 
-
-type Invitation = {
-  id: string;
-  companyId: string;
-  companyName: string;
-  role: string;
-  invitedBy?: string;
-};
-
 export default function CompanySelector() {
-
-    const { 
+    const {
         companies,
         setCompanies,
         createCompany,
         selectCompany,
-        showToast
+        showToast,
+        me,
     } = useAuth();
 
-    const [invitations, setInvitations] = useState<Invitation[]>([]);
+    const {
+        invitations,
+        accept: acceptInvitation,
+        reject: rejectInvitation,
+    } = useMyInvitations();
 
     const getRoleSummary = (company: CompanySessionInfo): string => {
-        // Case 1: Has company-level role (applies to all stores)
-        // This includes owners with "Admin" role
         if (company.membership.role) {
             return company.membership.role.name;
         }
-
-        // Case 2: Single store-specific role
         if (company.stores.length === 1) {
             return company.stores[0].role.name;
         }
-
-        // Case 3: Multiple stores - check if all have same role
         const uniqueRoles = [...new Set(company.stores.map(s => s.role.key))];
-        
         if (uniqueRoles.length === 1) {
-            // All stores have the same role
             return company.stores[0].role.name;
         }
-
-        // Case 4: Multiple different roles
         const roleNames = [...new Set(company.stores.map(s => s.role.name))];
         return roleNames.join(", ");
     };
 
-    const fetchInvitations = async () => {
+    const handleAcceptInvitation = async (invitationId: string) => {
         try {
-            // const invitationsData = await fetchInvitations();
-            // setInvitations(invitationsData);
-            
-            // Demo invitations (αφαιρέστε όταν έχετε API)
-            setInvitations([
-                { id: '1', companyId: 'comp1', companyName: 'TechCorp', role: 'Manager', invitedBy: 'John Doe' },
-                { id: '2', companyId: 'comp2', companyName: 'StartupXYZ', role: 'Developer' },
-            ]);
-
+            await acceptInvitation.mutateAsync(invitationId);
+            const { companies: refreshedCompanies } = await me();
+            setCompanies(refreshedCompanies);
+            showToast({ message: "Η πρόσκληση αποδεχτήθηκε", type: "success" });
         } catch (err) {
-            showToast({message: "Κάτι πήγε στραβά", type: "error"})
-            // Αν κάτι πάει στραβά → logout
-            // forceLogout();
-        }
-    }
-
-    useEffect(() => {
-        fetchInvitations();
-    }, []);
-
-
-    const handleAcceptInvitation = async (invitationId: string, companyId: string) => {
-        try {
-            // API call για αποδοχή
-            // await acceptInvitation(invitationId);
-            
-            // Αφαιρούμε το invitation από τη λίστα
-            setInvitations(prev => prev.filter(inv => inv.id !== invitationId));
-            
-            // Προαιρετικά: refresh companies list
-            // const { companies } = await me();
-            // setCompanies(companies);
-            
-            // Προαιρετικά: auto-select την εταιρεία
-            // selectCompany(companyId);
-        } catch (err) {
-            console.error('Error accepting invitation:', err);
+            showToast({
+                message: (err as Error).message || "Κάτι πήγε στραβά",
+                type: "error",
+            });
         }
     };
 
     const handleRejectInvitation = async (invitationId: string) => {
         try {
-            // API call για απόρριψη
-            // await rejectInvitation(invitationId);
-            
-            // Αφαιρούμε το invitation από τη λίστα
-            setInvitations(prev => prev.filter(inv => inv.id !== invitationId));
+            await rejectInvitation.mutateAsync(invitationId);
+            showToast({ message: "Η πρόσκληση απορρίφθηκε", type: "success" });
         } catch (err) {
-            console.error('Error rejecting invitation:', err);
+            showToast({
+                message: (err as Error).message || "Κάτι πήγε στραβά",
+                type: "error",
+            });
         }
     };
 
@@ -124,40 +81,51 @@ export default function CompanySelector() {
                         {invitations.map((invitation) => (
                             <div key={invitation.id} className={styles.invitationCard}>
                                 <div className={styles.invitationAvatar}>
-                                    {invitation.companyName.charAt(0)}
+                                    {invitation.company?.name?.charAt(0) || "?"}
                                 </div>
                                 <div className={styles.invitationBody}>
                                     <div className={styles.invitationTop}>
                                         <p className={styles.invitationCompanyName}>
-                                            {invitation.companyName}
+                                            {invitation.company?.name || "Εταιρεία"}
                                         </p>
                                     </div>
                                     <div className={styles.invitationMeta}>
                                         <span className={styles.invitationRole}>
-                                            {invitation.role}
+                                            {invitation.role?.name || "Ρόλος"}
                                         </span>
-                                        {invitation.invitedBy && (
-                                            <>
-                                                <span className={styles.invitationSeparator}>•</span>
-                                                <span className={styles.invitationInvitedBy}>
-                                                    Προσκλήθηκε από {invitation.invitedBy}
-                                                </span>
-                                            </>
-                                        )}
                                     </div>
                                 </div>
                                 <div className={styles.invitationActions}>
                                     <button
                                         className={styles.acceptButton}
-                                        onClick={() => handleAcceptInvitation(invitation.id, invitation.companyId)}
+                                        onClick={() => handleAcceptInvitation(invitation.id)}
+                                        disabled={acceptInvitation.isPending}
                                     >
-                                        Αποδοχή
+                                        {acceptInvitation.isPending ? (
+                                            <>
+                                                <Spinner size={14} />
+                                                <span>Αποδοχή...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Check size={14} />
+                                                <span>Αποδοχή</span>
+                                            </>
+                                        )}
                                     </button>
                                     <button
                                         className={styles.rejectButton}
                                         onClick={() => handleRejectInvitation(invitation.id)}
+                                        disabled={rejectInvitation.isPending}
                                     >
-                                        Απόρριψη
+                                        {rejectInvitation.isPending ? (
+                                            <>
+                                                <Spinner size={14} />
+                                                <span>Απόρριψη...</span>
+                                            </>
+                                        ) : (
+                                            <span>Απόρριψη</span>
+                                        )}
                                     </button>
                                 </div>
                             </div>
@@ -167,60 +135,90 @@ export default function CompanySelector() {
             )}
 
             <div className={styles.grid}>
-                {
-                    companies.length > 0 && companies.map((company) => {
+                {companies.length > 0 &&
+                    companies.map((company) => {
                         const isOwner = company.membership.is_owner;
                         const isOnboarding = !company.onboarding.is_completed;
-                        const isDisabled = !isOwner && (company.membership.status !== "active" || isOnboarding);
-                        
+                        const isDisabled =
+                            !isOwner &&
+                            (company.membership.status !== "active" || isOnboarding);
+
                         return (
                             <button
                                 key={company.id}
-                                className={`${styles.card} ${isDisabled ? styles.cardDisabled : ''}`}
+                                className={`${styles.card} ${isDisabled ? styles.cardDisabled : ""}`}
                                 onClick={() => !isDisabled && selectCompany(company.id)}
                                 disabled={isDisabled}
                             >
                                 <div className={styles.avatarWrapper}>
-                                    <div className={styles.avatar}>{company.name.charAt(0)}</div>
+                                    <div className={styles.avatar}>
+                                        {company.name.charAt(0)}
+                                    </div>
                                     {isOnboarding ? (
-                                        <span className={`${styles.statusIndicator} ${styles.statusIndicatorOnboarding}`} title="Σε διαδικασία εγκατάστασης" />
+                                        <span
+                                            className={`${styles.statusIndicator} ${styles.statusIndicatorOnboarding}`}
+                                            title="Σε διαδικασία εγκατάστασης"
+                                        />
                                     ) : (
-                                        <span className={`${styles.statusIndicator} ${styles.statusIndicatorActive}`} title="Ενεργή εταιρεία" />
+                                        <span
+                                            className={`${styles.statusIndicator} ${styles.statusIndicatorActive}`}
+                                            title="Ενεργή εταιρεία"
+                                        />
                                     )}
                                 </div>
                                 <div className={styles.cardBody}>
                                     <div className={styles.cardTop}>
                                         <p className={styles.cardTitle}>{company.name}</p>
                                         <div className={styles.cardIcons}>
-                                          {isOwner && (
-                                              <span className={styles.ownerIcon} title="Ιδιοκτήτης"><Crown size={16} /></span>
-                                          )}
-                                          {isOnboarding && (
-                                              <span className={styles.onboardingIcon} title="Σε διαδικασία εγκατάστασης"><Hourglass size={16} /></span>
-                                          )}
-                                      </div>
+                                            {isOwner && (
+                                                <span
+                                                    className={styles.ownerIcon}
+                                                    title="Ιδιοκτήτης"
+                                                >
+                                                    <Crown size={16} />
+                                                </span>
+                                            )}
+                                            {isOnboarding && (
+                                                <span
+                                                    className={styles.onboardingIcon}
+                                                    title="Σε διαδικασία εγκατάστασης"
+                                                >
+                                                    <Hourglass size={16} />
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <p className={styles.cardSubtitle}>{getRoleSummary(company)}</p>
+                                    <p className={styles.cardSubtitle}>
+                                        {getRoleSummary(company)}
+                                    </p>
                                 </div>
                             </button>
                         );
-                  })
-                }
+                    })}
 
                 {(() => {
-                    const hasOnboardingCompany = companies.some(c => !c.onboarding.is_completed);
-                    
+                    const hasOnboardingCompany = companies.some(
+                        (c) => !c.onboarding.is_completed
+                    );
                     return (
-                        <button 
-                            className={`${styles.card} ${styles.dashed} ${hasOnboardingCompany ? styles.cardDisabled : ''}`}
+                        <button
+                            className={`${styles.card} ${styles.dashed} ${
+                                hasOnboardingCompany ? styles.cardDisabled : ""
+                            }`}
                             onClick={() => !hasOnboardingCompany && createCompany()}
                             disabled={hasOnboardingCompany}
-                            title={hasOnboardingCompany ? "Υπάρχει μη ολοκληρωμένη εταιρεία. Ολοκληρώστε πρώτα την εγκατάσταση." : ""}
+                            title={
+                                hasOnboardingCompany
+                                    ? "Υπάρχει μη ολοκληρωμένη εταιρεία. Ολοκληρώστε πρώτα την εγκατάσταση."
+                                    : ""
+                            }
                         >
                             <div className={styles.avatarGhost}>+</div>
                             <div className={styles.cardBody}>
                                 <p className={styles.cardTitle}>Νέα εταιρεία</p>
-                                <p className={styles.cardSubtitleMuted}>Δημιουργήστε εταιρεία</p>
+                                <p className={styles.cardSubtitleMuted}>
+                                    Δημιουργήστε εταιρεία
+                                </p>
                             </div>
                         </button>
                     );

@@ -1,16 +1,12 @@
 .wrapper {
     display: flex;
     flex-direction: column;
+    width: 100%;
 }
 
 .row {
     display: flex;
     gap: 1rem;
-}
-
-.contentGrid {
-    display: grid;
-    gap: 1.6rem;
 }
 
 .section {
@@ -26,34 +22,23 @@
     align-self: flex-start;
 }
 
-/* ---------------- Onboarding Layout ------------------- */
-.onboardingLayout .contentGrid {
+.contentGrid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 4rem;
-    align-items: flex-start;
-    padding-bottom: 10rem;
+    grid-template-columns: repeat(2, minmax(380px, 420px));
+    gap: 5rem;
+    justify-content: center;
 }
 
-.right,
-.left {
+.left,
+.right {
     display: flex;
     flex-direction: column;
     gap: 1.6rem;
+    min-width: 0;
 }
 
-.onboardingLayout .right {
+.right {
     position: sticky;
-}
-
-.onboardingLayout .left,
-.onboardingLayout .right {
-    min-width: 0; /* prevents overflow */
-}
-
-/* ---------------- Admin Layout ------------------- */
-.adminLayout .contentGrid {
-    grid-template-columns: 1fr;
 }
 
 /* ---------------- SUMMARY CARD ------------------- */
@@ -256,8 +241,16 @@
 }
 
 @media (max-width: 900px) {
-    .onboardingLayout .contentGrid {
+    .wrapper {
+        padding: 0 5rem;
+    }
+    .contentGrid {
         grid-template-columns: 1fr;
+        gap: 3rem;
+    }
+
+    .right {
+        position: static;
     }
 }
 
@@ -457,4 +450,11 @@
     font-size: 16px;
     font-weight: 500;
     color: #111827;
+}
+
+.billingCard {
+    padding: 20px 24px;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    background: #fff;
 }

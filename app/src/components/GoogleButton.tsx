@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import axios from "axios";
 import { axiosPublic } from "@/api/axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { getFingerprint } from "@/auth/getFingerprint";
@@ -43,7 +42,7 @@ const GoogleLoginButton: React.FC = () => {
             const fingerprint = await getFingerprint();
             // Στέλνεις το credential token στο backend σου
             const response = await axiosPublic.post("/api/auth/google", { credential: googleResponse.credential, fingerprint }, { withCredentials: true });
-            const { success, message, data = {}, code } = response.data;
+            const { success, data = {} } = response.data;
 
             if(!success){
                 showToast({ message: "Κάτι πήγε στραβά", type: "error" });

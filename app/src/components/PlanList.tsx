@@ -1,15 +1,16 @@
-import { Plan } from "@/onboarding/types";
+import { Plan } from "@/hooks/usePlans";
+import { BillingPeriod } from "@/hooks/useSubscription";
 import PlanCard from "./PlanCard";
 import styles from "./PlanList.module.css";
 
-type BillingPeriod = "monthly" | "yearly";
-
 interface PlanListProps {
     plans: Plan[];
-    billingPeriod: "monthly" | "yearly";
+    billingPeriod: BillingPeriod;
     mode: "onboarding" | "admin";
-
-    currentPlan?: Plan; // μόνο στο billing settings
+    currentPlan?: Plan;
+    currentBillingPeriod?: BillingPeriod;
+    scheduledPlanName?: string | null;
+    scheduledBillingPeriod?: BillingPeriod | null;
     onSelectPlan: (plan: Plan) => void;
     onBillingPeriodChange: (period: BillingPeriod) => void;
 }
@@ -20,12 +21,14 @@ type PlanAction = {
     actionDisabled?: boolean;
 };
 
-
 export default function PlanList({ 
     plans,
     billingPeriod,
     mode,
     currentPlan,
+    currentBillingPeriod,
+    scheduledPlanName = null,
+    scheduledBillingPeriod = null,
     onSelectPlan,
     onBillingPeriodChange
 }: PlanListProps) {
@@ -39,7 +42,34 @@ export default function PlanList({
         }
 
         // BILLING SETTINGS
+
+        // Scheduled change to this exact plan + period
+        const isScheduledPlan = scheduledPlanName && 
+            plan.name === scheduledPlanName && 
+            billingPeriod === scheduledBillingPeriod;
+
+        if (isScheduledPlan) {
+            return {
+                actionLabel: "Ακύρωση Αλλαγής",
+                actionVariant: "outline",
+                actionDisabled: false  // Enable so they can cancel
+            };
+        }
+
+        // Current plan
         if (currentPlan && plan.id === currentPlan.id) {
+            if (currentBillingPeriod !== billingPeriod) {
+                // Αν το toggle διαφέρει, δείχνουμε αλλαγή περιόδου
+                return {
+                    actionLabel: billingPeriod === "yearly"
+                        ? `Αλλαγή σε Ετήσιο`
+                        : `Αλλαγή σε Μηνιαίο`,
+                    actionVariant: "primary",
+                    actionDisabled: false
+                };
+            }
+
+            // Default current plan
             return {
                 actionLabel: "Τρέχον Πλάνο",
                 actionVariant: "current",
@@ -47,22 +77,24 @@ export default function PlanList({
             };
         }
 
+        // Upgrade
         if (currentPlan && plan.rank > currentPlan.rank) {
             return {
                 actionLabel: `Αναβάθμιση σε ${plan.name}`
             };
         }
 
-        if (currentPlan && plan.rank < currentPlan.rank) {
+        // Downgrade
+        if (currentPlan && plan.rank < currentPlan.rank && plan.key !== "basic") {
             return {
                 actionLabel: `Υποβάθμιση σε ${plan.name}`
             };
         }
 
         return {
-            actionLabel: plan.name
+            actionLabel: ""
         };
-    }
+    };
 
     return (
         <div>
@@ -84,28 +116,27 @@ export default function PlanList({
                     onClick={() => onBillingPeriodChange("yearly")}
                 >
                     Ετήσια
+                    <span className={styles.saveBadge}>-17%</span>
                 </div>
             </div>
 
             {/* Cards */}
             <div className={styles.cards}>
-                {
-                    plans.map((plan) => {
+                {plans.map((plan) => {
+                    const action = getActionProps(plan);
 
-                        const action = getActionProps(plan);
-
-                        return <PlanCard
-                                    key={plan.id}
-                                    plan={plan}
-                                    billingPeriod={billingPeriod}
-                                    isPopular={plan.is_popular}
-                                    {...action}
-                                    onAction={onSelectPlan}
-                                />
-                    })
-                }
+                    return (
+                        <PlanCard
+                            key={plan.id}
+                            plan={plan}
+                            billingPeriod={billingPeriod}
+                            isPopular={plan.is_popular}
+                            {...action}
+                            onAction={onSelectPlan}
+                        />
+                    );
+                })}
             </div>
-
         </div>
     );
-};
+}

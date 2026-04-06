@@ -1,10 +1,18 @@
 import { useEffect, useState } from "react";
+import countries from "i18n-iso-countries";
+import el from "i18n-iso-countries/langs/el.json";
 import Input from "../../components/reusable/Input";
 import Button from "../../components/reusable/Button";
 import styles from '../OnboardingLayout.module.css'
 import { useAuth } from "@/contexts/AuthContext";
 import { useOnboarding } from "../OnboardingContext";
+import { axiosPrivate } from "@/api/axios";
 
+countries.registerLocale(el);
+
+const countryList = Object.entries(countries.getNames("el"))
+    .map(([code, name]) => ({ code, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "el"));
 
 export function CompanyStep() {
 
@@ -14,16 +22,40 @@ export function CompanyStep() {
 
     const [companyName, setCompanyName] = useState(onboardingData.company.name)
     const [contactPhone, setContactPhone] = useState(onboardingData.company.phone)
+    const [country, setCountry] = useState(onboardingData.company.country || "")
 
     const [companyNameError, setCompanyNameError] = useState("");
     const [contactPhoneError, setContactPhoneError] = useState("");
+    const [countryError, setCountryError] = useState("");
 
+    const [isDetectingCountry, setIsDetectingCountry] = useState(false);
     const [loadingSubmitRequest, setLoadingSubmitRequest] = useState(false)
 
     useEffect(() => {
         setCompanyName(onboardingData.company.name)
         setContactPhone(onboardingData.company.phone)
+        setCountry(onboardingData.company.country || "")
     }, [onboardingData])
+
+    useEffect(() => {
+        if (onboardingData.company.country) return;
+
+        const detectCountry = async () => {
+            setIsDetectingCountry(true);
+            try {
+                const res = await axiosPrivate.get("/api/billing/detect-country");
+                const { success, data } = res.data;
+                const detected = success && data?.country ? data.country : "GR";
+                setCountry(detected);
+            } catch {
+                setCountry("GR");
+            } finally {
+                setIsDetectingCountry(false);
+            }
+        };
+
+        detectCountry();
+    }, [onboardingData.company.country])
 
     const handleCompanyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setCompanyName(e.target.value);
@@ -43,12 +75,18 @@ export function CompanyStep() {
         }
     };
 
+    const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        setCountry(e.target.value);
+        if (countryError) setCountryError("");
+    };
+
     const validateStep1 = () => {
         let hasError = false;
 
         // Reset previous errors
         setCompanyNameError("");
         setContactPhoneError("");
+        setCountryError("");
 
         // Empty fields
         if (companyName.trim() === "") {
@@ -75,6 +113,11 @@ export function CompanyStep() {
             hasError = true;
         }
 
+        if (!country || country.trim() === "") {
+            setCountryError("Η χώρα είναι υποχρεωτική");
+            hasError = true;
+        }
+
         return hasError;
     };
 
@@ -91,7 +134,8 @@ export function CompanyStep() {
 
             const values = {
                 name: companyName,
-                phone: contactPhone
+                phone: contactPhone,
+                country: country.trim()
             }
 
             await nextStep({ company: values });
@@ -106,7 +150,7 @@ export function CompanyStep() {
     };
 
     return (
-        <main className={styles.content}>
+        <main className={styles.companyStepContent}>
             <div className={styles.title}>Δημιουργία του Εταιρικού σας Προφίλ</div>
             <div className={styles.tagline}>Πληροφορίες Εταιρείας</div>
 
@@ -134,6 +178,26 @@ export function CompanyStep() {
                     onChange={handleManagersPhoneChange}
                     error={contactPhoneError}
                 />
+
+                <div className={styles.formField}>
+                    <label htmlFor="country">Χώρα</label>
+                    <select
+                        id="country"
+                        name="country"
+                        value={country}
+                        onChange={handleCountryChange}
+                        disabled={isDetectingCountry}
+                        className={countryError ? styles.selectError : ""}
+                    >
+                        <option value="">{isDetectingCountry ? "Εντοπισμός χώρας…" : "Επιλέξτε χώρα"}</option>
+                        {countryList.map(({ code, name }) => (
+                            <option key={code} value={code}>
+                                {name}
+                            </option>
+                        ))}
+                    </select>
+                    {countryError && <span className={styles.errorText}>{countryError}</span>}
+                </div>
 
                 <Button
                     type = "submit"

@@ -1,0 +1,131 @@
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.section {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 24px;
+}
+
+.sectionTitle {
+    margin: 0 0 20px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.sectionHint {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 0 0 16px 0;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.field label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.field input {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.field input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.inputError {
+    border-color: #dc2626 !important;
+}
+
+.errorText {
+    font-size: 12px;
+    color: #dc2626;
+}
+
+.fieldHint {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0;
+}
+
+.formActions {
+    padding-top: 8px;
+}
+
+.revokeAllRow {
+    margin-bottom: 16px;
+}
+
+.sessionsList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sessionCard {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+}
+
+.sessionCard.currentSession {
+    border-color: #3b82f6;
+    background: #eff6ff;
+}
+
+.sessionInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sessionDevice {
+    font-size: 14px;
+    font-weight: 500;
+    color: #111827;
+}
+
+.sessionMeta {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.currentBadge {
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #2563eb;
+}
+
+.emptyHint {
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0;
+}

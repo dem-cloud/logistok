@@ -309,6 +309,13 @@
   align-items: center;
 }
 
+.acceptButton,
+.rejectButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .acceptButton {
   border: none;
   background: #3b82f6;
@@ -342,4 +349,11 @@
   background: #f9fafb;
   border-color: #d1d5db;
   transform: scale(1.02);
+}
+
+.acceptButton:disabled,
+.rejectButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
 }

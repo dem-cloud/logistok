@@ -10,7 +10,8 @@ function sanitizeOnboardingUpdates(updates, currentData = {}) {
     const sanitized = {
         company: {
             name: currentData.company?.name || '',
-            phone: currentData.company?.phone || ''
+            phone: currentData.company?.phone || '',
+            country: currentData.company?.country || ''
         },
         industries: Array.isArray(currentData.industries) ? currentData.industries : [],
         plan: currentData.plan || null,
@@ -30,6 +31,9 @@ function sanitizeOnboardingUpdates(updates, currentData = {}) {
         
         if (updates.company.phone !== undefined) {
             sanitized.company.phone = String(updates.company.phone).trim();
+        }
+        if (updates.company.country !== undefined) {
+            sanitized.company.country = String(updates.company.country).trim();
         }
     }
 
@@ -191,6 +195,10 @@ function validateCompleteOnboardingData(data) {
     
     if (!data.company?.phone || data.company.phone.length === 0) {
         errors.push('Το τηλέφωνο της εταιρείας είναι υποχρεωτικό');
+    }
+
+    if (!data.company?.country || data.company.country.length === 0) {
+        errors.push('Η χώρα της εταιρείας είναι υποχρεωτική');
     }
 
     // Industries must be array (can be empty)

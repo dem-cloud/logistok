@@ -5,11 +5,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import Button from "./reusable/Button";
 import BillingToggle from "./BillingToggle";
 import styles from './InnerCheckoutForm.module.css'
-import Input from "./reusable/Input";
 import { PricePreviewResponse } from "@/types/billing.types";
 import { axiosPrivate } from "@/api/axios";
-import PaymentProcessingOverlay from "./PaymentProcessingOverlay";
-import { Stripe, StripeElements } from "@stripe/stripe-js";
+import BillingInfoForm, { BillingInfoFormRef } from "./BillingInfoForm";
 
 interface Props {
     billingPeriod: "monthly" | "yearly";
@@ -20,20 +18,15 @@ interface Props {
     selectedPlugins?: string[];
     onRemovePlugin?: (pluginKey: string) => void;
 
-    mode: "onboarding" | "admin";
     pricePreview: PricePreviewResponse;
     priceLoading: boolean;
 
-    companyName: string;
-    companyNameError: string | undefined;
-    onCompanyNameChange: (v: string) => void;
-    vatNumber: string;
-    onVatNumberChange: (v: string) => void;
-
-    validate: () => boolean;
+    billingFormRef: React.RefObject<BillingInfoFormRef | null>;
+    onCountryChange?: (country: string) => void;
+    onTaxIdChange: (vatId: string) => void;
+    onTaxInfoIsValidChange: (taxInfoIsValid: boolean) => void;
 
     completeOnboarding?: (data: any) => Promise<void>;
-    changePlan?: () => Promise<void>;
 
     onSuccess: () => void;
 }
@@ -44,24 +37,17 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     totalBranches = 0,
     handleIncreaseTotalBranches,
     handleDecreaseTotalBranches,
-    // selectedPlugins,
     onRemovePlugin,
 
-    mode, 
     pricePreview,
     priceLoading,
 
-    companyName,
-    companyNameError,
-    onCompanyNameChange,
-    vatNumber,
-    onVatNumberChange,
-    validate,
+    billingFormRef,
+    onCountryChange,
+    onTaxIdChange,
+    onTaxInfoIsValidChange,
     
-    completeOnboarding,
-    changePlan,
-
-    // onSuccess 
+    completeOnboarding
 }, ref) => {
 
     const { showToast } = useAuth();
@@ -79,26 +65,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
 
     const [isProcessing, setIsProcessing] = useState(false);
     const [showRetryStatus, setShowRetryStatus] = useState(false);
-
-    const [subscriptionId, setSubscriptionId] = useState(null);
-
-    // useEffect(() => {
-    //     const fetchPendingSubscription = async () => {
-    //         try {
-    //             // Κάνουμε ένα GET ή POST που απλά ελέγχει για εκκρεμότητες
-    //             const response = await axiosPrivate.get("/api/billing/check-pending");
-    //             if (response.data.hasPending) {
-    //                 setClientSecretState(response.data.clientSecret);
-    //                 setSubscriptionIdState(response.data.subscriptionId);
-    //                 setOnboardingResponseData(response.data.data);
-    //             }
-    //         } catch (err) {
-    //             console.log("No pending subscription found");
-    //         }
-    //     };
-
-    //     fetchPendingSubscription();
-    // }, []);
+    const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
 
     useEffect(() => {
         if (summary?.total !== undefined) {
@@ -112,12 +79,11 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     };
 
     const checkSubscriptionStatus = async (subscriptionId: string | null, attempts: number) => {
-        if(!subscriptionId) return;
+        if (!subscriptionId) return;
         
         const MAX_ATTEMPTS = 5; // π.χ. 5 προσπάθειες
-        const INTERVAL = 3000;  // κάθε 3 δευτερόλεπτα
+        const INTERVAL = 3000; // κάθε 3 δευτερόλεπτα
 
-        // Αν είναι η πρώτη προσπάθεια, κρύψε το κουμπί επανελέγχου και δείξε loading
         if (attempts === 0) {
             setIsProcessing(true);
             setShowRetryStatus(false);
@@ -128,7 +94,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                 subscriptionId: subscriptionId
             });
 
-            const {success, data} = response.data
+            const { success, data } = response.data;
 
             if (success) {
                 // ΕΠΙΤΥΧΙΑ: Ο server επιβεβαίωσε το 'active'
@@ -136,7 +102,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                 completeOnboarding && completeOnboarding(data);
                 return;
             } 
-              
+            
             // Διαχείριση μη-επιτυχίας
             if (attempts < MAX_ATTEMPTS) {
                 // ΑΚΟΜΑ ΠΕΡΙΜΕΝΟΥΜΕ
@@ -163,19 +129,26 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                         message: "Η πληρωμή δεν ολοκληρώθηκε (Status: " + status + "). Παρακαλώ ελέγξτε την κάρτα σας." 
                     });
                 }
-            
             }
         } catch (err) {
             setIsProcessing(false);
-            setShowRetryStatus(true); // Άσε τον να ξαναδοκιμάσει αν ήταν network error
+            setShowRetryStatus(true);
             console.error("Polling error:", err);
-            // Αν είναι network error, δεν τον βάζουμε μέσα
             showToast({ type: "error", message: "Σφάλμα επικοινωνίας κατά την επιβεβαίωση." });
         }
     };
 
     const handleSubmit = async () => {
-        if (!stripe || !elements || !validate()) return;
+        if (!stripe || !elements) return;
+
+        // Validate billing info
+        if (billingFormRef.current) {
+            const { error } = billingFormRef.current.getData();
+            if (error) {
+                showToast({ type: "error", message: error });
+                return;
+            }
+        }
 
         const { error: submitError } = await elements.submit();
         
@@ -185,94 +158,81 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
         }
 
         try {
+            setIsProcessing(true);
 
-            if (mode === "onboarding") {
-                handleOnboardingCase(stripe, elements)
-            } else {
+            // Get billing data
+            let billingData = null;
+            if (billingFormRef.current) {
+                const { data, error } = billingFormRef.current.getData();
+                if (error) {
+                    showToast({ type: "error", message: error });
+                    setIsProcessing(false);
+                    return;
+                }
+                billingData = data;
+            }
+            
+            // 1. Καλέστε το backend για να δημιουργήσει τη συνδρομή ΚΑΙ το clientSecret
+            const response = await axiosPrivate.post("/api/billing/onboarding-complete", {
+                billingInfo: billingData
+            });
+            const { success, data, message } = response.data;
 
-                changePlan && changePlan();
+            if (!success) {
+                showToast({ message: message || "Κάτι πήγε στραβά", type: "error" });
+                setIsProcessing(false);
+                return;
             }
 
+            const { clientSecret, subscriptionId } = data;
+            setSubscriptionId(subscriptionId);
+
+            // 2. Επιβεβαιώστε την πληρωμή (με 3D Secure handling)
+            const { error } = await stripe.confirmPayment({
+                elements,
+                clientSecret,
+                confirmParams: {
+                    return_url: window.location.href, 
+                    // return_url: `${window.location.origin}/onboarding-success`, // Redirect URL
+                },
+                redirect: 'if_required' 
+            });
+
+            if (error) {
+                setIsProcessing(false);
+                showToast({ 
+                    message: error.message || "Η πληρωμή απέτυχε. Δοκιμάστε άλλη κάρτα.", 
+                    type: "error" 
+                });
+                return;
+            }
+            
+            checkSubscriptionStatus(subscriptionId, 0);
         } catch (error) {
             console.error("error:", error);
+            setIsProcessing(false);
             showToast({ message: "Κάτι πήγε στραβά", type: "error" });
         }
-        
     };
-
-    const handleOnboardingCase = async (stripe: Stripe, elements: StripeElements) => {
-
-        // Ενεργοποιούμε το processing UI (π.χ. spinner)
-        setIsProcessing(true);
-        
-        // 1. Καλέστε το backend για να δημιουργήσει τη συνδρομή ΚΑΙ το clientSecret
-        const response = await axiosPrivate.post("/api/billing/onboarding-complete");
-        const { success, data, message } = response.data;
-
-        if(!success) {
-            showToast({message: message || "Κάτι πήγε στραβά", type: "error"})
-            return;
-        }
-
-        const { clientSecret, subscriptionId } = data;
-        setSubscriptionId(subscriptionId)
-
-        // 2. Επιβεβαιώστε την πληρωμή (με 3D Secure handling)
-        const { error } = await stripe.confirmPayment({
-            elements,
-            clientSecret,
-            confirmParams: {
-                // Υποχρεωτικό για το SDK, βάλε το τρέχον URL
-                return_url: window.location.href, 
-                // return_url: `${window.location.origin}/onboarding-success`, // Redirect URL
-            },
-            redirect: 'if_required' 
-        });
-
-        if (error) {
-            // 1. Σταματάς το loading spinner
-            setIsProcessing(false);
-            
-            // 2. Εμφανίζεις το μήνυμα λάθους (π.χ. "Η κάρτα απορρίφθηκε")
-            showToast({ 
-                message: error.message || "Η πληρωμή απέτυχε. Δοκιμάστε άλλη κάρτα.", 
-                type: "error" 
-            });
-            return;
-        }
-        
-        
-        checkSubscriptionStatus(subscriptionId, 0);
-    }
 
     useImperativeHandle(ref, () => ({ submit: handleSubmit }));
 
     return (
         <>
-            {/* <PaymentProcessingOverlay isVisible={isProcessing} /> */}
-            
-            <div className={`${styles.wrapper} ${mode === "onboarding" ? styles.onboardingLayout : styles.adminLayout}`}>
+            <div className={`${styles.wrapper}`}>
 
                 <div className={styles.contentGrid}>
 
                     <div className={styles.left}>
-                        {/* INPUTS */}
+                        {/* BILLING INFO */}
                         <div className={styles.section}>
-                            <div className={styles.row}>
-                                <Input
-                                    label="Όνομα εταιρείας"
-                                    name="companyName"
-                                    placeholder="Όνομα εταιρείας"
-                                    value={companyName}
-                                    onChange={(e) => onCompanyNameChange(e.target.value)}
-                                    error={companyNameError}
-                                />
-                                <Input
-                                    label="ΑΦΜ (προαιρετικό)"
-                                    name="vat"
-                                    placeholder="ΑΦΜ"
-                                    value={vatNumber}
-                                    onChange={(e) => onVatNumberChange(e.target.value)}
+                            <div className={styles.sectionTitle}>Στοιχεία Χρέωσης</div>
+                            <div className={styles.billingCard}>
+                                <BillingInfoForm 
+                                    ref={billingFormRef} 
+                                    onCountryChange={onCountryChange}
+                                    onTaxIdChange={onTaxIdChange}
+                                    onTaxInfoIsValidChange={onTaxInfoIsValidChange}
                                 />
                             </div>
                         </div>
@@ -280,7 +240,6 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                         {/* STRIPE UI */}
                         <div className={styles.section}>
                             <div className={styles.sectionTitle}>Τρόπος Πληρωμής</div>
-                            
                             <PaymentElement />
                         </div>
                     </div>
@@ -293,12 +252,6 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                             <div className={styles.planCard}>
                                 <div className={styles.planInfo}>
                                     <div className={styles.planName}>{plan.name}</div>
-                                    {/* <div className={styles.planPrice}>
-                                        {billingPeriod === "monthly"
-                                            ? `${plan.prices.monthly}€ / μήνα`
-                                            : `${plan.prices.yearly_per_month}€ / μήνα`
-                                        }
-                                    </div> */}
                                 </div>
                             </div>
                         </div>
@@ -328,7 +281,7 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                                             <div className={styles.pluginInfo}>
                                                 <span className={styles.pluginName}>{plugin.name}</span>
                                                 <span className={styles.pluginPrice}>
-                                                    {plugin.total_price}{pricePreview.currency.symbol} / μήνα
+                                                    {plugin.total_price}{currency.symbol} / μήνα
                                                 </span>
                                             </div>
 
@@ -360,7 +313,6 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                                     )}
                                 </span>
 
-                                
                                 <span className={styles.storeLabel}>Υποκαταστήματα</span>
                                 <span className={styles.storeIncluded}>({branches.unit_price_monthly}{currency.symbol}/μήνα/υποκατάστημα)</span>
 
@@ -395,24 +347,20 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                                 {/* DETAILS */}
                                 <div className={styles.detailRow}>
                                     <span>Υποσύνολο</span>
-                                    {
-                                        (priceLoading) ?
-                                            <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
-                                        :
-                                            <span>
-                                                {summary.subtotal}{currency.symbol}
-                                            </span>
-                                    }
+                                    {priceLoading ? (
+                                        <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
+                                    ) : (
+                                        <span>{summary.subtotal}{currency.symbol}</span>
+                                    )}
                                 </div>
 
                                 <div className={styles.detailRow}>
                                     <span>ΦΠΑ {summary.vat_percent}%</span>
-                                    {
-                                        (priceLoading) ?
-                                            <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
-                                        :
-                                            <span>{summary.vat_amount}{currency.symbol}</span>
-                                    }
+                                    {priceLoading ? (
+                                        <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
+                                    ) : (
+                                        <span>{summary.vat_amount}{currency.symbol}</span>
+                                    )}
                                 </div>
 
                                 <hr className={styles.separator} />
@@ -421,36 +369,32 @@ const InnerCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                                 <div className={styles.totalRow}>
                                     <span>Σύνολο</span>
                                     <div className={styles.totalRowRight}>
-                                        {
-                                            (priceLoading) ? 
-                                                <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
-                                            :
-                                                <>
+                                        {priceLoading ? (
+                                            <div className={`${styles.skeletonText} ${styles.skeletonTextMedium}`} />
+                                        ) : (
+                                            <>
                                                 <span>{summary.total}{currency.symbol}</span>
-                                                {/* ORIGINAL ANNUAL PRICE (STRIKETHROUGH) */}
                                                 {billingPeriod === "yearly" && (
                                                     <div className={styles.originalPrice}>
                                                         {summary.original_yearly_total}{currency.symbol}
                                                     </div>
                                                 )}
-                                                </>
-                                        }
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 
                             </div>
                         </div>
 
-                        {mode === "onboarding" && (
-                            <Button 
-                                onClick={handleSubmit} 
-                                disabled={priceLoading || isProcessing}
-                                widthFull
-                                loading={isProcessing}
-                            >
-                                {isProcessing ? "Επεξεργασία..." : "Πληρωμή" }
-                            </Button>
-                        )}
+                        <Button 
+                            onClick={handleSubmit} 
+                            disabled={priceLoading || isProcessing}
+                            widthFull
+                            loading={isProcessing}
+                        >
+                            {isProcessing ? "Επεξεργασία..." : "Πληρωμή"}
+                        </Button>
 
                         {showRetryStatus && !isProcessing && (
                             <div>

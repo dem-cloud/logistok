@@ -25,6 +25,7 @@ export const PERMISSIONS = {
     INVENTORY_VIEW: 'inventory.view',
     INVENTORY_ADJUST: 'inventory.adjust',
     INVENTORY_TRANSFER: 'inventory.transfer',
+    INVENTORY_SELL_BELOW_STOCK: 'inventory.sell_below_stock',
     
     // Customers
     CUSTOMERS_VIEW: 'customers.view',

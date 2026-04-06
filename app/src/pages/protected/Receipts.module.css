@@ -1,0 +1,233 @@
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.headerRow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0;
+}
+
+.listToolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.listToolbar .filtersRow {
+    flex: 1;
+    min-width: 0;
+}
+
+.addBtn {
+    flex-shrink: 0;
+}
+
+.filtersRow {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.filterGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filterLabel {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.filterInput,
+.filterSelect {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    min-width: 140px;
+}
+
+.filterInput:focus,
+.filterSelect:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.filterSelect {
+    background: #fff;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.section {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 24px;
+}
+
+.sectionTitle {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.sectionHint {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 0;
+}
+
+.listLoading {
+    display: flex;
+    justify-content: center;
+    padding: 48px;
+}
+
+.listWrapper {
+    position: relative;
+}
+
+.tableWrap {
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.table th,
+.table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.table th {
+    font-weight: 600;
+    color: #374151;
+    background: #f9fafb;
+}
+
+.table tbody tr:hover {
+    background: #f9fafb;
+}
+
+.amountCol {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums;
+}
+
+.autoBadge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.manualBadge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.footerRow {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 16px 0;
+    margin-top: 8px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.totalLabel {
+    font-weight: 600;
+    color: #374151;
+}
+
+.totalAmount {
+    font-weight: 700;
+    font-size: 16px;
+    color: #059669;
+}
+
+.listOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+/* Form styles for New Receipt modal */
+.formGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.formLabel {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.formInput,
+.formSelect {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.formInput:focus,
+.formSelect:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.formSelect {
+    background: #fff;
+    appearance: none;
+}
+
+.formError {
+    font-size: 12px;
+    color: #dc2626;
+}

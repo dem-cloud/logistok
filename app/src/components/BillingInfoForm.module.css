@@ -1,0 +1,132 @@
+.billingForm {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fieldSmall {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 120px;
+}
+
+.row {
+    display: flex;
+    gap: 12px;
+}
+
+.row .field {
+    flex: 1;
+}
+
+.label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.input,
+.select {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 20px;
+    color: #1a1a1a;
+    background: #fff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+    height: 42px;
+    line-height: 20px;
+}
+
+.select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.input:focus,
+.select:focus {
+    outline: none;
+    border-color: #3F72E7;
+    box-shadow: 0 0 0 2px rgba(63, 114, 231, 0.15);
+}
+
+.inputError {
+    border-color: #e74c3c;
+}
+
+.inputError:focus {
+    box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.15);
+}
+
+.error {
+    font-size: 12px;
+    color: #e74c3c;
+}
+
+.hint {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+/* VIES CHECK */
+.inputWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.inputWrapper .input {
+    flex: 1;
+    padding-right: 40px;
+}
+
+.statusIcon {
+    position: absolute;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    cursor: default;
+}
+
+.statusIcon.valid {
+    color: #10b981;
+}
+
+.statusIcon.invalid {
+    color: #f59e0b;
+    cursor: help;
+}
+
+.statusIcon.info {
+    color: #757575;
+    cursor: help;
+}
+
+.inputSuccess {
+    border-color: #10b981 !important;
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -3,6 +3,7 @@ CREATE TABLE payment_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   subscription_id UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+  billing_details_id UUID NOT NULL REFERENCES billing_details(id) ON DELETE CASCADE,
   
   stripe_payment_intent_id TEXT NULL,
   stripe_invoice_id TEXT NOT NULL UNIQUE,
@@ -12,7 +13,7 @@ CREATE TABLE payment_history (
   currency TEXT NOT NULL DEFAULT 'eur',
   
   status TEXT NOT NULL CHECK (status IN (
-    'pending', 'succeeded', 'failed', 'canceled', 'refunded'
+    'pending', 'paid', 'failed', 'canceled', 'refunded'
   )),
   
   payment_method TEXT NULL, -- 'card', 'sepa_debit', etc.

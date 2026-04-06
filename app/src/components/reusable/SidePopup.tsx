@@ -1,13 +1,18 @@
 import React, { useEffect } from "react";
 import styles from "./SidePopup.module.css";
 import Button from "./Button";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
-interface FooterButton {
+export interface FooterButton {
+    key?: string;
     label: string;
     onClick: () => void;
     show?: boolean;
-    variant?: "primary" | "outline" | "secondary" | "dark"; // Your variants
+    variant?: "primary" | "outline" | "secondary" | "dark" | "current" | "danger";
     widthFull?: boolean;
+    disabled?: boolean;
+    loading?: boolean;
+    tooltip?: string | null;
 }
 
 interface SidePopupProps {
@@ -18,6 +23,11 @@ interface SidePopupProps {
     children: React.ReactNode;
     footerLeftButton?: FooterButton;
     footerRightButton?: FooterButton;
+    /** Multiple action buttons (e.g. from document spec) - rendered between left and right */
+    footerActions?: FooterButton[];
+    contentClassName?: string;
+    /** When true, shows a loading overlay over the content to prevent flash of wrong state */
+    contentLoading?: boolean;
 }
 
 export default function SidePopup({
@@ -28,6 +38,9 @@ export default function SidePopup({
     children,
     footerLeftButton,
     footerRightButton,
+    footerActions,
+    contentClassName,
+    contentLoading = false,
 }: SidePopupProps) {
 
     // ESC close
@@ -44,9 +57,11 @@ export default function SidePopup({
         document.body.style.overflow = isOpen ? "hidden" : "auto";
     }, [isOpen]);
 
+    if (!isOpen) return null;
+
     return (
         <div
-            className={`${styles.overlay} ${isOpen ? styles.open : ""}`}
+            className={`${styles.overlay} ${styles.open}`}
             onClick={onClose}
         >
             <div
@@ -62,32 +77,54 @@ export default function SidePopup({
                 </div>
 
                 {/* CONTENT */}
-                <div className={styles.content}>
+                <div className={`${styles.content} ${contentClassName || ""}`} style={{ position: "relative" }}>
                     {children}
+                    {contentLoading && (
+                        <div className={styles.contentOverlay}>
+                            <LoadingSpinner />
+                        </div>
+                    )}
                 </div>
 
-                {/* FOOTER */}
+                {/* FOOTER - hidden during content loading to prevent flash of wrong buttons */}
+                {!contentLoading && (
                 <div className={styles.footer}>
-
                     {footerLeftButton?.show !== false && footerLeftButton && (
                         <Button
                             variant={footerLeftButton.variant || "outline"}
                             onClick={footerLeftButton.onClick}
+                            disabled={footerLeftButton.disabled}
                         >
-                            {footerLeftButton.label || "Ακύρωση"}
+                            {footerLeftButton.label || "Κλείσιμο"}
                         </Button>
                     )}
-
+                    {footerActions?.map((btn, idx) =>
+                        btn.show !== false ? (
+                            <Button
+                                key={btn.key ?? idx}
+                                variant={btn.variant ?? "outline"}
+                                onClick={btn.onClick}
+                                disabled={btn.disabled}
+                                loading={btn.loading}
+                                title={btn.tooltip ?? undefined}
+                            >
+                                {btn.label}
+                            </Button>
+                        ) : null
+                    )}
                     {footerRightButton?.show !== false && footerRightButton && (
                         <Button
                             variant={footerRightButton.variant || "primary"}
                             onClick={footerRightButton.onClick}
                             widthFull={footerRightButton.widthFull || false}
+                            disabled={footerRightButton.disabled}
+                            loading={footerRightButton.loading}
                         >
                             {footerRightButton.label || "Αποθήκευση"}
                         </Button>
                     )}
                 </div>
+                )}
             </div>
         </div>
     );

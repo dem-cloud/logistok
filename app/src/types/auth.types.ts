@@ -5,6 +5,7 @@ export interface User {
     phone: string | null;
     first_name: string | null;
     last_name: string | null;
+    avatar_url: string | null;
 }
 
 export interface Role {
@@ -18,7 +19,10 @@ export interface StoreRole {
     name: string;
     address: string | null;
     city: string | null;
+    country?: string | null;
     is_main: boolean;
+    is_active?: boolean;  // false when store disabled by plan downgrade; undefined = legacy, treat as true
+    scheduled_deactivate_at?: string | null;  // ISO date when store will be deactivated
     
     role: Role;
     permissions: string[];
@@ -48,6 +52,17 @@ export interface CompanySessionInfo {
     membership: MembershipInfo;
     
     stores: StoreRole[];
+
+    subscription?: {
+        plan: {
+            name: string;
+            key?: string | null;
+            features?: { reports?: boolean; plugins_allowed?: string[] } | null;
+            included_branches?: number;
+            max_users?: number | null;
+        };
+        status?: 'incomplete' | 'incomplete_expired' | 'active' | 'past_due' | 'trialing' | 'canceled';
+    };
 }
 
 /**

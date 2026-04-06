@@ -4,6 +4,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import InnerCheckoutForm from "./InnerCheckoutForm";
 import { PricePreviewResponse } from "@/types/billing.types";
 import LoadingSpinner from "./LoadingSpinner";
+import { BillingInfoFormRef } from "./BillingInfoForm";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
@@ -20,20 +21,15 @@ interface Props {
     selectedPlugins?: string[];
     onRemovePlugin?: (pluginKey: string) => void;
 
-    mode: "onboarding" | "admin";
     pricePreview?: PricePreviewResponse;
     loading: boolean;
 
-    companyName: string;
-    companyNameError: string | undefined;
-    onCompanyNameChange: (v: string) => void;
-    vatNumber: string;
-    onVatNumberChange: (v: string) => void;
-
-    validate: () => boolean;
+    billingFormRef: React.RefObject<BillingInfoFormRef | null>;
+    onCountryChange?: (country: string) => void;
+    onTaxIdChange: (vatId: string) => void;
+    onTaxInfoIsValidChange: (taxInfoIsValid: boolean) => void;
 
     completeOnboarding?: (isPaidPlan: boolean, setupIntentId?: string) => Promise<void>;
-    changePlan?: () => Promise<void>;
     onSuccess: () => void;
 }
 
@@ -46,19 +42,15 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
     handleDecreaseTotalBranches,
     selectedPlugins,
     onRemovePlugin,
-    mode,
     pricePreview,
     loading: priceLoading,
 
-    companyName,
-    companyNameError,
-    onCompanyNameChange,
-    vatNumber,
-    onVatNumberChange,
-    validate,
+    billingFormRef,
+    onCountryChange,
+    onTaxIdChange,
+    onTaxInfoIsValidChange,
 
     completeOnboarding,
-    changePlan,
     onSuccess
 }, ref) => {
     
@@ -127,19 +119,15 @@ const StripeCheckoutForm = forwardRef<StripeCheckoutFormHandle, Props>(({
                 selectedPlugins={selectedPlugins}
                 onRemovePlugin={onRemovePlugin}
 
-                mode={mode}
                 pricePreview={pricePreview}
                 priceLoading={priceLoading}
 
-                companyName={companyName}
-                companyNameError={companyNameError}
-                onCompanyNameChange={onCompanyNameChange}
-                vatNumber = {vatNumber}
-                onVatNumberChange={onVatNumberChange}
-                validate={validate}
+                billingFormRef={billingFormRef}
+                onCountryChange={onCountryChange}
+                onTaxIdChange={onTaxIdChange}
+                onTaxInfoIsValidChange={onTaxInfoIsValidChange}
 
                 completeOnboarding={completeOnboarding}
-                changePlan={changePlan}
                 onSuccess={onSuccess}
             />
         </Elements>

@@ -1,0 +1,308 @@
+/* ============================================ */
+/* WRAPPER */
+/* ============================================ */
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ============================================ */
+/* HEADER */
+/* ============================================ */
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.headerLeft {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.headerLeft svg {
+    color: #6b7280;
+}
+
+.headerLeft h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.invoiceCount {
+    padding: 4px 10px;
+    background: #f3f4f6;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+/* ============================================ */
+/* FILTERS */
+/* ============================================ */
+
+.filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.searchWrapper {
+    position: relative;
+}
+
+.searchIcon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    pointer-events: none;
+}
+
+.searchInput {
+    padding: 8px 12px 8px 36px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    width: 200px;
+    transition: all 0.15s ease;
+}
+
+.searchInput:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.selectWrapper {
+    position: relative;
+}
+
+.select {
+    appearance: none;
+    padding: 8px 32px 8px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.selectChevron {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    pointer-events: none;
+}
+
+/* ============================================ */
+/* TABLE */
+/* ============================================ */
+
+.tableWrapper {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th {
+    padding: 14px 16px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.table td {
+    padding: 16px;
+    font-size: 14px;
+    color: #374151;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.table tr:last-child td {
+    border-bottom: none;
+}
+
+.table tr:hover td {
+    background: #fafbfc;
+}
+
+.invoiceNumber {
+    font-weight: 600;
+    color: #1f2937;
+    font-family: monospace;
+}
+
+.invoiceDescription {
+    color: #6b7280;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+}
+
+.invoiceAmount {
+    font-weight: 600;
+    color: #1f2937;
+}
+
+/* ============================================ */
+/* STATUS BADGE */
+/* ============================================ */
+
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.statusPaid {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.statusPending {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.statusFailed {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.statusVoid {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+/* ============================================ */
+/* DOWNLOAD BUTTON */
+/* ============================================ */
+
+.downloadButton {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.downloadButton:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    color: #374151;
+}
+
+/* ============================================ */
+/* EMPTY STATE */
+/* ============================================ */
+
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.emptyState svg {
+    color: #d1d5db;
+    margin-bottom: 16px;
+}
+
+.emptyState h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.emptyState p {
+    margin: 0;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+/* ============================================ */
+/* RESPONSIVE */
+/* ============================================ */
+
+@media (max-width: 900px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .filters {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .searchInput {
+        width: 100%;
+    }
+
+    .searchWrapper {
+        flex: 1;
+        min-width: 200px;
+    }
+}
+
+@media (max-width: 640px) {
+    .tableWrapper {
+        overflow-x: auto;
+    }
+
+    .table {
+        min-width: 600px;
+    }
+
+    .invoiceDescription {
+        max-width: 150px;
+    }
+}

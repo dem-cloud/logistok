@@ -53,11 +53,32 @@
     flex: 1;
 }
 
-/* FOOTER */
+.contentOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+/* FOOTER - single row, smaller buttons; scroll horizontally if needed instead of wrapping */
 .footer {
     padding: 1rem 1.5rem;
     border-top: 1px solid #e5e5e5;
     display: flex;
     justify-content: flex-end;
-    gap: 1rem;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.footer button {
+    white-space: nowrap;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.875rem;
+    flex-shrink: 0;
 }

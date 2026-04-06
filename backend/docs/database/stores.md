@@ -45,6 +45,8 @@
 | country | TEXT | NULL | — | Country |
 | phone | TEXT | NULL | — | Store contact number |
 | email | TEXT | NULL | — | Store email |
+| is_main | BOOLEAN | NOT NULL | FALSE | Main store per company |
+| is_active | BOOLEAN | NOT NULL | TRUE | Whether store is active |
 | created_at | TIMESTAMP | NOT NULL | NOW() | Creation timestamp |
 
 ---
@@ -94,6 +96,7 @@ CREATE TABLE stores (
   email TEXT NULL,
 
   is_main BOOLEAN NOT NULL DEFAULT FALSE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
