@@ -57,6 +57,20 @@ export function getPoCancelBlockMessageFromLinked(linked: LinkedGrnRow[] | undef
     return null;
 }
 
+/**
+ * @returns Tooltip message when PO close must be disabled (draft GRN exists), or null if allowed.
+ */
+export function getPoCloseBlockMessageFromLinked(linked: LinkedGrnRow[] | undefined): string | null {
+    const grns = (linked ?? []).filter((d) => (d.document_type || "").toUpperCase() === "GRN");
+    for (const row of grns) {
+        const st = normalizeStatus(row.status);
+        if (GRN_STATUS_DELETE_FIRST.has(st)) {
+            return "Υπάρχει πρόχειρο Δελτίο Παραλαβής. Διαγράψτε πρώτα το δελτίο και μετά κλείστε την παραγγελία.";
+        }
+    }
+    return null;
+}
+
 export type LinkedDnoRow = { invoice_type?: string | null; status?: string | null };
 
 /**

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Search, FileDown, Mail, Repeat, Check, Banknote, RotateCcw, Package, XCircle, Link2, X, Receipt, FileText } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -146,6 +147,7 @@ export default function Sales() {
     const mutations = useSaleMutations();
     const customerMutations = useCustomerMutations();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
 
     const [showQuickCreateCustomer, setShowQuickCreateCustomer] = useState(false);
     const [qcCustomerFullName, setQcCustomerFullName] = useState("");
@@ -181,13 +183,6 @@ export default function Sales() {
     const [partialReturnQuantities, setPartialReturnQuantities] = useState<Record<number, number>>({});
     const [pendingConvertedId, setPendingConvertedId] = useState<number | null>(null);
     const [formPaymentTerms, setFormPaymentTerms] = useState<"immediate" | "15" | "30" | "60" | "90">("immediate");
-    const [showReceiptPanel, setShowReceiptPanel] = useState(false);
-    const [receiptAmount, setReceiptAmount] = useState("");
-    const [receiptPaymentMethodId, setReceiptPaymentMethodId] = useState("");
-    const [receiptPaymentDate, setReceiptPaymentDate] = useState(new Date().toISOString().slice(0, 10));
-    const [receiptNotes, setReceiptNotes] = useState("");
-    const [receiptErrors, setReceiptErrors] = useState<Record<string, string>>({});
-    const [receiptSaving, setReceiptSaving] = useState(false);
 
     const isQuoReadOnly = !!(
         formInvoiceType === "QUO" &&
@@ -313,7 +308,6 @@ export default function Sales() {
         setShowQuickCreateCustomer(false);
         setShowSendEmailPanel(false);
         setShowPartialReturnPanel(false);
-        setShowReceiptPanel(false);
         setPartialReturnQuantities({});
         setSendEmailAddress("");
         setSendEmailUpdateCustomer(false);
@@ -808,51 +802,6 @@ export default function Sales() {
         }
     };
 
-    const openReceipt = useCallback(
-        (sale: Sale) => {
-            openEdit(sale);
-            setShowReceiptPanel(true);
-            const amt = (sale as Sale & { amount_due?: number }).amount_due ?? 0;
-            setReceiptAmount(amt > 0 ? String(amt) : "");
-            setReceiptPaymentMethodId(paymentMethods[0]?.id ?? "");
-            setReceiptPaymentDate(new Date().toISOString().slice(0, 10));
-            setReceiptNotes("");
-            setReceiptErrors({});
-        },
-        [openEdit, paymentMethods]
-    );
-
-    const handleSubmitReceipt = async () => {
-        if (!editId || !activeStore?.id) return;
-        const err: Record<string, string> = {};
-        const amt = parseFloat(receiptAmount) || 0;
-        if (amt <= 0) err.amount = "Το ποσό πρέπει να είναι θετικό";
-        if (!receiptPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
-        const amountDue = (editSale as Sale & { amount_due?: number })?.amount_due ?? 0;
-        if (amt > amountDue) err.amount = `Μέγιστο ποσό: ${amountDue.toFixed(2)} €`;
-        setReceiptErrors(err);
-        if (Object.keys(err).length > 0) return;
-        setReceiptSaving(true);
-        try {
-            await axiosPrivate.post("/api/shared/company/receipts", {
-                store_id: activeStore.id,
-                sale_id: editId,
-                amount: amt,
-                payment_method_id: receiptPaymentMethodId,
-                payment_date: receiptPaymentDate ? `${receiptPaymentDate}T12:00:00.000Z` : undefined,
-                notes: receiptNotes.trim() || null,
-            });
-            showToast({ message: "Η εισπραξη καταχωρήθηκε επιτυχώς", type: "success" });
-            queryClient.invalidateQueries({ queryKey: ["sale", activeCompany?.id, editId] });
-            setShowReceiptPanel(false);
-            setReceiptAmount("");
-        } catch (e: unknown) {
-            const ax = e as { response?: { data?: { message?: string } } };
-            showToast({ message: ax.response?.data?.message || "Σφάλμα", type: "error" });
-        } finally {
-            setReceiptSaving(false);
-        }
-    };
 
     const handlePartialReturnSubmit = async () => {
         if (!editId) return;
@@ -933,7 +882,6 @@ export default function Sales() {
     };
 
     const inMainSaleForm =
-        !showReceiptPanel &&
         !showSendEmailPanel &&
         !showPartialReturnPanel &&
         !showQuickCreateCustomer &&
@@ -960,7 +908,24 @@ export default function Sales() {
             .map((btn) => {
                 const base: FooterButton = { label: btn.label, onClick: () => {}, variant: "outline", tooltip: btn.tooltip ?? undefined };
                 if (btn.key === "record_receipt") {
-                    base.onClick = () => setShowReceiptPanel(true);
+                    base.onClick = async () => {
+                        if (!editId || !editSale || !activeStore?.id) return;
+                        try {
+                            const defaultPm = paymentMethods.find((pm) => pm.is_active)?.id ?? paymentMethods[0]?.id;
+                            const res = await axiosPrivate.post("/api/shared/company/receipts", {
+                                store_id: activeStore.id,
+                                sale_id: editId,
+                                customer_id: editSale.customer_id,
+                                payment_method_id: defaultPm,
+                            });
+                            if (res.data.success && res.data.data?.id) {
+                                closePopup();
+                                navigate(`/receipts?open=${res.data.data.id}`);
+                            }
+                        } catch (e) {
+                            showToast({ message: (e as Error).message || "Σφάλμα δημιουργίας είσπραξης", type: "error" });
+                        }
+                    };
                     base.variant = "primary";
                 } else if (btn.key === "create_credit_note" && editSale) {
                     base.onClick = () => openPartialReturn(editSale);
@@ -1283,7 +1248,24 @@ export default function Sales() {
                                                                 const handler = btn.key === "delete" ? () => setDeleteConfirmId(s.id)
                                                                     : btn.key === "pdf" ? () => handleDownloadPdf(s)
                                                                     : btn.key === "send_email" ? () => openSendEmail(s)
-                                                                    : btn.key === "record_receipt" ? () => openReceipt(s)
+                                                                    : btn.key === "record_receipt" ? async () => {
+                                                                          if (!activeStore?.id) return;
+                                                                          try {
+                                                                              const defaultPm = paymentMethods.find((pm) => pm.is_active)?.id ?? paymentMethods[0]?.id;
+                                                                              const res = await axiosPrivate.post("/api/shared/company/receipts", {
+                                                                                  store_id: activeStore.id,
+                                                                                  sale_id: s.id,
+                                                                                  customer_id: s.customer_id,
+                                                                                  payment_method_id: defaultPm,
+                                                                              });
+                                                                              if (res.data.success && res.data.data?.id) {
+                                                                                  if (editId === s.id) closePopup();
+                                                                                  navigate(`/receipts?open=${res.data.data.id}`);
+                                                                              }
+                                                                          } catch (e) {
+                                                                              showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+                                                                          }
+                                                                      }
                                                                     : btn.key === "create_credit_note" ? () => openPartialReturn(s)
                                                                     : btn.key === "cancel" && doc === "SO"
                                                                       ? async () => {
@@ -1406,9 +1388,7 @@ export default function Sales() {
                 title={
                     negativeStockConfirm
                         ? "Επιβεβαίωση πώλησης με αρνητικό απόθεμα"
-                        : showReceiptPanel
-                          ? "Καταχώρηση Είσπραξης"
-                          : showSendEmailPanel
+                        : showSendEmailPanel
                             ? "Αποστολή Παραστατικού"
                             : showPartialReturnPanel
                               ? "Επιστροφή Προϊόντων"
@@ -1422,13 +1402,7 @@ export default function Sales() {
                 footerLeftButton={
                     negativeStockConfirm
                         ? { label: "Ακύρωση", onClick: () => setNegativeStockConfirm(null), variant: "outline" }
-                        : showReceiptPanel
-                          ? {
-                                label: "← Πίσω",
-                                onClick: () => setShowReceiptPanel(false),
-                                variant: "outline",
-                            }
-                          : showSendEmailPanel
+                        : showSendEmailPanel
                             ? {
                                   label: "← Πίσω",
                                   onClick: () => setShowSendEmailPanel(false),
@@ -1459,14 +1433,7 @@ export default function Sales() {
                               variant: "primary",
                               loading: mutations.createSale.isPending || mutations.updateSale.isPending,
                           }
-                        : showReceiptPanel
-                          ? {
-                                label: "Αποθήκευση",
-                                onClick: handleSubmitReceipt,
-                                variant: "primary",
-                                loading: receiptSaving,
-                            }
-                          : showSendEmailPanel
+                        : showSendEmailPanel
                             ? {
                                   label: "Αποστολή",
                                   onClick: handleSendSaleEmail,
@@ -1549,7 +1516,7 @@ export default function Sales() {
                 <div className={styles.slidingWrapper}>
                     <div
                         className={styles.slidingPanels}
-                        style={{ transform: showQuickCreateCustomer || negativeStockConfirm || showSendEmailPanel || showPartialReturnPanel || showReceiptPanel ? "translateX(-50%)" : undefined }}
+                        style={{ transform: showQuickCreateCustomer || negativeStockConfirm || showSendEmailPanel || showPartialReturnPanel ? "translateX(-50%)" : undefined }}
                     >
                         <div className={styles.slidingPanel}>
                             {formErrors.store_id && (
@@ -1925,13 +1892,22 @@ export default function Sales() {
                                     {(editSale.amount_due ?? 0) > 0 && activeStore?.id && (
                                         <Button
                                             variant="primary"
-                                            onClick={() => {
-                                                setReceiptAmount(String(editSale.amount_due ?? ""));
-                                                setReceiptPaymentMethodId(paymentMethods[0]?.id ?? "");
-                                                setReceiptPaymentDate(new Date().toISOString().slice(0, 10));
-                                                setReceiptNotes("");
-                                                setReceiptErrors({});
-                                                setShowReceiptPanel(true);
+                                            onClick={async () => {
+                                                try {
+                                                    const defaultPm = paymentMethods.find((pm) => pm.is_active)?.id ?? paymentMethods[0]?.id;
+                                                    const res = await axiosPrivate.post("/api/shared/company/receipts", {
+                                                        store_id: activeStore.id,
+                                                        sale_id: editSale.id,
+                                                        customer_id: editSale.customer_id,
+                                                        payment_method_id: defaultPm,
+                                                    });
+                                                    if (res.data.success && res.data.data?.id) {
+                                                        closePopup();
+                                                        navigate(`/receipts?open=${res.data.data.id}`);
+                                                    }
+                                                } catch (e) {
+                                                    showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+                                                }
                                             }}
                                         >
                                             Καταχώρηση Είσπραξης
@@ -1954,63 +1930,7 @@ export default function Sales() {
                         </div>
 
                         <div className={styles.slidingPanel}>
-                            {showReceiptPanel ? (
-                                <div className={styles.quickCreateForm}>
-                                    <div className={styles.formGroup}>
-                                        <label className={styles.formLabel}>Ποσό *</label>
-                                        <input
-                                            type="number"
-                                            className={styles.formInput}
-                                            min={0}
-                                            max={editSale?.amount_due ?? 0}
-                                            step={0.01}
-                                            value={receiptAmount}
-                                            onChange={(e) => {
-                                                setReceiptAmount(e.target.value);
-                                                setReceiptErrors((prev) => ({ ...prev, amount: "" }));
-                                            }}
-                                            placeholder="0.00"
-                                        />
-                                        {receiptErrors.amount && <span className={styles.formError}>{receiptErrors.amount}</span>}
-                                    </div>
-                                    <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                                        <label className={styles.formLabel}>Τρόπος πληρωμής *</label>
-                                        <select
-                                            className={styles.formSelect}
-                                            value={receiptPaymentMethodId}
-                                            onChange={(e) => {
-                                                setReceiptPaymentMethodId(e.target.value);
-                                                setReceiptErrors((prev) => ({ ...prev, payment_method_id: "" }));
-                                            }}
-                                        >
-                                            <option value="">Επιλέξτε</option>
-                                            {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
-                                                <option key={pm.id} value={pm.id}>{pm.name}</option>
-                                            ))}
-                                        </select>
-                                        {receiptErrors.payment_method_id && <span className={styles.formError}>{receiptErrors.payment_method_id}</span>}
-                                    </div>
-                                    <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                                        <label className={styles.formLabel}>Ημερομηνία</label>
-                                        <input
-                                            type="date"
-                                            className={styles.formInput}
-                                            value={receiptPaymentDate}
-                                            onChange={(e) => setReceiptPaymentDate(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                                        <label className={styles.formLabel}>Σημειώσεις</label>
-                                        <input
-                                            type="text"
-                                            className={styles.formInput}
-                                            value={receiptNotes}
-                                            onChange={(e) => setReceiptNotes(e.target.value)}
-                                            placeholder="Προαιρετικό"
-                                        />
-                                    </div>
-                                </div>
-                            ) : showPartialReturnPanel ? (
+                            {showPartialReturnPanel ? (
                                 <div className={styles.quickCreateForm}>
                                     <p style={{ marginBottom: 16 }}>Επιλέξτε ποσότητα επιστροφής για κάθε γραμμή:</p>
                                     {(editSale?.sale_items || []).map((it) => {

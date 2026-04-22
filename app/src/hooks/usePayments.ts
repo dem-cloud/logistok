@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosPrivate } from "@/api/axios";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -16,6 +16,7 @@ export type Payment = {
     payment_date: string;
     notes: string | null;
     is_auto: boolean;
+    status: "draft" | "posted" | "reversed";
     payment_method_name?: string | null;
     vendor_name?: string | null;
     purchase_number?: string | null;
@@ -34,6 +35,7 @@ export type PaymentFilters = {
 // ============================================
 export function usePayments(filters: PaymentFilters) {
     const { activeCompany } = useAuth();
+    const queryClient = useQueryClient();
 
     const query = useQuery<Payment[]>({
         queryKey: ["payments", activeCompany?.id, filters],
@@ -53,12 +55,75 @@ export function usePayments(filters: PaymentFilters) {
         placeholderData: (previousData) => previousData,
     });
 
+    const createPayment = useMutation({
+        mutationFn: async (params: {
+            store_id: string;
+            purchase_id: number;
+            vendor_id?: string | null;
+            amount?: number;
+            payment_method_id?: string;
+            payment_date?: string;
+            notes?: string | null;
+        }) => {
+            const res = await axiosPrivate.post("/api/shared/company/payments", params);
+            if (!res.data.success) throw new Error(res.data.message || "Αποτυχία δημιουργίας πληρωμής");
+            return res.data.data as Payment;
+        },
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["payments", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id] }),
+            ]);
+        },
+    });
+
+    const updatePayment = useMutation({
+        mutationFn: async (params: {
+            id: number;
+            status?: string;
+            amount?: number;
+            payment_method_id?: string;
+            payment_date?: string;
+            notes?: string | null;
+        }) => {
+            const { id, ...body } = params;
+            const res = await axiosPrivate.patch(`/api/shared/company/payments/${id}`, body);
+            if (!res.data.success) throw new Error(res.data.message || "Αποτυχία ενημέρωσης πληρωμής");
+            return res.data.data as Payment;
+        },
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["payments", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id] }),
+            ]);
+        },
+    });
+
+    const deletePayment = useMutation({
+        mutationFn: async (id: number) => {
+            const res = await axiosPrivate.delete(`/api/shared/company/payments/${id}`);
+            if (!res.data.success) throw new Error(res.data.message || "Αποτυχία διαγραφής πληρωμής");
+        },
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["payments", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id] }),
+            ]);
+        },
+    });
+
     return {
         payments: query.data ?? [],
         isLoading: query.isLoading,
         isFetching: query.isFetching,
         error: query.error,
         refetch: query.refetch,
+        createPayment,
+        updatePayment,
+        deletePayment,
     };
 }
 

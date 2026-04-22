@@ -164,14 +164,14 @@
     color: #374151;
 }
 
-.footerRow {
+.summaryRow {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 12px;
-    padding: 16px 16px 0;
-    margin-top: 8px;
-    border-top: 1px solid #e5e7eb;
+    gap: 8px;
+    padding: 0 16px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 0;
 }
 
 .totalLabel {
@@ -183,6 +183,13 @@
     font-weight: 700;
     font-size: 16px;
     color: #dc2626;
+}
+
+.infoIcon {
+    display: inline-flex;
+    align-items: center;
+    color: #9ca3af;
+    cursor: help;
 }
 
 .listOverlay {
@@ -222,6 +229,13 @@
     border-color: #3b82f6;
 }
 
+.formInput:disabled:focus,
+.formSelect:disabled:focus,
+.formInput:read-only:focus,
+.formReadOnly:focus {
+    border-color: #d1d5db;
+}
+
 .formSelect {
     background: #fff;
     appearance: none;
@@ -230,4 +244,90 @@
 .formError {
     font-size: 12px;
     color: #dc2626;
+}
+
+.table tbody tr {
+    cursor: pointer;
+}
+
+.statusBadge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.statusDraft {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.statusPosted {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.statusReversed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.relatedDocLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    background: #f9fafb;
+    font-size: 13px;
+    color: #2563eb;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.relatedDocLink:hover {
+    background: #eff6ff;
+}
+
+.formReadOnly {
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: not-allowed;
+}
+
+.deleteBtn {
+    margin-top: 24px;
+    padding: 10px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fff;
+    color: #dc2626;
+    font-size: 13px;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+    transition: background 0.15s;
+}
+
+.deleteBtn:hover {
+    background: #fef2f2;
+}
+
+.slidingWrapper {
+    overflow: hidden;
+    width: 100%;
+}
+
+.slidingPanels {
+    display: flex;
+    width: 200%;
+    transition: transform 0.3s ease;
+}
+
+.slidingPanel {
+    flex: 0 0 50%;
+    width: 50%;
+    min-width: 50%;
 }

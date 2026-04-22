@@ -269,23 +269,31 @@
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 
-.editBtn:hover {
+.editBtn:hover:not(:disabled) {
     background: #f3f4f6;
     color: #3b82f6;
     border-color: #93c5fd;
 }
 
-.deleteBtn:hover {
+.deleteBtn:hover:not(:disabled) {
     background: #fef2f2;
     color: #dc2626;
     border-color: #fecaca;
 }
 
-.pdfBtn:hover,
-.mailSendBtn:hover {
+.pdfBtn:hover:not(:disabled),
+.mailSendBtn:hover:not(:disabled) {
     background: #f3f4f6;
     color: #059669;
     border-color: #a7f3d0;
+}
+
+.editBtn:disabled,
+.deleteBtn:disabled,
+.pdfBtn:disabled,
+.mailSendBtn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .convertedToLink {
@@ -471,7 +479,7 @@ textarea.formInput {
     margin-bottom: 8px;
 }
 
-/* Δελτίο παραλαβής (GRN) + Παραγγελία (PO): ίδιο πλέγμα — ευρύτερη στήλη παραλλαγής, στενότερη ποσότητα */
+/* Responsive grid for all purchase document types (PO, GRN, PUR, DBN) */
 .itemRowGrn {
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.55fr) 96px 96px 88px 88px 40px;
 }

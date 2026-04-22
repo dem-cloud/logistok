@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosPrivate } from "@/api/axios";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -16,6 +16,7 @@ export type Receipt = {
     payment_date: string;
     notes: string | null;
     is_auto: boolean;
+    status: "draft" | "posted" | "reversed";
     payment_method_name?: string | null;
     customer_name?: string | null;
     invoice_number?: string | null;
@@ -34,6 +35,7 @@ export type ReceiptFilters = {
 // ============================================
 export function useReceipts(filters: ReceiptFilters) {
     const { activeCompany } = useAuth();
+    const queryClient = useQueryClient();
 
     const query = useQuery<Receipt[]>({
         queryKey: ["receipts", activeCompany?.id, filters],
@@ -53,12 +55,64 @@ export function useReceipts(filters: ReceiptFilters) {
         placeholderData: (previousData) => previousData,
     });
 
+    const createReceipt = useMutation({
+        mutationFn: async (params: {
+            store_id: string;
+            sale_id: number;
+            customer_id?: string | null;
+            amount?: number;
+            payment_method_id?: string;
+            payment_date?: string;
+            notes?: string | null;
+        }) => {
+            const res = await axiosPrivate.post("/api/shared/company/receipts", params);
+            if (!res.data.success) throw new Error(res.data.message || "Αποτυχία δημιουργίας είσπραξης");
+            return res.data.data as Receipt;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] });
+        },
+    });
+
+    const updateReceipt = useMutation({
+        mutationFn: async (params: {
+            id: number;
+            status?: string;
+            amount?: number;
+            payment_method_id?: string;
+            payment_date?: string;
+            notes?: string | null;
+        }) => {
+            const { id, ...body } = params;
+            const res = await axiosPrivate.patch(`/api/shared/company/receipts/${id}`, body);
+            if (!res.data.success) throw new Error(res.data.message || "Αποτυχία ενημέρωσης είσπραξης");
+            return res.data.data as Receipt;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] });
+            queryClient.invalidateQueries({ queryKey: ["sales", activeCompany?.id] });
+        },
+    });
+
+    const deleteReceipt = useMutation({
+        mutationFn: async (id: number) => {
+            const res = await axiosPrivate.delete(`/api/shared/company/receipts/${id}`);
+            if (!res.data.success) throw new Error(res.data.message || "Αποτυχία διαγραφής είσπραξης");
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] });
+        },
+    });
+
     return {
         receipts: query.data ?? [],
         isLoading: query.isLoading,
         isFetching: query.isFetching,
         error: query.error,
         refetch: query.refetch,
+        createReceipt,
+        updateReceipt,
+        deleteReceipt,
     };
 }
 

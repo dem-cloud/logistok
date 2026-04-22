@@ -70,11 +70,18 @@ function getPurchaseButtons(documentType, status, paymentStatus, hasPayments, ha
       { key: 'finalize', label: 'Οριστικοποίηση Παραλαβής' },
       { key: 'delete', label: 'Διαγραφή' },
     ];
-    if (s === 'pending_invoice' || s === 'received') return [
-      { key: 'create_invoice', label: 'Δημιουργία Τιμολογίου Αγοράς' },
-      { key: 'reverse', label: 'Αντιλογισμός Δελτίου' },
-      { key: 'pdf', label: 'Εκτύπωση PDF' },
-    ];
+    if (s === 'pending_invoice' || s === 'received') {
+      const reverseBtn = { key: 'reverse', label: 'Αντιλογισμός Δελτίου' };
+      if (hasLinkedInvoice) {
+        reverseBtn.disabled = true;
+        reverseBtn.tooltip = 'Υπάρχει συνδεδεμένο Τιμολόγιο Αγοράς. Διαγράψτε πρώτα το τιμολόγιο.';
+      }
+      return [
+        { key: 'create_invoice', label: 'Δημιουργία Τιμολογίου Αγοράς' },
+        reverseBtn,
+        { key: 'pdf', label: 'Εκτύπωση PDF' },
+      ];
+    }
     if (s === 'invoiced') return [
       { key: 'reverse', label: 'Αντιλογισμός Δελτίου', disabled: true, tooltip: 'Το δελτίο έχει τιμολογηθεί. Ακυρώστε πρώτα το Τιμολόγιο Αγοράς.' },
       { key: 'pdf', label: 'Εκτύπωση PDF' },
@@ -88,18 +95,17 @@ function getPurchaseButtons(documentType, status, paymentStatus, hasPayments, ha
       { key: 'finalize', label: 'Οριστικοποίηση' },
       { key: 'delete', label: 'Διαγραφή' },
     ];
+    if (s === 'reversed' || s === 'credited') return [{ key: 'pdf', label: 'Εκτύπωση PDF' }];
     const pay = (paymentStatus || '').toLowerCase();
-    if (s !== 'draft' && s !== 'reversed') {
+    if (s !== 'draft') {
       const reverseDisabled = hasPayments;
       return [
         { key: 'record_payment', label: 'Καταχώρηση Πληρωμής', show: pay !== 'paid' },
         { key: 'create_credit_note', label: 'Δημιουργία Πιστωτικού' },
-        { key: 'reverse', label: 'Αντιλογισμός Τιμολογίου', disabled: reverseDisabled, tooltip: reverseDisabled ? 'Διαγράψτε πρώτα τις Πληρωμές για να προχωρήσετε' : null },
+        { key: 'reverse', label: 'Αντιλογισμός Τιμολογίου', disabled: reverseDisabled, tooltip: reverseDisabled ? 'Υπάρχει συνδεδεμένη πληρωμή. Διαγράψτε ή ακυρώστε πρώτα την πληρωμή.' : null },
         { key: 'pdf', label: 'Εκτύπωση PDF' },
       ].filter(b => b.show !== false);
     }
-    if (s === 'reversed') return [{ key: 'pdf', label: 'Εκτύπωση PDF' }];
-    if (s === 'credited') return [{ key: 'pdf', label: 'Εκτύπωση PDF' }];
   }
 
   if (doc === 'DBN') {

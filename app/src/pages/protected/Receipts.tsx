@@ -1,11 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useReceipts, type Receipt } from "@/hooks/useReceipts";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { useSales } from "@/hooks/useSales";
-import { useQueryClient } from "@tanstack/react-query";
-import { axiosPrivate } from "@/api/axios";
-import { Plus } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { Plus, Info } from "lucide-react";
 import Button from "@/components/reusable/Button";
 import SidePopup from "@/components/reusable/SidePopup";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -33,21 +32,29 @@ function formatCurrency(amount: number) {
     }).format(amount);
 }
 
+const STATUS_LABELS: Record<string, string> = {
+    draft: "Πρόχειρη",
+    posted: "Οριστικοποιημένη",
+    reversed: "Αντιλογισμένη",
+};
+
 export default function Receipts() {
     const { activeStore, showToast } = useAuth();
-    const queryClient = useQueryClient();
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
     const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("");
 
-    const [showNewReceipt, setShowNewReceipt] = useState(false);
-    const [newReceiptSaleId, setNewReceiptSaleId] = useState<string>("");
-    const [newReceiptAmount, setNewReceiptAmount] = useState("");
-    const [newReceiptPaymentMethodId, setNewReceiptPaymentMethodId] = useState("");
-    const [newReceiptDate, setNewReceiptDate] = useState(() => new Date().toISOString().slice(0, 10));
-    const [newReceiptNotes, setNewReceiptNotes] = useState("");
-    const [newReceiptErrors, setNewReceiptErrors] = useState<Record<string, string>>({});
-    const [newReceiptSaving, setNewReceiptSaving] = useState(false);
+    const [editReceipt, setEditReceipt] = useState<Receipt | null>(null);
+    const [popupOpen, setPopupOpen] = useState(false);
+    const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+    const [formAmount, setFormAmount] = useState("");
+    const [formPaymentMethodId, setFormPaymentMethodId] = useState("");
+    const [formPaymentDate, setFormPaymentDate] = useState("");
+    const [formNotes, setFormNotes] = useState("");
+    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
     const storeId = activeStore?.id ?? "";
 
@@ -61,7 +68,7 @@ export default function Receipts() {
         [storeId, dateFrom, dateTo, paymentMethodFilter]
     );
 
-    const { receipts, isLoading, isFetching, refetch: refetchReceipts } = useReceipts(filters);
+    const { receipts, isLoading, isFetching, createReceipt, updateReceipt, deleteReceipt } = useReceipts(filters);
     const { paymentMethods } = usePaymentMethods();
     const { sales } = useSales({
         storeId: storeId || undefined,
@@ -74,51 +81,169 @@ export default function Receipts() {
         [sales]
     );
 
-    const totalAmount = receipts.reduce((sum, r) => sum + (r.amount ?? 0), 0);
+    const totalAmount = receipts
+        .filter((r) => r.status === "posted")
+        .reduce((sum, r) => sum + (r.amount ?? 0), 0);
 
-    const handleOpenNewReceipt = () => {
-        setNewReceiptSaleId("");
-        setNewReceiptAmount("");
-        setNewReceiptPaymentMethodId(paymentMethods.find((pm) => pm.is_active)?.id ?? "");
-        setNewReceiptDate(new Date().toISOString().slice(0, 10));
-        setNewReceiptNotes("");
-        setNewReceiptErrors({});
-        setShowNewReceipt(true);
-    };
+    const populateForm = useCallback((r: Receipt | null) => {
+        if (r) {
+            setFormAmount(String(r.amount ?? ""));
+            setFormPaymentMethodId(r.payment_method_id ?? "");
+            setFormPaymentDate(r.payment_date ? new Date(r.payment_date).toISOString().slice(0, 10) : "");
+            setFormNotes(r.notes ?? "");
+        } else {
+            setFormAmount("");
+            setFormPaymentMethodId(paymentMethods.find((pm) => pm.is_active)?.id ?? "");
+            setFormPaymentDate(new Date().toISOString().slice(0, 10));
+            setFormNotes("");
+        }
+        setFormErrors({});
+        setDeleteConfirmId(null);
+    }, [paymentMethods]);
 
-    const handleSubmitNewReceipt = async () => {
-        if (!activeStore?.id) return;
+    const openReceipt = useCallback((r: Receipt) => {
+        setEditReceipt(r);
+        populateForm(r);
+        setPopupOpen(true);
+    }, [populateForm]);
+
+    const closePopup = useCallback(() => {
+        setPopupOpen(false);
+        setEditReceipt(null);
+        setDeleteConfirmId(null);
+        const params = new URLSearchParams(searchParams);
+        if (params.has("open")) {
+            params.delete("open");
+            setSearchParams(params, { replace: true });
+        }
+    }, [searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const openId = searchParams.get("open");
+        if (openId && receipts.length > 0) {
+            const found = receipts.find((r) => String(r.id) === openId);
+            if (found) {
+                openReceipt(found);
+                const params = new URLSearchParams(searchParams);
+                params.delete("open");
+                setSearchParams(params, { replace: true });
+            }
+        }
+    }, [searchParams, receipts, openReceipt, setSearchParams]);
+
+    const isDraft = (editReceipt?.status || "posted") === "draft";
+    const isPosted = (editReceipt?.status || "posted") === "posted";
+    const isReversed = (editReceipt?.status || "posted") === "reversed";
+    const isReadOnly = !isDraft;
+
+    const handleSave = async () => {
+        if (!editReceipt) return;
         const err: Record<string, string> = {};
-        if (!newReceiptSaleId) err.sale_id = "Επιλέξτε τιμολόγιο";
-        const amt = parseFloat(newReceiptAmount) || 0;
+        const amt = parseFloat(formAmount) || 0;
         if (amt <= 0) err.amount = "Το ποσό πρέπει να είναι θετικό";
-        if (!newReceiptPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
-        const sale = salesWithBalance.find((s) => String(s.id) === newReceiptSaleId);
-        if (sale && amt > (sale.amount_due ?? 0)) err.amount = `Μέγιστο ποσό: ${(sale.amount_due ?? 0).toFixed(2)} €`;
-        setNewReceiptErrors(err);
+        if (!formPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
+        setFormErrors(err);
         if (Object.keys(err).length > 0) return;
 
-        setNewReceiptSaving(true);
         try {
-            await axiosPrivate.post("/api/shared/company/receipts", {
-                store_id: activeStore.id,
-                sale_id: parseInt(newReceiptSaleId, 10),
+            const result = await updateReceipt.mutateAsync({
+                id: editReceipt.id,
                 amount: amt,
-                payment_method_id: newReceiptPaymentMethodId,
-                payment_date: newReceiptDate ? `${newReceiptDate}T12:00:00.000Z` : undefined,
-                notes: newReceiptNotes.trim() || null,
+                payment_method_id: formPaymentMethodId,
+                payment_date: formPaymentDate ? `${formPaymentDate}T12:00:00.000Z` : undefined,
+                notes: formNotes.trim() || null,
             });
-            showToast({ message: "Η εισπραξη καταχωρήθηκε επιτυχώς", type: "success" });
-            queryClient.invalidateQueries({ queryKey: ["receipts"] });
-            refetchReceipts();
-            setShowNewReceipt(false);
-        } catch (e: unknown) {
-            const ax = e as { response?: { data?: { message?: string } } };
-            showToast({ message: ax.response?.data?.message || "Σφάλμα", type: "error" });
-        } finally {
-            setNewReceiptSaving(false);
+            setEditReceipt(result);
+            showToast({ message: "Η είσπραξη αποθηκεύτηκε", type: "success" });
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
         }
     };
+
+    const handleFinalize = async () => {
+        if (!editReceipt) return;
+        const err: Record<string, string> = {};
+        const amt = parseFloat(formAmount) || 0;
+        if (amt <= 0) err.amount = "Το ποσό πρέπει να είναι θετικό";
+        if (!formPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
+        setFormErrors(err);
+        if (Object.keys(err).length > 0) return;
+
+        try {
+            const result = await updateReceipt.mutateAsync({
+                id: editReceipt.id,
+                status: "posted",
+                amount: amt,
+                payment_method_id: formPaymentMethodId,
+                payment_date: formPaymentDate ? `${formPaymentDate}T12:00:00.000Z` : undefined,
+                notes: formNotes.trim() || null,
+            });
+            setEditReceipt(result);
+            showToast({ message: "Η είσπραξη οριστικοποιήθηκε", type: "success" });
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const handleReverse = async () => {
+        if (!editReceipt) return;
+        try {
+            await updateReceipt.mutateAsync({ id: editReceipt.id, status: "reversed" });
+            showToast({ message: "Η είσπραξη αντιλογίστηκε", type: "success" });
+            closePopup();
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!editReceipt) return;
+        try {
+            await deleteReceipt.mutateAsync(editReceipt.id);
+            showToast({ message: "Η είσπραξη διαγράφηκε", type: "success" });
+            closePopup();
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const handleNewReceipt = async () => {
+        if (!activeStore?.id || salesWithBalance.length === 0) return;
+        const firstSale = salesWithBalance[0];
+        try {
+            const created = await createReceipt.mutateAsync({
+                store_id: activeStore.id,
+                sale_id: firstSale.id,
+                amount: firstSale.amount_due ?? firstSale.total_amount ?? 0,
+                payment_method_id: paymentMethods.find((pm) => pm.is_active)?.id,
+            });
+            openReceipt(created);
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const statusBadgeClass = (s: string) =>
+        s === "draft" ? styles.statusDraft : s === "reversed" ? styles.statusReversed : styles.statusPosted;
+
+    const footerLeft = deleteConfirmId != null
+        ? { label: "Ακύρωση", onClick: () => setDeleteConfirmId(null), variant: "outline" as const }
+        : { label: "Κλείσιμο", onClick: closePopup, variant: "outline" as const };
+
+    const footerRight = deleteConfirmId != null
+        ? { label: "Επιβεβαίωση Διαγραφής", onClick: handleDelete, variant: "danger" as const, loading: deleteReceipt.isPending }
+        : isDraft
+            ? { label: "Οριστικοποίηση", onClick: handleFinalize, variant: "primary" as const, loading: updateReceipt.isPending }
+            : isPosted
+                ? { label: "Αντιλογισμός Συναλλαγής", onClick: handleReverse, variant: "outline" as const, loading: updateReceipt.isPending }
+                : undefined;
+
+    const footerActions = isDraft && deleteConfirmId == null
+        ? [
+            { label: "Αποθήκευση", onClick: handleSave, variant: "outline" as const, loading: updateReceipt.isPending },
+            { label: "Διαγραφή", onClick: () => editReceipt && setDeleteConfirmId(editReceipt.id), variant: "danger" as const },
+          ]
+        : undefined;
 
     if (!activeStore) {
         return (
@@ -147,42 +272,26 @@ export default function Receipts() {
                 <div className={styles.filtersRow}>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Από</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                        />
+                        <input type="date" className={styles.filterInput} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Έως</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                        />
+                        <input type="date" className={styles.filterInput} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Τρόπος πληρωμής</label>
-                        <select
-                            className={styles.filterSelect}
-                            value={paymentMethodFilter}
-                            onChange={(e) => setPaymentMethodFilter(e.target.value)}
-                        >
+                        <select className={styles.filterSelect} value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)}>
                             <option value="">Όλοι</option>
                             {paymentMethods.map((pm) => (
-                                <option key={pm.id} value={pm.id}>
-                                    {pm.name}
-                                </option>
+                                <option key={pm.id} value={pm.id}>{pm.name}</option>
                             ))}
                         </select>
                     </div>
                 </div>
                 <div className={styles.addBtn}>
-                    <Button variant="primary" onClick={handleOpenNewReceipt} disabled={!activeStore?.id}>
+                    <Button variant="primary" onClick={handleNewReceipt} disabled={!activeStore?.id || salesWithBalance.length === 0} loading={createReceipt.isPending}>
                         <Plus size={16} />
-                        Νέα εισπραξη
+                        Νέα είσπραξη
                     </Button>
                 </div>
             </div>
@@ -190,15 +299,18 @@ export default function Receipts() {
             <div className={styles.section}>
                 <h3 className={styles.sectionTitle}>Λίστα εισπράξεων</h3>
                 {isLoading && receipts.length === 0 ? (
-                    <div className={styles.listLoading}>
-                        <LoadingSpinner />
-                    </div>
+                    <div className={styles.listLoading}><LoadingSpinner /></div>
                 ) : receipts.length === 0 ? (
-                    <p className={styles.sectionHint}>
-                        Δεν βρέθηκαν εισπράξεις για τα επιλεγμένα κριτήρια.
-                    </p>
+                    <p className={styles.sectionHint}>Δεν βρέθηκαν εισπράξεις για τα επιλεγμένα κριτήρια.</p>
                 ) : (
                     <div className={styles.listWrapper}>
+                        <div className={styles.summaryRow}>
+                            <span className={styles.totalLabel}>Σύνολο:</span>
+                            <span className={styles.totalAmount}>{formatCurrency(totalAmount)}</span>
+                            <span className={styles.infoIcon} title="Μόνο οριστικοποιημένες εισπράξεις">
+                                <Info size={14} />
+                            </span>
+                        </div>
                         <div className={styles.tableWrap}>
                             <table className={styles.table}>
                                 <thead>
@@ -208,137 +320,140 @@ export default function Receipts() {
                                         <th>Τιμολόγιο</th>
                                         <th>Τρόπος</th>
                                         <th className={styles.amountCol}>Ποσό</th>
-                                        <th>Είδος</th>
+                                        <th>Κατάσταση</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {receipts.map((r: Receipt) => (
-                                        <tr key={r.id}>
+                                        <tr key={r.id} onClick={() => openReceipt(r)}>
                                             <td>{formatDate(r.payment_date)}</td>
                                             <td>{r.customer_name ?? "—"}</td>
                                             <td>{r.invoice_number ?? "—"}</td>
                                             <td>{r.payment_method_name ?? "—"}</td>
                                             <td className={styles.amountCol}>{formatCurrency(r.amount)}</td>
                                             <td>
-                                                {r.is_auto ? (
-                                                    <span className={styles.autoBadge}>Αυτόματη</span>
-                                                ) : (
-                                                    <span className={styles.manualBadge}>Χειροκίνητη</span>
-                                                )}
+                                                <span className={`${styles.statusBadge} ${statusBadgeClass(r.status)}`}>
+                                                    {STATUS_LABELS[r.status] || r.status}
+                                                </span>
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                        <div className={styles.footerRow}>
-                            <span className={styles.totalLabel}>Σύνολο:</span>
-                            <span className={styles.totalAmount}>{formatCurrency(totalAmount)}</span>
-                        </div>
                         {isFetching && (
-                            <div className={styles.listOverlay}>
-                                <LoadingSpinner />
-                            </div>
+                            <div className={styles.listOverlay}><LoadingSpinner /></div>
                         )}
                     </div>
                 )}
             </div>
 
             <SidePopup
-                isOpen={showNewReceipt}
-                onClose={() => setShowNewReceipt(false)}
-                title="Νέα εισπραξη"
-                width="480px"
-                footerLeftButton={{ label: "Κλείσιμο", onClick: () => setShowNewReceipt(false), variant: "outline" }}
-                footerRightButton={{
-                    label: "Αποθήκευση",
-                    onClick: handleSubmitNewReceipt,
-                    variant: "primary",
-                    loading: newReceiptSaving,
-                    disabled: salesWithBalance.length === 0,
-                }}
+                isOpen={popupOpen}
+                onClose={closePopup}
+                title={
+                    deleteConfirmId != null
+                        ? "Επιβεβαίωση διαγραφής"
+                        : editReceipt
+                            ? isDraft ? "Επεξεργασία είσπραξης" : "Είσπραξη"
+                            : "Νέα είσπραξη"
+                }
+                width="560px"
+                footerLeftButton={footerLeft}
+                footerRightButton={footerRight}
+                footerActions={footerActions}
             >
-                {salesWithBalance.length === 0 ? (
-                    <p className={styles.sectionHint}>
-                        Δεν υπάρχουν τιμολόγια με υπόλοιπο για καταχώρηση εισπράξεων. Δημιουργήστε πρώτα ολοκληρωμένο τιμολόγιο στην ενότητα Πωλήσεις.
+                {editReceipt && deleteConfirmId != null ? (
+                    <p style={{ margin: 0, color: "#374151" }}>
+                        Θέλετε σίγουρα να διαγράψετε αυτή την είσπραξη;
                     </p>
-                ) : (
-                <>
-                <div className={styles.formGroup}>
-                    <label className={styles.formLabel}>Τιμολόγιο *</label>
-                    <select
-                        className={styles.formSelect}
-                        value={newReceiptSaleId}
-                        onChange={(e) => {
-                            setNewReceiptSaleId(e.target.value);
-                            const sale = salesWithBalance.find((s) => String(s.id) === e.target.value);
-                            setNewReceiptAmount(sale ? String(sale.amount_due ?? "") : "");
-                            setNewReceiptErrors((prev) => ({ ...prev, sale_id: "" }));
-                        }}
-                    >
-                        <option value="">Επιλέξτε τιμολόγιο</option>
-                        {salesWithBalance.map((s) => (
-                            <option key={s.id} value={s.id}>
-                                {s.invoice_number ?? `#${s.id}`} — {s.customer?.full_name ?? "Περαστικός"} (Υπόλοιπο: {formatCurrency(s.amount_due ?? 0)})
-                            </option>
-                        ))}
-                    </select>
-                    {newReceiptErrors.sale_id && <span className={styles.formError}>{newReceiptErrors.sale_id}</span>}
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Ποσό *</label>
-                    <input
-                        type="number"
-                        className={styles.formInput}
-                        min={0}
-                        step={0.01}
-                        value={newReceiptAmount}
-                        onChange={(e) => {
-                            setNewReceiptAmount(e.target.value);
-                            setNewReceiptErrors((prev) => ({ ...prev, amount: "" }));
-                        }}
-                        placeholder="0.00"
-                    />
-                    {newReceiptErrors.amount && <span className={styles.formError}>{newReceiptErrors.amount}</span>}
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Τρόπος πληρωμής *</label>
-                    <select
-                        className={styles.formSelect}
-                        value={newReceiptPaymentMethodId}
-                        onChange={(e) => {
-                            setNewReceiptPaymentMethodId(e.target.value);
-                            setNewReceiptErrors((prev) => ({ ...prev, payment_method_id: "" }));
-                        }}
-                    >
-                        <option value="">Επιλέξτε</option>
-                        {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
-                            <option key={pm.id} value={pm.id}>{pm.name}</option>
-                        ))}
-                    </select>
-                    {newReceiptErrors.payment_method_id && <span className={styles.formError}>{newReceiptErrors.payment_method_id}</span>}
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Ημερομηνία</label>
-                    <input
-                        type="date"
-                        className={styles.formInput}
-                        value={newReceiptDate}
-                        onChange={(e) => setNewReceiptDate(e.target.value)}
-                    />
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Σημειώσεις</label>
-                    <input
-                        type="text"
-                        className={styles.formInput}
-                        value={newReceiptNotes}
-                        onChange={(e) => setNewReceiptNotes(e.target.value)}
-                        placeholder="Προαιρετικό"
-                    />
-                </div>
-                </>
-                )}
+                ) : editReceipt ? (
+                    <>
+                        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                            <span className={`${styles.statusBadge} ${statusBadgeClass(editReceipt.status)}`}>
+                                {STATUS_LABELS[editReceipt.status] || editReceipt.status}
+                            </span>
+                            {editReceipt.invoice_number && editReceipt.sale_id && (
+                                <span
+                                    className={styles.relatedDocLink}
+                                    onClick={() => {
+                                        closePopup();
+                                        navigate("/sales");
+                                    }}
+                                >
+                                    {editReceipt.invoice_number}
+                                </span>
+                            )}
+                        </div>
+
+                        <div className={styles.formGroup} style={{ marginBottom: 16 }}>
+                            <label className={styles.formLabel}>Πελάτης</label>
+                            <input type="text" className={`${styles.formInput} ${styles.formReadOnly}`} value={editReceipt.customer_name || "—"} readOnly />
+                        </div>
+
+                        {isDraft && (
+                            <div className={styles.formGroup} style={{ marginBottom: 16 }}>
+                                <label className={styles.formLabel}>Σχετικό τιμολόγιο</label>
+                                <input type="text" className={`${styles.formInput} ${styles.formReadOnly}`} value={editReceipt.invoice_number || `#${editReceipt.sale_id}`} readOnly />
+                            </div>
+                        )}
+
+                        <div className={styles.formGroup}>
+                            <label className={styles.formLabel}>Ποσό *</label>
+                            <input
+                                type="number"
+                                className={`${styles.formInput} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                min={0}
+                                step={0.01}
+                                value={formAmount}
+                                onChange={(e) => { setFormAmount(e.target.value); setFormErrors((prev) => ({ ...prev, amount: "" })); }}
+                                readOnly={isReadOnly}
+                                placeholder="0.00"
+                            />
+                            {formErrors.amount && <span className={styles.formError}>{formErrors.amount}</span>}
+                        </div>
+
+                        <div className={styles.formGroup} style={{ marginTop: 16 }}>
+                            <label className={styles.formLabel}>Τρόπος πληρωμής *</label>
+                            <select
+                                className={`${styles.formSelect} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                value={formPaymentMethodId}
+                                onChange={(e) => { setFormPaymentMethodId(e.target.value); setFormErrors((prev) => ({ ...prev, payment_method_id: "" })); }}
+                                disabled={isReadOnly}
+                            >
+                                <option value="">Επιλέξτε</option>
+                                {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
+                                    <option key={pm.id} value={pm.id}>{pm.name}</option>
+                                ))}
+                            </select>
+                            {formErrors.payment_method_id && <span className={styles.formError}>{formErrors.payment_method_id}</span>}
+                        </div>
+
+                        <div className={styles.formGroup} style={{ marginTop: 16 }}>
+                            <label className={styles.formLabel}>Ημερομηνία</label>
+                            <input
+                                type="date"
+                                className={`${styles.formInput} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                value={formPaymentDate}
+                                onChange={(e) => setFormPaymentDate(e.target.value)}
+                                readOnly={isReadOnly}
+                            />
+                        </div>
+
+                        <div className={styles.formGroup} style={{ marginTop: 16 }}>
+                            <label className={styles.formLabel}>Σημειώσεις</label>
+                            <input
+                                type="text"
+                                className={`${styles.formInput} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                value={formNotes}
+                                onChange={(e) => setFormNotes(e.target.value)}
+                                readOnly={isReadOnly}
+                                placeholder="Προαιρετικό"
+                            />
+                        </div>
+
+                    </>
+                ) : null}
             </SidePopup>
         </div>
     );

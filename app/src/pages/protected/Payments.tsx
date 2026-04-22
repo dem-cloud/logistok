@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePayments, type Payment } from "@/hooks/usePayments";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { usePurchases } from "@/hooks/usePurchases";
-import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { Plus, Info, FileDown } from "lucide-react";
 import { axiosPrivate } from "@/api/axios";
-import { Plus } from "lucide-react";
 import Button from "@/components/reusable/Button";
 import SidePopup from "@/components/reusable/SidePopup";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -33,21 +33,30 @@ function formatCurrency(amount: number) {
     }).format(amount);
 }
 
+const STATUS_LABELS: Record<string, string> = {
+    draft: "Πρόχειρη",
+    posted: "Οριστικοποιημένη",
+    reversed: "Αντιλογισμένη",
+};
+
 export default function Payments() {
     const { activeStore, showToast } = useAuth();
-    const queryClient = useQueryClient();
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
     const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("");
 
-    const [showNewPayment, setShowNewPayment] = useState(false);
-    const [newPaymentPurchaseId, setNewPaymentPurchaseId] = useState<string>("");
-    const [newPaymentAmount, setNewPaymentAmount] = useState("");
-    const [newPaymentPaymentMethodId, setNewPaymentPaymentMethodId] = useState("");
-    const [newPaymentDate, setNewPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
-    const [newPaymentNotes, setNewPaymentNotes] = useState("");
-    const [newPaymentErrors, setNewPaymentErrors] = useState<Record<string, string>>({});
-    const [newPaymentSaving, setNewPaymentSaving] = useState(false);
+    const [editPayment, setEditPayment] = useState<Payment | null>(null);
+    const [popupOpen, setPopupOpen] = useState(false);
+    const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+    const [formAmount, setFormAmount] = useState("");
+    const [formPaymentMethodId, setFormPaymentMethodId] = useState("");
+    const [formPaymentDate, setFormPaymentDate] = useState("");
+    const [formNotes, setFormNotes] = useState("");
+    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+    const [pdfLoading, setPdfLoading] = useState(false);
 
     const storeId = activeStore?.id ?? "";
 
@@ -61,7 +70,7 @@ export default function Payments() {
         [storeId, dateFrom, dateTo, paymentMethodFilter]
     );
 
-    const { payments, isLoading, isFetching, refetch: refetchPayments } = usePayments(filters);
+    const { payments, isLoading, isFetching, createPayment, updatePayment, deletePayment } = usePayments(filters);
     const { paymentMethods } = usePaymentMethods();
     const { purchases } = usePurchases({
         storeId: storeId || undefined,
@@ -79,51 +88,195 @@ export default function Payments() {
         [purchases]
     );
 
-    const totalAmount = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+    const totalAmount = payments
+        .filter((p) => p.status === "posted")
+        .reduce((sum, p) => sum + (p.amount ?? 0), 0);
 
-    const handleOpenNewPayment = () => {
-        setNewPaymentPurchaseId("");
-        setNewPaymentAmount("");
-        setNewPaymentPaymentMethodId(paymentMethods.find((pm) => pm.is_active)?.id ?? "");
-        setNewPaymentDate(new Date().toISOString().slice(0, 10));
-        setNewPaymentNotes("");
-        setNewPaymentErrors({});
-        setShowNewPayment(true);
-    };
+    const populateForm = useCallback((p: Payment | null) => {
+        if (p) {
+            setFormAmount(String(p.amount ?? ""));
+            setFormPaymentMethodId(p.payment_method_id ?? "");
+            setFormPaymentDate(p.payment_date ? new Date(p.payment_date).toISOString().slice(0, 10) : "");
+            setFormNotes(p.notes ?? "");
+        } else {
+            setFormAmount("");
+            setFormPaymentMethodId(paymentMethods.find((pm) => pm.is_active)?.id ?? "");
+            setFormPaymentDate(new Date().toISOString().slice(0, 10));
+            setFormNotes("");
+        }
+        setFormErrors({});
+        setDeleteConfirmId(null);
+    }, [paymentMethods]);
 
-    const handleSubmitNewPayment = async () => {
-        if (!activeStore?.id) return;
+    const openPayment = useCallback((p: Payment) => {
+        setEditPayment(p);
+        populateForm(p);
+        setPopupOpen(true);
+    }, [populateForm]);
+
+    const closePopup = useCallback(() => {
+        setPopupOpen(false);
+        setEditPayment(null);
+        setDeleteConfirmId(null);
+        const params = new URLSearchParams(searchParams);
+        if (params.has("open")) {
+            params.delete("open");
+            setSearchParams(params, { replace: true });
+        }
+    }, [searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const openId = searchParams.get("open");
+        if (!openId) return;
+        if (isLoading || isFetching) return;
+        const found = payments.find((p) => String(p.id) === openId);
+        if (found) {
+            openPayment(found);
+            const params = new URLSearchParams(searchParams);
+            params.delete("open");
+            setSearchParams(params, { replace: true });
+        }
+    }, [searchParams, payments, isLoading, isFetching, openPayment, setSearchParams]);
+
+    const isDraft = (editPayment?.status || "posted") === "draft";
+    const isPosted = (editPayment?.status || "posted") === "posted";
+    const isReversed = (editPayment?.status || "posted") === "reversed";
+    const isReadOnly = !isDraft;
+
+    const handleSave = async () => {
+        if (!editPayment) return;
         const err: Record<string, string> = {};
-        if (!newPaymentPurchaseId) err.purchase_id = "Επιλέξτε αγορά";
-        const amt = parseFloat(newPaymentAmount) || 0;
+        const amt = parseFloat(formAmount) || 0;
         if (amt <= 0) err.amount = "Το ποσό πρέπει να είναι θετικό";
-        if (!newPaymentPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
-        const purchase = purchasesWithBalance.find((p) => String(p.id) === newPaymentPurchaseId);
-        if (purchase && amt > (purchase.amount_due ?? 0)) err.amount = `Μέγιστο ποσό: ${(purchase.amount_due ?? 0).toFixed(2)} €`;
-        setNewPaymentErrors(err);
+        if (!formPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
+        setFormErrors(err);
         if (Object.keys(err).length > 0) return;
 
-        setNewPaymentSaving(true);
         try {
-            await axiosPrivate.post("/api/shared/company/payments", {
-                store_id: activeStore.id,
-                purchase_id: parseInt(newPaymentPurchaseId, 10),
+            const result = await updatePayment.mutateAsync({
+                id: editPayment.id,
                 amount: amt,
-                payment_method_id: newPaymentPaymentMethodId,
-                payment_date: newPaymentDate ? `${newPaymentDate}T12:00:00.000Z` : undefined,
-                notes: newPaymentNotes.trim() || null,
+                payment_method_id: formPaymentMethodId,
+                payment_date: formPaymentDate ? `${formPaymentDate}T12:00:00.000Z` : undefined,
+                notes: formNotes.trim() || null,
             });
-            showToast({ message: "Η πληρωμή καταχωρήθηκε επιτυχώς", type: "success" });
-            queryClient.invalidateQueries({ queryKey: ["payments"] });
-            refetchPayments();
-            setShowNewPayment(false);
-        } catch (e: unknown) {
-            const ax = e as { response?: { data?: { message?: string } } };
-            showToast({ message: ax.response?.data?.message || "Σφάλμα", type: "error" });
-        } finally {
-            setNewPaymentSaving(false);
+            setEditPayment(result);
+            showToast({ message: "Η πληρωμή αποθηκεύτηκε", type: "success" });
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
         }
     };
+
+    const handleFinalize = async () => {
+        if (!editPayment) return;
+        const err: Record<string, string> = {};
+        const amt = parseFloat(formAmount) || 0;
+        if (amt <= 0) err.amount = "Το ποσό πρέπει να είναι θετικό";
+        if (!formPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
+        setFormErrors(err);
+        if (Object.keys(err).length > 0) return;
+
+        try {
+            const result = await updatePayment.mutateAsync({
+                id: editPayment.id,
+                status: "posted",
+                amount: amt,
+                payment_method_id: formPaymentMethodId,
+                payment_date: formPaymentDate ? `${formPaymentDate}T12:00:00.000Z` : undefined,
+                notes: formNotes.trim() || null,
+            });
+            setEditPayment(result);
+            showToast({ message: "Η πληρωμή οριστικοποιήθηκε", type: "success" });
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const handleReverse = async () => {
+        if (!editPayment) return;
+        try {
+            await updatePayment.mutateAsync({ id: editPayment.id, status: "reversed" });
+            showToast({ message: "Η πληρωμή αντιλογίστηκε", type: "success" });
+            closePopup();
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!editPayment) return;
+        try {
+            await deletePayment.mutateAsync(editPayment.id);
+            showToast({ message: "Η πληρωμή διαγράφηκε", type: "success" });
+            closePopup();
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const handleDownloadPdf = useCallback(async () => {
+        if (!editPayment) return;
+        setPdfLoading(true);
+        try {
+            const res = await axiosPrivate.get(`/api/shared/company/payments/${editPayment.id}/pdf`, {
+                responseType: "blob",
+            });
+            const blob = res.data as Blob;
+            const filename = `pliromi-PAY-${String(editPayment.id).padStart(4, "0")}.pdf`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα κατά τη λήψη PDF", type: "error" });
+        } finally {
+            setPdfLoading(false);
+        }
+    }, [editPayment, showToast]);
+
+    const handleNewPayment = async () => {
+        if (!activeStore?.id || purchasesWithBalance.length === 0) return;
+        const firstPurchase = purchasesWithBalance[0];
+        try {
+            const created = await createPayment.mutateAsync({
+                store_id: activeStore.id,
+                purchase_id: firstPurchase.id,
+                amount: firstPurchase.amount_due ?? firstPurchase.total_amount ?? 0,
+                payment_method_id: paymentMethods.find((pm) => pm.is_active)?.id,
+            });
+            openPayment(created);
+        } catch (e) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    };
+
+    const statusBadgeClass = (s: string) =>
+        s === "draft" ? styles.statusDraft : s === "reversed" ? styles.statusReversed : styles.statusPosted;
+
+    const footerLeft = deleteConfirmId != null
+        ? { label: "Πίσω", onClick: () => setDeleteConfirmId(null), variant: "outline" as const }
+        : { label: "Κλείσιμο", onClick: closePopup, variant: "outline" as const };
+
+    const footerRight = deleteConfirmId != null
+        ? { label: "Επιβεβαίωση Διαγραφής", onClick: handleDelete, variant: "danger" as const, loading: deletePayment.isPending }
+        : isDraft
+            ? { label: "Οριστικοποίηση", onClick: handleFinalize, variant: "primary" as const, loading: updatePayment.isPending }
+            : isPosted
+                ? { label: "Αντιλογισμός Συναλλαγής", onClick: handleReverse, variant: "outline" as const, loading: updatePayment.isPending }
+                : undefined;
+
+    const footerActions = isDraft && deleteConfirmId == null
+        ? [
+            { label: "Αποθήκευση", onClick: handleSave, variant: "outline" as const, loading: updatePayment.isPending },
+            { label: "Διαγραφή", onClick: () => editPayment && setDeleteConfirmId(editPayment.id), variant: "danger" as const },
+          ]
+        : (isPosted || isReversed) && deleteConfirmId == null
+            ? [{ label: "Λήψη PDF", onClick: handleDownloadPdf, variant: "outline" as const, loading: pdfLoading }]
+            : undefined;
 
     if (!activeStore) {
         return (
@@ -152,40 +305,24 @@ export default function Payments() {
                 <div className={styles.filtersRow}>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Από</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                        />
+                        <input type="date" className={styles.filterInput} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Έως</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                        />
+                        <input type="date" className={styles.filterInput} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Τρόπος πληρωμής</label>
-                        <select
-                            className={styles.filterSelect}
-                            value={paymentMethodFilter}
-                            onChange={(e) => setPaymentMethodFilter(e.target.value)}
-                        >
+                        <select className={styles.filterSelect} value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)}>
                             <option value="">Όλοι</option>
                             {paymentMethods.map((pm) => (
-                                <option key={pm.id} value={pm.id}>
-                                    {pm.name}
-                                </option>
+                                <option key={pm.id} value={pm.id}>{pm.name}</option>
                             ))}
                         </select>
                     </div>
                 </div>
                 <div className={styles.addBtn}>
-                    <Button variant="primary" onClick={handleOpenNewPayment} disabled={!activeStore?.id}>
+                    <Button variant="primary" onClick={handleNewPayment} disabled={!activeStore?.id || purchasesWithBalance.length === 0} loading={createPayment.isPending}>
                         <Plus size={16} />
                         Νέα πληρωμή
                     </Button>
@@ -195,15 +332,18 @@ export default function Payments() {
             <div className={styles.section}>
                 <h3 className={styles.sectionTitle}>Λίστα πληρωμών</h3>
                 {isLoading && payments.length === 0 ? (
-                    <div className={styles.listLoading}>
-                        <LoadingSpinner />
-                    </div>
+                    <div className={styles.listLoading}><LoadingSpinner /></div>
                 ) : payments.length === 0 ? (
-                    <p className={styles.sectionHint}>
-                        Δεν βρέθηκαν πληρωμές για τα επιλεγμένα κριτήρια.
-                    </p>
+                    <p className={styles.sectionHint}>Δεν βρέθηκαν πληρωμές για τα επιλεγμένα κριτήρια.</p>
                 ) : (
                     <div className={styles.listWrapper}>
+                        <div className={styles.summaryRow}>
+                            <span className={styles.totalLabel}>Σύνολο:</span>
+                            <span className={styles.totalAmount}>{formatCurrency(totalAmount)}</span>
+                            <span className={styles.infoIcon} title="Μόνο οριστικοποιημένες πληρωμές">
+                                <Info size={14} />
+                            </span>
+                        </div>
                         <div className={styles.tableWrap}>
                             <table className={styles.table}>
                                 <thead>
@@ -213,137 +353,148 @@ export default function Payments() {
                                         <th>Έγγραφο</th>
                                         <th>Τρόπος</th>
                                         <th className={styles.amountCol}>Ποσό</th>
-                                        <th>Είδος</th>
+                                        <th>Κατάσταση</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {payments.map((p: Payment) => (
-                                        <tr key={p.id}>
+                                        <tr key={p.id} onClick={() => openPayment(p)}>
                                             <td>{formatDate(p.payment_date)}</td>
                                             <td>{p.vendor_name ?? "—"}</td>
                                             <td>{p.purchase_number ?? "—"}</td>
                                             <td>{p.payment_method_name ?? "—"}</td>
                                             <td className={styles.amountCol}>{formatCurrency(p.amount)}</td>
                                             <td>
-                                                {p.is_auto ? (
-                                                    <span className={styles.autoBadge}>Αυτόματη</span>
-                                                ) : (
-                                                    <span className={styles.manualBadge}>Χειροκίνητη</span>
-                                                )}
+                                                <span className={`${styles.statusBadge} ${statusBadgeClass(p.status)}`}>
+                                                    {STATUS_LABELS[p.status] || p.status}
+                                                </span>
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                        <div className={styles.footerRow}>
-                            <span className={styles.totalLabel}>Σύνολο:</span>
-                            <span className={styles.totalAmount}>{formatCurrency(totalAmount)}</span>
-                        </div>
                         {isFetching && (
-                            <div className={styles.listOverlay}>
-                                <LoadingSpinner />
-                            </div>
+                            <div className={styles.listOverlay}><LoadingSpinner /></div>
                         )}
                     </div>
                 )}
             </div>
 
             <SidePopup
-                isOpen={showNewPayment}
-                onClose={() => setShowNewPayment(false)}
-                title="Νέα πληρωμή"
-                width="480px"
-                footerLeftButton={{ label: "Κλείσιμο", onClick: () => setShowNewPayment(false), variant: "outline" }}
-                footerRightButton={{
-                    label: "Αποθήκευση",
-                    onClick: handleSubmitNewPayment,
-                    variant: "primary",
-                    loading: newPaymentSaving,
-                    disabled: purchasesWithBalance.length === 0,
-                }}
+                isOpen={popupOpen}
+                onClose={closePopup}
+                title={
+                    deleteConfirmId != null
+                        ? "Διαγραφή πληρωμής"
+                        : editPayment
+                            ? isDraft ? "Επεξεργασία πληρωμής" : "Πληρωμή"
+                            : "Νέα πληρωμή"
+                }
+                width="560px"
+                footerLeftButton={footerLeft}
+                footerRightButton={footerRight}
+                footerActions={footerActions}
             >
-                {purchasesWithBalance.length === 0 ? (
-                    <p className={styles.sectionHint}>
-                        Δεν υπάρχουν αγορές/δελτία με υπόλοιπο για καταχώρηση πληρωμών. Δημιουργήστε πρώτα ολοκληρωμένη αγορά στην ενότητα Αγορές.
-                    </p>
-                ) : (
-                <>
-                <div className={styles.formGroup}>
-                    <label className={styles.formLabel}>Αγορά / Δελτίο *</label>
-                    <select
-                        className={styles.formSelect}
-                        value={newPaymentPurchaseId}
-                        onChange={(e) => {
-                            setNewPaymentPurchaseId(e.target.value);
-                            const purchase = purchasesWithBalance.find((p) => String(p.id) === e.target.value);
-                            setNewPaymentAmount(purchase ? String(purchase.amount_due ?? "") : "");
-                            setNewPaymentErrors((prev) => ({ ...prev, purchase_id: "" }));
-                        }}
-                    >
-                        <option value="">Επιλέξτε αγορά</option>
-                        {purchasesWithBalance.map((p) => (
-                            <option key={p.id} value={p.id}>
-                                {p.invoice_number ?? `#${p.id}`} — {p.vendor?.name ?? "—"} (Υπόλοιπο: {formatCurrency(p.amount_due ?? 0)})
-                            </option>
-                        ))}
-                    </select>
-                    {newPaymentErrors.purchase_id && <span className={styles.formError}>{newPaymentErrors.purchase_id}</span>}
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Ποσό *</label>
-                    <input
-                        type="number"
-                        className={styles.formInput}
-                        min={0}
-                        step={0.01}
-                        value={newPaymentAmount}
-                        onChange={(e) => {
-                            setNewPaymentAmount(e.target.value);
-                            setNewPaymentErrors((prev) => ({ ...prev, amount: "" }));
-                        }}
-                        placeholder="0.00"
-                    />
-                    {newPaymentErrors.amount && <span className={styles.formError}>{newPaymentErrors.amount}</span>}
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Τρόπος πληρωμής *</label>
-                    <select
-                        className={styles.formSelect}
-                        value={newPaymentPaymentMethodId}
-                        onChange={(e) => {
-                            setNewPaymentPaymentMethodId(e.target.value);
-                            setNewPaymentErrors((prev) => ({ ...prev, payment_method_id: "" }));
-                        }}
-                    >
-                        <option value="">Επιλέξτε</option>
-                        {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
-                            <option key={pm.id} value={pm.id}>{pm.name}</option>
-                        ))}
-                    </select>
-                    {newPaymentErrors.payment_method_id && <span className={styles.formError}>{newPaymentErrors.payment_method_id}</span>}
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Ημερομηνία</label>
-                    <input
-                        type="date"
-                        className={styles.formInput}
-                        value={newPaymentDate}
-                        onChange={(e) => setNewPaymentDate(e.target.value)}
-                    />
-                </div>
-                <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                    <label className={styles.formLabel}>Σημειώσεις</label>
-                    <input
-                        type="text"
-                        className={styles.formInput}
-                        value={newPaymentNotes}
-                        onChange={(e) => setNewPaymentNotes(e.target.value)}
-                        placeholder="Προαιρετικό"
-                    />
-                </div>
-                </>
-                )}
+                {editPayment ? (
+                    <div className={styles.slidingWrapper}>
+                        <div
+                            className={styles.slidingPanels}
+                            style={{ transform: deleteConfirmId != null ? "translateX(-50%)" : undefined }}
+                        >
+                            <div className={styles.slidingPanel}>
+                                <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                                    <span className={`${styles.statusBadge} ${statusBadgeClass(editPayment.status)}`}>
+                                        {STATUS_LABELS[editPayment.status] || editPayment.status}
+                                    </span>
+                                    {editPayment.purchase_number && editPayment.purchase_id && (
+                                        <span
+                                            className={styles.relatedDocLink}
+                                            onClick={() => {
+                                                closePopup();
+                                                navigate("/purchases", { state: { openPurchaseId: editPayment.purchase_id } });
+                                            }}
+                                        >
+                                            {editPayment.purchase_number}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className={styles.formGroup} style={{ marginBottom: 16 }}>
+                                    <label className={styles.formLabel}>Προμηθευτής</label>
+                                    <input type="text" className={`${styles.formInput} ${styles.formReadOnly}`} value={editPayment.vendor_name || "—"} readOnly />
+                                </div>
+
+                                {isDraft && (
+                                    <div className={styles.formGroup} style={{ marginBottom: 16 }}>
+                                        <label className={styles.formLabel}>Σχετική αγορά</label>
+                                        <input type="text" className={`${styles.formInput} ${styles.formReadOnly}`} value={editPayment.purchase_number || `#${editPayment.purchase_id}`} readOnly />
+                                    </div>
+                                )}
+
+                                <div className={styles.formGroup}>
+                                    <label className={styles.formLabel}>Ποσό *</label>
+                                    <input
+                                        type="number"
+                                        className={`${styles.formInput} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                        min={0}
+                                        step={0.01}
+                                        value={formAmount}
+                                        onChange={(e) => { setFormAmount(e.target.value); setFormErrors((prev) => ({ ...prev, amount: "" })); }}
+                                        readOnly={isReadOnly}
+                                        placeholder="0.00"
+                                    />
+                                    {formErrors.amount && <span className={styles.formError}>{formErrors.amount}</span>}
+                                </div>
+
+                                <div className={styles.formGroup} style={{ marginTop: 16 }}>
+                                    <label className={styles.formLabel}>Τρόπος πληρωμής *</label>
+                                    <select
+                                        className={`${styles.formSelect} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                        value={formPaymentMethodId}
+                                        onChange={(e) => { setFormPaymentMethodId(e.target.value); setFormErrors((prev) => ({ ...prev, payment_method_id: "" })); }}
+                                        disabled={isReadOnly}
+                                    >
+                                        <option value="">Επιλέξτε</option>
+                                        {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
+                                            <option key={pm.id} value={pm.id}>{pm.name}</option>
+                                        ))}
+                                    </select>
+                                    {formErrors.payment_method_id && <span className={styles.formError}>{formErrors.payment_method_id}</span>}
+                                </div>
+
+                                <div className={styles.formGroup} style={{ marginTop: 16 }}>
+                                    <label className={styles.formLabel}>Ημερομηνία</label>
+                                    <input
+                                        type="date"
+                                        className={`${styles.formInput} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                        value={formPaymentDate}
+                                        onChange={(e) => setFormPaymentDate(e.target.value)}
+                                        readOnly={isReadOnly}
+                                    />
+                                </div>
+
+                                <div className={styles.formGroup} style={{ marginTop: 16 }}>
+                                    <label className={styles.formLabel}>Σημειώσεις</label>
+                                    <input
+                                        type="text"
+                                        className={`${styles.formInput} ${isReadOnly ? styles.formReadOnly : ""}`}
+                                        value={formNotes}
+                                        onChange={(e) => setFormNotes(e.target.value)}
+                                        readOnly={isReadOnly}
+                                        placeholder="Προαιρετικό"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className={styles.slidingPanel}>
+                                <p style={{ margin: 0, color: "#374151" }}>
+                                    Θέλετε σίγουρα να διαγράψετε αυτή την πληρωμή;
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </SidePopup>
         </div>
     );

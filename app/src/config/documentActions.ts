@@ -50,7 +50,7 @@ export function getPurchaseButtons(
     status: string,
     paymentStatus: string | null | undefined,
     hasPayments: boolean,
-    _hasLinkedInvoice: boolean
+    hasLinkedInvoice: boolean
 ): DocumentActionButton[] {
     const s = (status || "").toLowerCase();
     const doc = (documentType || "PUR").toUpperCase();
@@ -100,16 +100,16 @@ export function getPurchaseButtons(
             { key: "finalize", label: "Οριστικοποίηση" },
             { key: "delete", label: "Διαγραφή" },
         ];
-        if (s !== "draft" && s !== "reversed") {
+        if (s === "reversed" || s === "credited") return [{ key: "pdf", label: "Λήψη PDF" }];
+        if (s !== "draft") {
             const reverseDisabled = hasPayments;
             return [
                 { key: "record_payment", label: "Καταχώρηση Πληρωμής", show: (paymentStatus || "").toLowerCase() !== "paid" },
                 { key: "create_credit_note", label: "Δημιουργία Πιστωτικού" },
-                { key: "reverse", label: "Αντιλογισμός Τιμολογίου", disabled: reverseDisabled, tooltip: reverseDisabled ? "Διαγράψτε πρώτα τις Πληρωμές" : undefined },
+                { key: "reverse", label: "Αντιλογισμός Τιμολογίου", disabled: reverseDisabled, tooltip: reverseDisabled ? "Υπάρχει συνδεδεμένη πληρωμή. Διαγράψτε ή ακυρώστε πρώτα την πληρωμή." : undefined },
                 { key: "pdf", label: "Λήψη PDF" },
             ].filter((b) => b.show !== false);
         }
-        if (["reversed", "credited"].includes(s)) return [{ key: "pdf", label: "Λήψη PDF" }];
     }
 
     if (doc === "DBN") {

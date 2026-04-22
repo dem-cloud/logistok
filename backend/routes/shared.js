@@ -19,6 +19,7 @@ const { canAddUser, canAddStore } = require('../helpers/planLimits');
 const { checkStockAvailability } = require('../helpers/stockAvailability');
 const { generateSalePdf } = require('../helpers/generateSalePdf');
 const { generatePurchasePdf } = require('../helpers/generatePurchasePdf');
+const { generatePaymentPdf } = require('../helpers/generatePaymentPdf');
 const { getNextSequence, isInvoiceNumberUnique } = require('../helpers/documentSequences');
 const { recomputeSalePaymentStatus, recomputePurchasePaymentStatus } = require("../helpers/paymentStatus");
 const { getAllowedPurchaseStatuses, getAllowedSalesStatuses } = require('../helpers/documentTransitions');
@@ -28,7 +29,7 @@ const {
     syncPurchaseOrderStatusFromGrns,
     syncPurchaseOrderStatusAfterGrnRemoved,
 } = require('../helpers/poGrnSync');
-const { getPoCancelBlockReason, getSoCancelBlockReason } = require('../helpers/documentCancelGuards');
+const { getPoCancelBlockReason, getPoCloseBlockReason, getSoCancelBlockReason } = require('../helpers/documentCancelGuards');
 const { normalizePurchaseDocType, normalizePurchaseStatus } = require('../helpers/purchaseNormalize');
 
 const multer = require('multer');
@@ -7947,7 +7948,7 @@ router.get("/company/receipts", requireAuth, requireAnyPermission(['sales.view',
         let query = supabase
             .from("receipts")
             .select(`
-                id, created_at, store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto,
+                id, created_at, store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
                 sales (invoice_type, invoice_number),
                 customers (full_name),
                 payment_methods (name)
@@ -7984,7 +7985,7 @@ router.get("/company/receipts", requireAuth, requireAnyPermission(['sales.view',
             ...r,
             payment_method_name: r.payment_methods?.name ?? null,
             customer_name: r.customers?.full_name ?? null,
-            invoice_number: r.sales?.invoice_number ? `${r.sales.invoice_type || "INV"}-${r.sales.invoice_number}` : null
+            invoice_number: r.sales?.invoice_number ?? null
         }));
 
         if (payment_status && typeof payment_status === "string" && payment_status.trim()) {
@@ -8010,25 +8011,16 @@ router.get("/company/receipts", requireAuth, requireAnyPermission(['sales.view',
     }
 });
 
-// POST /company/receipts - Create manual receipt
+// POST /company/receipts - Create draft receipt
 router.post("/company/receipts", requireAuth, requireAnyPermission(['sales.create', 'sales.edit', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const userId = req.user.id;
     const { store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes } = req.body;
 
-    if (!companyId || !store_id || !sale_id || amount == null || !payment_method_id) {
+    if (!companyId || !store_id || !sale_id) {
         return res.status(400).json({
             success: false,
-            message: "Λείπουν απαραίτητα πεδία (store_id, sale_id, amount, payment_method_id)",
-            code: "VALIDATION_ERROR"
-        });
-    }
-
-    const amt = Math.round(Number(amount) * 100) / 100;
-    if (amt <= 0) {
-        return res.status(400).json({
-            success: false,
-            message: "Το ποσό πρέπει να είναι θετικό",
+            message: "Λείπουν απαραίτητα πεδία (store_id, sale_id)",
             code: "VALIDATION_ERROR"
         });
     }
@@ -8059,44 +8051,177 @@ router.post("/company/receipts", requireAuth, requireAnyPermission(['sales.creat
             });
         }
 
-        const amountDue = Number(sale.amount_due ?? sale.total_amount) || 0;
-        if (amt > amountDue) {
-            return res.status(400).json({
-                success: false,
-                message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο (${amountDue} €)`,
-                code: "VALIDATION_ERROR"
-            });
-        }
+        const amt = amount != null ? Math.round(Number(amount) * 100) / 100 : Number(sale.amount_due ?? sale.total_amount) || 0;
 
-        const { error: insErr } = await supabase.from("receipts").insert({
+        const { data: created, error: insErr } = await supabase.from("receipts").insert({
             company_id: companyId,
             store_id: store_id,
             sale_id: sale_id,
             customer_id: customer_id || sale.customer_id,
-            amount: amt,
-            payment_method_id: payment_method_id,
+            amount: amt > 0 ? amt : 0,
+            payment_method_id: payment_method_id || null,
             payment_date: payment_date && typeof payment_date === "string" ? payment_date : new Date().toISOString(),
             notes: notes && typeof notes === "string" ? notes.trim() || null : null,
             created_by: userId,
-            is_auto: false
-        });
+            is_auto: false,
+            status: "draft"
+        }).select("id").single();
 
-        if (insErr) {
+        if (insErr || !created) {
             console.error("POST /company/receipts:", insErr);
             return res.status(500).json({ success: false, message: "Σφάλμα καταχώρησης εισπράξης", code: "DB_ERROR" });
         }
 
-        await recomputeSalePaymentStatus(supabase, companyId, parseInt(sale_id, 10));
+        const { data: full } = await supabase
+            .from("receipts")
+            .select(`
+                id, created_at, store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                sales (invoice_type, invoice_number),
+                customers (full_name),
+                payment_methods (name)
+            `)
+            .eq("id", created.id)
+            .eq("company_id", companyId)
+            .single();
 
-        const { data: receipts } = await supabase.from("receipts").select("id, created_at, amount, payment_method_id, payment_date").eq("sale_id", sale_id);
-        return res.json({ success: true, data: receipts });
+        const result = full ? {
+            ...full,
+            payment_method_name: full.payment_methods?.name ?? null,
+            customer_name: full.customers?.full_name ?? null,
+            invoice_number: full.sales?.invoice_number ?? null
+        } : null;
+
+        return res.json({ success: true, data: result });
     } catch (err) {
         console.error("POST /company/receipts ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error", code: "SERVER_ERROR" });
     }
 });
 
-// DELETE /company/receipts/:id - Delete manual receipt only
+// PATCH /company/receipts/:id - Update receipt (draft edits, finalize, reverse)
+router.patch("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.edit', '*']), async (req, res) => {
+    const companyId = req.user.companyId;
+    const { id } = req.params;
+    const { status, amount, payment_method_id, payment_date, notes } = req.body;
+
+    if (!companyId || !id) {
+        return res.status(400).json({ success: false, message: "Λείπουν στοιχεία", code: "MISSING_PARAMS" });
+    }
+
+    try {
+        const { data: existing, error: fetchErr } = await supabase
+            .from("receipts")
+            .select("id, sale_id, customer_id, store_id, amount, payment_method_id, payment_date, notes, status, is_auto, company_id")
+            .eq("id", id)
+            .eq("company_id", companyId)
+            .single();
+
+        if (fetchErr || !existing) {
+            return res.status(404).json({ success: false, message: "Η είσπραξη δεν βρέθηκε", code: "NOT_FOUND" });
+        }
+
+        const oldStatus = (existing.status || "posted").toLowerCase();
+        const newStatus = status ? status.toLowerCase() : oldStatus;
+
+        if (oldStatus === "draft" && newStatus === "draft") {
+            const updates = {};
+            if (amount != null) updates.amount = Math.round(Number(amount) * 100) / 100;
+            if (payment_method_id) updates.payment_method_id = payment_method_id;
+            if (payment_date !== undefined) updates.payment_date = payment_date && typeof payment_date === "string" ? payment_date : existing.payment_date;
+            if (notes !== undefined) updates.notes = notes && typeof notes === "string" ? notes.trim() || null : null;
+
+            if (Object.keys(updates).length > 0) {
+                const { error: upErr } = await supabase.from("receipts").update(updates).eq("id", id).eq("company_id", companyId);
+                if (upErr) {
+                    console.error("PATCH /company/receipts draft update:", upErr);
+                    return res.status(500).json({ success: false, message: "Σφάλμα ενημέρωσης", code: "DB_ERROR" });
+                }
+            }
+        } else if (oldStatus === "draft" && newStatus === "posted") {
+            const effectiveAmount = amount != null ? Math.round(Number(amount) * 100) / 100 : Number(existing.amount);
+            if (effectiveAmount <= 0) {
+                return res.status(400).json({ success: false, message: "Το ποσό πρέπει να είναι θετικό", code: "VALIDATION_ERROR" });
+            }
+
+            if (existing.sale_id) {
+                const { data: sale } = await supabase
+                    .from("sales")
+                    .select("id, total_amount, amount_due, status, invoice_type")
+                    .eq("id", existing.sale_id)
+                    .eq("company_id", companyId)
+                    .single();
+                if (sale) {
+                    const amountDue = Number(sale.amount_due ?? sale.total_amount) || 0;
+                    if (effectiveAmount > amountDue) {
+                        return res.status(400).json({
+                            success: false,
+                            message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο (${amountDue} €)`,
+                            code: "VALIDATION_ERROR"
+                        });
+                    }
+                }
+            }
+
+            const updates = { status: "posted" };
+            if (amount != null) updates.amount = effectiveAmount;
+            if (payment_method_id) updates.payment_method_id = payment_method_id;
+            if (payment_date !== undefined) updates.payment_date = payment_date && typeof payment_date === "string" ? payment_date : existing.payment_date;
+            if (notes !== undefined) updates.notes = notes && typeof notes === "string" ? notes.trim() || null : null;
+
+            const { error: upErr } = await supabase.from("receipts").update(updates).eq("id", id).eq("company_id", companyId);
+            if (upErr) {
+                console.error("PATCH /company/receipts finalize:", upErr);
+                return res.status(500).json({ success: false, message: "Σφάλμα οριστικοποίησης", code: "DB_ERROR" });
+            }
+
+            if (existing.sale_id) {
+                await recomputeSalePaymentStatus(supabase, companyId, existing.sale_id);
+            }
+        } else if (oldStatus === "posted" && newStatus === "reversed") {
+            const { error: upErr } = await supabase.from("receipts").update({ status: "reversed" }).eq("id", id).eq("company_id", companyId);
+            if (upErr) {
+                console.error("PATCH /company/receipts reverse:", upErr);
+                return res.status(500).json({ success: false, message: "Σφάλμα αντιλογισμού", code: "DB_ERROR" });
+            }
+
+            if (existing.sale_id) {
+                await recomputeSalePaymentStatus(supabase, companyId, existing.sale_id);
+            }
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: `Μη έγκυρη μετάβαση κατάστασης: ${oldStatus} → ${newStatus}`,
+                code: "INVALID_TRANSITION"
+            });
+        }
+
+        const { data: updated } = await supabase
+            .from("receipts")
+            .select(`
+                id, created_at, store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                sales (invoice_type, invoice_number),
+                customers (full_name),
+                payment_methods (name)
+            `)
+            .eq("id", id)
+            .eq("company_id", companyId)
+            .single();
+
+        const result = updated ? {
+            ...updated,
+            payment_method_name: updated.payment_methods?.name ?? null,
+            customer_name: updated.customers?.full_name ?? null,
+            invoice_number: updated.sales?.invoice_number ?? null
+        } : null;
+
+        return res.json({ success: true, data: result });
+    } catch (err) {
+        console.error("PATCH /company/receipts ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server error", code: "SERVER_ERROR" });
+    }
+});
+
+// DELETE /company/receipts/:id - Delete draft receipt only
 router.delete("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.edit', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const { id } = req.params;
@@ -8108,13 +8233,13 @@ router.delete("/company/receipts/:id", requireAuth, requireAnyPermission(['sales
     try {
         const { data: rec, error: fetchErr } = await supabase
             .from("receipts")
-            .select("id, sale_id, is_auto")
+            .select("id, sale_id, is_auto, status")
             .eq("id", id)
             .eq("company_id", companyId)
             .single();
 
         if (fetchErr || !rec) {
-            return res.status(404).json({ success: false, message: "Η εισπραξη δεν βρέθηκε", code: "NOT_FOUND" });
+            return res.status(404).json({ success: false, message: "Η είσπραξη δεν βρέθηκε", code: "NOT_FOUND" });
         }
         if (rec.is_auto) {
             return res.status(403).json({
@@ -8123,15 +8248,19 @@ router.delete("/company/receipts/:id", requireAuth, requireAnyPermission(['sales
                 code: "CANNOT_DELETE_AUTO"
             });
         }
+        if ((rec.status || "posted") !== "draft") {
+            return res.status(403).json({
+                success: false,
+                message: "Μόνο πρόχειρες εισπράξεις μπορούν να διαγραφούν",
+                code: "CANNOT_DELETE_NON_DRAFT"
+            });
+        }
 
-        const saleId = rec.sale_id;
         const { error: delErr } = await supabase.from("receipts").delete().eq("id", id).eq("company_id", companyId);
         if (delErr) {
             console.error("DELETE /company/receipts:", delErr);
             return res.status(500).json({ success: false, message: "Σφάλμα διαγραφής", code: "DB_ERROR" });
         }
-
-        if (saleId) await recomputeSalePaymentStatus(supabase, companyId, saleId);
 
         return res.json({ success: true });
     } catch (err) {
@@ -8161,14 +8290,14 @@ router.get("/company/payments", requireAuth, requireAnyPermission(['purchases.vi
         let query = supabase
             .from("payments")
             .select(`
-                id, created_at, store_id, purchase_id, vendor_id, amount, payment_method_id, payment_date, notes, is_auto,
+                id, created_at, store_id, purchase_id, vendor_id, amount, payment_method_id, payment_date, notes, is_auto, status,
                 purchases (invoice_number, document_type),
                 vendors (name),
                 payment_methods (name)
             `)
             .eq("company_id", companyId)
             .eq("store_id", store_id.trim())
-            .order("payment_date", { ascending: false });
+            .order("created_at", { ascending: false });
 
         if (from && typeof from === "string" && from.trim()) {
             query = query.gte("payment_date", from.trim());
@@ -8197,7 +8326,7 @@ router.get("/company/payments", requireAuth, requireAnyPermission(['purchases.vi
             ...p,
             payment_method_name: p.payment_methods?.name ?? null,
             vendor_name: p.vendors?.name ?? null,
-            purchase_number: p.purchases ? `${p.purchases.document_type || "PUR"}-${p.purchases.invoice_number}` : null
+            purchase_number: p.purchases?.invoice_number ?? null
         }));
 
         if (payment_status && typeof payment_status === "string" && payment_status.trim()) {
@@ -8223,25 +8352,16 @@ router.get("/company/payments", requireAuth, requireAnyPermission(['purchases.vi
     }
 });
 
-// POST /company/payments - Create manual payment
+// POST /company/payments - Create draft payment
 router.post("/company/payments", requireAuth, requireAnyPermission(['purchases.create', 'purchases.edit', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const userId = req.user.id;
     const { store_id, purchase_id, vendor_id, amount, payment_method_id, payment_date, notes } = req.body;
 
-    if (!companyId || !store_id || !purchase_id || amount == null || !payment_method_id) {
+    if (!companyId || !store_id || !purchase_id) {
         return res.status(400).json({
             success: false,
-            message: "Λείπουν απαραίτητα πεδία (store_id, purchase_id, amount, payment_method_id)",
-            code: "VALIDATION_ERROR"
-        });
-    }
-
-    const amt = Math.round(Number(amount) * 100) / 100;
-    if (amt <= 0) {
-        return res.status(400).json({
-            success: false,
-            message: "Το ποσό πρέπει να είναι θετικό",
+            message: "Λείπουν απαραίτητα πεδία (store_id, purchase_id)",
             code: "VALIDATION_ERROR"
         });
     }
@@ -8273,44 +8393,190 @@ router.post("/company/payments", requireAuth, requireAnyPermission(['purchases.c
             });
         }
 
-        const amountDue = Number(purchase.amount_due ?? purchase.total_amount) || 0;
-        if (amt > amountDue) {
-            return res.status(400).json({
-                success: false,
-                message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο (${amountDue} €)`,
-                code: "VALIDATION_ERROR"
-            });
+        // Reuse existing draft payment for same purchase
+        const { data: existingDraft } = await supabase
+            .from("payments")
+            .select("id, created_at, store_id, purchase_id, vendor_id, amount, payment_method_id, payment_date, notes, is_auto, status")
+            .eq("company_id", companyId)
+            .eq("purchase_id", purchase_id)
+            .eq("status", "draft")
+            .maybeSingle();
+
+        if (existingDraft) {
+            return res.json({ success: true, data: existingDraft, reused_existing_draft: true });
         }
 
-        const { error: insErr } = await supabase.from("payments").insert({
+        const amt = amount != null ? Math.round(Number(amount) * 100) / 100 : Number(purchase.amount_due ?? purchase.total_amount) || 0;
+
+        const { data: created, error: insErr } = await supabase.from("payments").insert({
             company_id: companyId,
             store_id: store_id,
             purchase_id: purchase_id,
             vendor_id: vendor_id || purchase.vendor_id,
-            amount: amt,
-            payment_method_id: payment_method_id,
+            amount: amt > 0 ? amt : 0,
+            payment_method_id: payment_method_id || null,
             payment_date: payment_date && typeof payment_date === "string" ? payment_date : new Date().toISOString(),
             notes: notes && typeof notes === "string" ? notes.trim() || null : null,
             created_by: userId,
-            is_auto: false
-        });
+            is_auto: false,
+            status: "draft"
+        }).select("id").single();
 
-        if (insErr) {
+        if (insErr || !created) {
             console.error("POST /company/payments:", insErr);
             return res.status(500).json({ success: false, message: "Σφάλμα καταχώρησης πληρωμής", code: "DB_ERROR" });
         }
 
-        await recomputePurchasePaymentStatus(supabase, companyId, parseInt(purchase_id, 10));
+        const { data: full } = await supabase
+            .from("payments")
+            .select(`
+                id, created_at, store_id, purchase_id, vendor_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                purchases (invoice_number, document_type),
+                vendors (name),
+                payment_methods (name)
+            `)
+            .eq("id", created.id)
+            .eq("company_id", companyId)
+            .single();
 
-        const { data: payments } = await supabase.from("payments").select("id, created_at, amount, payment_method_id, payment_date").eq("purchase_id", purchase_id);
-        return res.json({ success: true, data: payments });
+        const result = full ? {
+            ...full,
+            payment_method_name: full.payment_methods?.name ?? null,
+            vendor_name: full.vendors?.name ?? null,
+            purchase_number: full.purchases?.invoice_number ?? null
+        } : null;
+
+        return res.json({ success: true, data: result });
     } catch (err) {
         console.error("POST /company/payments ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error", code: "SERVER_ERROR" });
     }
 });
 
-// DELETE /company/payments/:id - Delete manual payment only
+// PATCH /company/payments/:id - Update payment (draft edits, finalize, reverse)
+router.patch("/company/payments/:id", requireAuth, requireAnyPermission(['purchases.edit', '*']), async (req, res) => {
+    const companyId = req.user.companyId;
+    const { id } = req.params;
+    const { status, amount, payment_method_id, payment_date, notes } = req.body;
+
+    if (!companyId || !id) {
+        return res.status(400).json({ success: false, message: "Λείπουν στοιχεία", code: "MISSING_PARAMS" });
+    }
+
+    try {
+        const { data: existing, error: fetchErr } = await supabase
+            .from("payments")
+            .select("id, purchase_id, vendor_id, store_id, amount, payment_method_id, payment_date, notes, status, is_auto, company_id")
+            .eq("id", id)
+            .eq("company_id", companyId)
+            .single();
+
+        if (fetchErr || !existing) {
+            return res.status(404).json({ success: false, message: "Η πληρωμή δεν βρέθηκε", code: "NOT_FOUND" });
+        }
+
+        const oldStatus = (existing.status || "posted").toLowerCase();
+        const newStatus = status ? status.toLowerCase() : oldStatus;
+
+        if (oldStatus === "draft" && newStatus === "draft") {
+            const updates = {};
+            if (amount != null) updates.amount = Math.round(Number(amount) * 100) / 100;
+            if (payment_method_id) updates.payment_method_id = payment_method_id;
+            if (payment_date !== undefined) updates.payment_date = payment_date && typeof payment_date === "string" ? payment_date : existing.payment_date;
+            if (notes !== undefined) updates.notes = notes && typeof notes === "string" ? notes.trim() || null : null;
+
+            if (Object.keys(updates).length > 0) {
+                const { error: upErr } = await supabase.from("payments").update(updates).eq("id", id).eq("company_id", companyId);
+                if (upErr) {
+                    console.error("PATCH /company/payments draft update:", upErr);
+                    return res.status(500).json({ success: false, message: "Σφάλμα ενημέρωσης", code: "DB_ERROR" });
+                }
+            }
+        } else if (oldStatus === "draft" && newStatus === "posted") {
+            const effectiveAmount = amount != null ? Math.round(Number(amount) * 100) / 100 : Number(existing.amount);
+            if (effectiveAmount <= 0) {
+                return res.status(400).json({ success: false, message: "Το ποσό πρέπει να είναι θετικό", code: "VALIDATION_ERROR" });
+            }
+
+            if (existing.purchase_id) {
+                const { data: purchase } = await supabase
+                    .from("purchases")
+                    .select("id, total_amount, amount_due, status, document_type")
+                    .eq("id", existing.purchase_id)
+                    .eq("company_id", companyId)
+                    .single();
+                if (purchase) {
+                    const amountDue = Number(purchase.amount_due ?? purchase.total_amount) || 0;
+                    if (effectiveAmount > amountDue) {
+                        return res.status(400).json({
+                            success: false,
+                            message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο (${amountDue} €)`,
+                            code: "VALIDATION_ERROR"
+                        });
+                    }
+                }
+            }
+
+            const updates = { status: "posted" };
+            if (amount != null) updates.amount = effectiveAmount;
+            if (payment_method_id) updates.payment_method_id = payment_method_id;
+            if (payment_date !== undefined) updates.payment_date = payment_date && typeof payment_date === "string" ? payment_date : existing.payment_date;
+            if (notes !== undefined) updates.notes = notes && typeof notes === "string" ? notes.trim() || null : null;
+
+            const { error: upErr } = await supabase.from("payments").update(updates).eq("id", id).eq("company_id", companyId);
+            if (upErr) {
+                console.error("PATCH /company/payments finalize:", upErr);
+                return res.status(500).json({ success: false, message: "Σφάλμα οριστικοποίησης", code: "DB_ERROR" });
+            }
+
+            if (existing.purchase_id) {
+                await recomputePurchasePaymentStatus(supabase, companyId, existing.purchase_id);
+            }
+        } else if (oldStatus === "posted" && newStatus === "reversed") {
+            const { error: upErr } = await supabase.from("payments").update({ status: "reversed" }).eq("id", id).eq("company_id", companyId);
+            if (upErr) {
+                console.error("PATCH /company/payments reverse:", upErr);
+                return res.status(500).json({ success: false, message: "Σφάλμα αντιλογισμού", code: "DB_ERROR" });
+            }
+
+            if (existing.purchase_id) {
+                await recomputePurchasePaymentStatus(supabase, companyId, existing.purchase_id);
+            }
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: `Μη έγκυρη μετάβαση κατάστασης: ${oldStatus} → ${newStatus}`,
+                code: "INVALID_TRANSITION"
+            });
+        }
+
+        const { data: updated } = await supabase
+            .from("payments")
+            .select(`
+                id, created_at, store_id, purchase_id, vendor_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                purchases (invoice_number, document_type),
+                vendors (name),
+                payment_methods (name)
+            `)
+            .eq("id", id)
+            .eq("company_id", companyId)
+            .single();
+
+        const result = updated ? {
+            ...updated,
+            payment_method_name: updated.payment_methods?.name ?? null,
+            vendor_name: updated.vendors?.name ?? null,
+            purchase_number: updated.purchases?.invoice_number ?? null
+        } : null;
+
+        return res.json({ success: true, data: result });
+    } catch (err) {
+        console.error("PATCH /company/payments ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server error", code: "SERVER_ERROR" });
+    }
+});
+
+// DELETE /company/payments/:id - Delete draft payment only
 router.delete("/company/payments/:id", requireAuth, requireAnyPermission(['purchases.edit', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const { id } = req.params;
@@ -8322,7 +8588,7 @@ router.delete("/company/payments/:id", requireAuth, requireAnyPermission(['purch
     try {
         const { data: pay, error: fetchErr } = await supabase
             .from("payments")
-            .select("id, purchase_id, is_auto")
+            .select("id, purchase_id, is_auto, status")
             .eq("id", id)
             .eq("company_id", companyId)
             .single();
@@ -8337,20 +8603,87 @@ router.delete("/company/payments/:id", requireAuth, requireAnyPermission(['purch
                 code: "CANNOT_DELETE_AUTO"
             });
         }
+        if ((pay.status || "posted") !== "draft") {
+            return res.status(403).json({
+                success: false,
+                message: "Μόνο πρόχειρες πληρωμές μπορούν να διαγραφούν",
+                code: "CANNOT_DELETE_NON_DRAFT"
+            });
+        }
 
-        const purchaseId = pay.purchase_id;
         const { error: delErr } = await supabase.from("payments").delete().eq("id", id).eq("company_id", companyId);
         if (delErr) {
             console.error("DELETE /company/payments:", delErr);
             return res.status(500).json({ success: false, message: "Σφάλμα διαγραφής", code: "DB_ERROR" });
         }
 
-        if (purchaseId) await recomputePurchasePaymentStatus(supabase, companyId, purchaseId);
-
         return res.json({ success: true });
     } catch (err) {
         console.error("DELETE /company/payments ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error", code: "SERVER_ERROR" });
+    }
+});
+
+// GET /company/payments/:id/pdf - Download payment as PDF
+router.get("/company/payments/:id/pdf", requireAuth, requireAnyPermission(['purchases.view', '*']), async (req, res) => {
+    const companyId = req.user.companyId;
+    const { id } = req.params;
+
+    if (!companyId || !id) {
+        return res.status(400).json({ success: false, message: "Λείπουν στοιχεία", code: "MISSING_PARAMS" });
+    }
+
+    try {
+        const { data: payment, error } = await supabase
+            .from("payments")
+            .select(`
+                id, created_at, store_id, purchase_id, vendor_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                purchases (invoice_number, document_type),
+                vendors (name, phone, email),
+                payment_methods (name),
+                stores (id, name, address)
+            `)
+            .eq("id", id)
+            .eq("company_id", companyId)
+            .single();
+
+        if (error || !payment) {
+            return res.status(404).json({ success: false, message: "Η πληρωμή δεν βρέθηκε", code: "NOT_FOUND" });
+        }
+
+        if ((payment.status || "").toLowerCase() === "draft") {
+            return res.status(400).json({ success: false, message: "Δεν υπάρχει PDF για πρόχειρες πληρωμές", code: "DRAFT_NO_PDF" });
+        }
+
+        const { data: company } = await supabase
+            .from("companies")
+            .select("name, display_name, tax_id, tax_office, address, city, postal_code, country")
+            .eq("id", companyId)
+            .single();
+
+        const pdfData = {
+            company: company || {},
+            store: payment.stores ? { id: payment.stores.id, name: payment.stores.name, address: payment.stores.address } : {},
+            vendor: payment.vendors ? { name: payment.vendors.name, phone: payment.vendors.phone, email: payment.vendors.email } : null,
+            amount: Number(payment.amount),
+            payment_method_name: payment.payment_methods?.name || "",
+            payment_date: payment.payment_date,
+            created_at: payment.created_at,
+            status: payment.status || "posted",
+            id: payment.id,
+            notes: payment.notes,
+            purchase_number: payment.purchases?.invoice_number || null,
+        };
+
+        const pdfBuffer = await generatePaymentPdf(pdfData);
+
+        const filename = `pliromi-PAY-${String(payment.id).padStart(4, "0")}.pdf`;
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.send(pdfBuffer);
+    } catch (err) {
+        console.error("GET /company/payments/:id/pdf ERROR:", err);
+        return res.status(500).json({ success: false, message: "Σφάλμα δημιουργίας PDF", code: "PDF_ERROR" });
     }
 });
 
@@ -8458,6 +8791,42 @@ router.get("/company/purchases", requireAuth, requireAnyPermission(['purchases.v
             }
         }
 
+        const grnIds = (purchases ?? []).filter((p) => (p.document_type || "").toUpperCase() === "GRN").map((p) => p.id);
+        const purByGrnId = {};
+        if (grnIds.length > 0) {
+            const { data: purRows } = await supabase
+                .from("purchases")
+                .select("id, converted_from_id, document_type, invoice_number, status")
+                .eq("company_id", companyId)
+                .eq("document_type", "PUR")
+                .neq("status", "reversed")
+                .in("converted_from_id", grnIds);
+            for (const pur of purRows || []) {
+                if (!purByGrnId[pur.converted_from_id]) {
+                    purByGrnId[pur.converted_from_id] = {
+                        id: pur.id,
+                        document_type: pur.document_type || "PUR",
+                        invoice_number: pur.invoice_number,
+                        status: pur.status,
+                    };
+                }
+            }
+        }
+
+        const purIds = (purchases ?? []).filter((p) => (p.document_type || "").toUpperCase() === "PUR").map((p) => p.id);
+        const paymentCountByPurId = {};
+        if (purIds.length > 0) {
+            const { data: payRows } = await supabase
+                .from("payments")
+                .select("purchase_id")
+                .eq("company_id", companyId)
+                .neq("status", "reversed")
+                .in("purchase_id", purIds);
+            for (const pr of payRows || []) {
+                paymentCountByPurId[pr.purchase_id] = (paymentCountByPurId[pr.purchase_id] || 0) + 1;
+            }
+        }
+
         const now = new Date();
         const normalized = (purchases ?? []).map(p => {
             let paymentStatus = p.payment_status || null;
@@ -8465,10 +8834,13 @@ router.get("/company/purchases", requireAuth, requireAnyPermission(['purchases.v
                 paymentStatus = "overdue";
             }
             const isPo = (p.document_type || "").toUpperCase() === "PO";
+            const isGrn = (p.document_type || "").toUpperCase() === "GRN";
             return {
                 ...p,
                 payment_status: paymentStatus,
                 linked_documents: isPo ? (grnByPoId[p.id] || []) : [],
+                converted_to: isGrn ? (purByGrnId[p.id] || null) : undefined,
+                has_payments: (paymentCountByPurId[p.id] || 0) > 0,
                 store: p.stores ? { id: p.stores.id, name: p.stores.name } : null,
                 vendor: p.vendors ? { id: p.vendors.id, name: p.vendors.name } : null,
                 stores: undefined,
@@ -8550,7 +8922,7 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
         if (purchase.id) {
             const { data: paymentRows } = await supabase
                 .from("payments")
-                .select("id, amount, payment_method_id, payment_date, notes, is_auto")
+                .select("id, amount, payment_method_id, payment_date, notes, is_auto, status")
                 .eq("purchase_id", purchase.id)
                 .eq("company_id", companyId)
                 .order("payment_date", { ascending: false });
@@ -8560,7 +8932,8 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
                 payment_method_id: r.payment_method_id,
                 payment_date: r.payment_date,
                 notes: r.notes,
-                is_auto: r.is_auto
+                is_auto: r.is_auto,
+                status: r.status || "posted"
             }));
         }
 
@@ -8578,6 +8951,26 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
                     id: dbnPurchase.id,
                     document_type: dbnPurchase.document_type || "DBN",
                     invoice_number: dbnPurchase.invoice_number || `#${dbnPurchase.id}`
+                };
+            }
+        }
+
+        if ((purchase.document_type || "").toUpperCase() === "GRN" && !converted_to) {
+            const { data: purRows } = await supabase
+                .from("purchases")
+                .select("id, document_type, invoice_number, status")
+                .eq("company_id", companyId)
+                .eq("converted_from_id", id)
+                .eq("document_type", "PUR")
+                .neq("status", "reversed")
+                .limit(1);
+            if (purRows && purRows.length > 0) {
+                const pur = purRows[0];
+                converted_to = {
+                    id: pur.id,
+                    document_type: pur.document_type || "PUR",
+                    invoice_number: pur.invoice_number || `#${pur.id}`,
+                    status: pur.status
                 };
             }
         }
@@ -8620,6 +9013,17 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
                 linked_documents = linked_documents.concat(fromGrn || []);
             }
         }
+        if ((purchase.document_type || "").toUpperCase() === "PUR") {
+            const { data: dbnRows } = await supabase
+                .from("purchases")
+                .select("id, document_type, invoice_number, status")
+                .eq("converted_from_id", id)
+                .eq("document_type", "DBN")
+                .eq("company_id", companyId);
+            if (dbnRows && dbnRows.length > 0) {
+                linked_documents = linked_documents.concat(dbnRows);
+            }
+        }
 
         let source_purchase = null;
         let po_line_received_totals = null;
@@ -8648,6 +9052,29 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
             }
         }
 
+        let source_grn = null;
+        let source_po = null;
+        if ((purchase.document_type || "").toUpperCase() === "PUR" && purchase.converted_from_id) {
+            const { data: srcGrn } = await supabase
+                .from("purchases")
+                .select("id, invoice_number, status, document_type, converted_from_id")
+                .eq("id", purchase.converted_from_id)
+                .eq("company_id", companyId)
+                .single();
+            if (srcGrn) {
+                source_grn = { id: srcGrn.id, invoice_number: srcGrn.invoice_number, status: srcGrn.status, document_type: srcGrn.document_type };
+                if (srcGrn.converted_from_id) {
+                    const { data: srcPo } = await supabase
+                        .from("purchases")
+                        .select("id, invoice_number, status, document_type")
+                        .eq("id", srcGrn.converted_from_id)
+                        .eq("company_id", companyId)
+                        .single();
+                    if (srcPo) source_po = srcPo;
+                }
+            }
+        }
+
         const normalized = {
             ...purchase,
             payment_status: paymentStatus,
@@ -8656,6 +9083,8 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
             return_from,
             linked_documents,
             source_purchase,
+            source_grn,
+            source_po,
             po_line_received_totals,
             store: purchase.stores ? { id: purchase.stores.id, name: purchase.stores.name, address: purchase.stores.address } : null,
             vendor: purchase.vendors ? { id: purchase.vendors.id, name: purchase.vendors.name, phone: purchase.vendors.phone, email: purchase.vendors.email } : null,
@@ -9063,6 +9492,18 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
             }
         }
 
+        const userProvidedInvNum = invoice_number && typeof invoice_number === "string" && invoice_number.trim() ? invoice_number.trim() : null;
+        if (userProvidedInvNum) {
+            const unique = await isInvoiceNumberUnique(companyId, userProvidedInvNum, null, null);
+            if (!unique) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Ο αριθμός παραστατικού υπάρχει ήδη",
+                    code: "INVOICE_NUMBER_EXISTS"
+                });
+            }
+        }
+
         const purchaseData = {
             company_id: companyId,
             store_id: store_id.trim(),
@@ -9072,7 +9513,7 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
             subtotal,
             vat_total: vatTotal,
             notes: notes && typeof notes === "string" ? notes.trim() || null : null,
-            invoice_number: (isDBN && (!invoice_number || !String(invoice_number).trim())) ? (await getNextSequence(companyId, "DBN")) : (invoice_number && typeof invoice_number === "string" ? invoice_number.trim() || null : null),
+            invoice_number: userProvidedInvNum || (await getNextSequence(companyId, docType)),
             invoice_date: invoice_date && typeof invoice_date === "string" && invoice_date.trim() ? invoice_date.trim() : null,
             status: purchaseStatus,
             document_type: docType,
@@ -9538,6 +9979,20 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             }
         }
 
+        if (oldStatus === "draft") {
+            const newInvNum = invoice_number && typeof invoice_number === "string" ? invoice_number.trim() || null : null;
+            if (newInvNum && newInvNum !== (existing.invoice_number || null)) {
+                const unique = await isInvoiceNumberUnique(companyId, newInvNum, null, id);
+                if (!unique) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Ο αριθμός παραστατικού υπάρχει ήδη",
+                        code: "INVOICE_NUMBER_EXISTS"
+                    });
+                }
+            }
+        }
+
         const storeId = existing.store_id;
         const isDBN = docType === "DBN";
         const isPO = docType === "PO";
@@ -9561,11 +10016,11 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
         if (docType === "PUR" || docType === "DBN") {
             const { data: purRow } = await supabase.from("purchases").select("payment_status").eq("id", id).eq("company_id", companyId).single();
             purchasePaymentStatus = purRow?.payment_status;
-            const { count: payCount } = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("purchase_id", id).eq("company_id", companyId);
+            const { count: payCount } = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("purchase_id", id).eq("company_id", companyId).neq("status", "reversed");
             hasPayments = (payCount || 0) > 0;
         }
         if (docType === "GRN") {
-            const { data: purFromGrn } = await supabase.from("purchases").select("id").eq("converted_from_id", id).eq("company_id", companyId).maybeSingle();
+            const { data: purFromGrn } = await supabase.from("purchases").select("id").eq("converted_from_id", id).eq("document_type", "PUR").neq("status", "reversed").eq("company_id", companyId).maybeSingle();
             hasLinkedInvoice = !!purFromGrn;
         }
 
@@ -9590,10 +10045,23 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             }
             newStatus = requestedStatus;
         }
-        const willApplyStock = isPO ? false : (isGrn ? ["pending_invoice", "completed"].includes(newStatus) : ["ordered", "received", "completed"].includes(newStatus));
+        const purFromGrn = isPUR && existing.converted_from_id != null;
+        const willApplyStock = isPO ? false : (isGrn ? ["pending_invoice", "completed"].includes(newStatus) : (purFromGrn ? false : ["ordered", "received", "completed"].includes(newStatus)));
 
         if (isPO && newStatus === "cancelled") {
             const blockPo = await getPoCancelBlockReason(supabase, companyId, parseInt(id, 10));
+            if (blockPo) {
+                return res.status(400).json({
+                    success: false,
+                    message: blockPo.message,
+                    code: blockPo.code,
+                    blocking_children: blockPo.blockingChildren,
+                });
+            }
+        }
+
+        if (isPO && newStatus === "closed") {
+            const blockPo = await getPoCloseBlockReason(supabase, companyId, parseInt(id, 10));
             if (blockPo) {
                 return res.status(400).json({
                     success: false,
@@ -9925,8 +10393,6 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
         const updateData = {
             vendor_id: resolvedVendorId,
             payment_method_id: payment_method_id.trim(),
-            invoice_number: invoice_number && typeof invoice_number === "string" ? invoice_number.trim() || null : null,
-            invoice_date: invoice_date && typeof invoice_date === "string" && invoice_date.trim() ? invoice_date.trim() : null,
             document_type: docType,
             status: newStatus,
             notes: notes && typeof notes === "string" ? notes.trim() || null : null,
@@ -9935,6 +10401,12 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             total_amount: totalAmount,
             ...(isPUR && { payment_terms: effectivePaymentTerms })
         };
+        if (invoice_number !== undefined) {
+            updateData.invoice_number = invoice_number && typeof invoice_number === "string" ? invoice_number.trim() || null : null;
+        }
+        if (invoice_date !== undefined) {
+            updateData.invoice_date = invoice_date && typeof invoice_date === "string" && invoice_date.trim() ? invoice_date.trim() : null;
+        }
 
         const { error: updErr } = await supabase
             .from("purchases")
@@ -10122,6 +10594,41 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             }
         }
 
+        // When DBN is finalized (draft → posted/completed), apply stock OUT
+        if (isDBN && oldStatus === "draft" && (newStatus === "posted" || newStatus === "completed")) {
+            const { data: dbnItems } = await supabase
+                .from("purchase_items")
+                .select("product_id, product_variant_id, quantity, cost_price, vat_rate, vat_exempt")
+                .eq("purchase_id", id);
+            if (dbnItems && dbnItems.length > 0) {
+                const stockItems = dbnItems.map(it => ({
+                    product_id: it.product_id,
+                    product_variant_id: it.product_variant_id,
+                    quantity: Math.abs(Number(it.quantity)),
+                    cost_price: Math.abs(Number(it.cost_price)),
+                    vat_rate: it.vat_rate,
+                    vat_exempt: it.vat_exempt
+                }));
+                await applyDbnStock(companyId, storeId, parseInt(id, 10), userId, stockItems);
+            }
+        }
+
+        // When PUR is finalized (draft → completed) and came from a GRN, set that GRN to "invoiced"
+        if (isPUR && oldStatus === "draft" && newStatus === "completed" && existing.converted_from_id) {
+            await supabase.from("purchases")
+                .update({ status: "invoiced" })
+                .eq("id", existing.converted_from_id)
+                .eq("company_id", companyId);
+        }
+
+        // When PUR is reversed and came from a GRN, set that GRN back to "pending_invoice"
+        if (isPUR && newStatus === "reversed" && existing.converted_from_id) {
+            await supabase.from("purchases")
+                .update({ status: "pending_invoice" })
+                .eq("id", existing.converted_from_id)
+                .eq("company_id", companyId);
+        }
+
         const { data: fullPurchase } = await supabase
             .from("purchases")
             .select(`
@@ -10144,7 +10651,7 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
     }
 });
 
-// POST /company/purchases/:id/partial-return - PUR/GRN (received/completed) → create DBN with selected items, apply stock OUT
+// POST /company/purchases/:id/partial-return - PUR/GRN (received/completed) → create draft DBN with selected items
 router.post("/company/purchases/:id/partial-return", requireAuth, requireAnyPermission(['purchases.create', 'purchases.edit', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const userId = req.user.id;
@@ -10202,7 +10709,7 @@ router.post("/company/purchases/:id/partial-return", requireAuth, requireAnyPerm
             document_type: "DBN",
             invoice_number: dbnNum,
             converted_from_id: parseInt(id, 10),
-            status: "completed",
+            status: "draft",
             created_by: userId
         }).select("id").single();
         if (insErr || !dbn) return res.status(500).json({ success: false, message: "Σφάλμα δημιουργίας χρεωστικού", code: "DB_ERROR" });
@@ -10221,15 +10728,6 @@ router.post("/company/purchases/:id/partial-return", requireAuth, requireAnyPerm
             await supabase.from("purchases").delete().eq("id", dbn.id);
             return res.status(500).json({ success: false, message: "Σφάλμα γραμμών", code: "DB_ERROR" });
         }
-        const dbnItemsForStock = returnLines.map(it => ({
-            product_id: it.product_id,
-            product_variant_id: it.product_variant_id,
-            quantity: it.quantity,
-            cost_price: Math.abs(it.cost_price),
-            vat_rate: it.vat_rate,
-            vat_exempt: it.vat_exempt
-        }));
-        await applyDbnStock(companyId, orig.store_id, dbn.id, userId, dbnItemsForStock);
         const { data: full } = await supabase.from("purchases").select(`
             id, created_at, store_id, vendor_id, payment_method_id, total_amount, status, notes,
             subtotal, vat_total, invoice_number, invoice_date, document_type, converted_from_id,
@@ -10440,7 +10938,7 @@ router.post("/company/purchases/:id/create-grn", requireAuth, requireAnyPermissi
     }
 });
 
-// POST .../convert-from-grn — GRN → PUR; set GRN to invoiced
+// POST .../convert-from-grn — GRN → draft PUR; GRN stays at current status until PUR is finalized
 const convertPurchaseFromGrn = async (req, res) => {
     const companyId = req.user.companyId;
     const userId = req.user.id;
@@ -10491,6 +10989,32 @@ const convertPurchaseFromGrn = async (req, res) => {
             });
         }
 
+        // Reuse existing draft PUR linked to this GRN (same pattern as create-grn)
+        const grnIdInt = parseInt(id, 10);
+        const { data: draftRows, error: draftQErr } = await supabase
+            .from("purchases")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("converted_from_id", grnIdInt)
+            .eq("document_type", "PUR")
+            .eq("status", "draft")
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+        if (!draftQErr && draftRows && draftRows.length > 0) {
+            const draftId = draftRows[0].id;
+            const { data: fullReuse } = await supabase
+                .from("purchases")
+                .select(`
+                    id, created_at, store_id, vendor_id, payment_method_id, total_amount, status, notes,
+                    subtotal, vat_total, invoice_number, invoice_date, document_type, converted_from_id,
+                    purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt)
+                `)
+                .eq("id", draftId)
+                .single();
+            return res.json({ success: true, data: fullReuse, reused_existing_draft: true });
+        }
+
         const items = grn.purchase_items || [];
         if (items.length === 0) {
             return res.status(400).json({
@@ -10500,7 +11024,7 @@ const convertPurchaseFromGrn = async (req, res) => {
             });
         }
 
-        const purgeNum = await getNextSequence(companyId, "PUR");
+        const purNum = await getNextSequence(companyId, "PUR");
 
         const purchaseData = {
             company_id: companyId,
@@ -10511,11 +11035,11 @@ const convertPurchaseFromGrn = async (req, res) => {
             subtotal: grn.subtotal,
             vat_total: grn.vat_total,
             notes: grn.notes,
-            invoice_number: purgeNum,
+            invoice_number: purNum,
             invoice_date: grn.invoice_date || new Date().toISOString().slice(0, 10),
-            status: "completed",
+            status: "draft",
             document_type: "PUR",
-            converted_from_id: parseInt(id, 10),
+            converted_from_id: grnIdInt,
             created_by: userId || null
         };
 
@@ -10556,13 +11080,7 @@ const convertPurchaseFromGrn = async (req, res) => {
             });
         }
 
-        // Stock was already applied when GRN reached completed; PUR is the accounting document only.
-
-        await supabase
-            .from("purchases")
-            .update({ status: "invoiced" })
-            .eq("id", id)
-            .eq("company_id", companyId);
+        // GRN stays at its current status; it will be set to "invoiced" when PUR is finalized via PATCH.
 
         const { data: fullPur } = await supabase
             .from("purchases")
@@ -10576,7 +11094,7 @@ const convertPurchaseFromGrn = async (req, res) => {
 
         return res.json({
             success: true,
-            message: "Το δελτίο παραλαβής μετατράπηκε σε Τιμολόγιο Αγοράς",
+            message: "Δημιουργήθηκε πρόχειρο Τιμολόγιο Αγοράς",
             data: fullPur
         });
     } catch (err) {

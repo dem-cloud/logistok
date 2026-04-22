@@ -21,7 +21,7 @@ function getPurchaseNewStatus(documentType, currentStatus, action) {
   }
 
   if (doc === 'PUR') {
-    if (a === 'finalize') return 'unpaid';
+    if (a === 'finalize') return 'completed';
     if (a === 'reverse') return 'reversed';
     if (a === 'create_credit_note' && s !== 'credited') return s; // credited when CN covers full amount
   }

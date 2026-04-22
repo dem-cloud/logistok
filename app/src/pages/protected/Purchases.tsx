@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Search, ArrowRight, Package, FileDown, Banknote, RotateCcw, XCircle, Link2 } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,7 +24,7 @@ import DocTypeBadge from "@/components/DocTypeBadge";
 import StatusBadge from "@/components/StatusBadge";
 import { PURCHASE_DOC_TYPES, PURCHASE_NEW_DOC_OPTIONS, getPurchaseStatusLabel, type PurchaseDocType } from "@/config/documentTypes";
 import { getPurchaseButtons, PURCHASE_ACTION_ICON } from "@/config/documentActions";
-import { getPoCancelBlockMessageFromLinked } from "@/config/parentCancelGuards";
+import { getPoCancelBlockMessageFromLinked, getPoCloseBlockMessageFromLinked } from "@/config/parentCancelGuards";
 import type { FooterButton } from "@/components/reusable/SidePopup";
 import { axiosPrivate } from "@/api/axios";
 import styles from "./Purchases.module.css";
@@ -176,6 +177,7 @@ export default function Purchases() {
     const { purchase: editPurchase, isLoading: editLoading } = usePurchase(editId);
     const location = useLocation();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const hasOpenedFromNav = useRef(false);
     const { products } = useProducts();
     const { vendors } = useVendors();
@@ -202,12 +204,6 @@ export default function Purchases() {
     ]);
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [showPartialReturnPanel, setShowPartialReturnPanel] = useState(false);
-    const [showPaymentPanel, setShowPaymentPanel] = useState(false);
-    const [paymentAmount, setPaymentAmount] = useState("");
-    const [paymentPaymentMethodId, setPaymentPaymentMethodId] = useState("");
-    const [paymentPaymentDate, setPaymentPaymentDate] = useState("");
-    const [paymentNotes, setPaymentNotes] = useState("");
-    const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
     const [partialReturnQuantities, setPartialReturnQuantities] = useState<Record<number, number>>({});
     const [negativeStockConfirm, setNegativeStockConfirm] = useState<{
         insufficientItems: Array<{ product_name: string; variant_name: string; required: number; available: number }>;
@@ -241,7 +237,6 @@ export default function Purchases() {
             setDeleteConfirmId(null);
             setDeleteNegativeStockConfirm(null);
             setShowQuickCreateVendor(false);
-            setShowPaymentPanel(false);
             setShowPartialReturnPanel(false);
             setNegativeStockConfirm(null);
             setPartialReturnQuantities({});
@@ -331,12 +326,6 @@ export default function Purchases() {
         setDeleteConfirmId(null);
         setDeleteNegativeStockConfirm(null);
         setShowQuickCreateVendor(false);
-        setShowPaymentPanel(false);
-        setPaymentAmount("");
-        setPaymentPaymentMethodId("");
-        setPaymentPaymentDate("");
-        setPaymentNotes("");
-        setPaymentErrors({});
         setQcVendorName("");
         setQcVendorContactName("");
         setQcVendorPhone("");
@@ -409,6 +398,13 @@ export default function Purchases() {
         (editPurchase.document_type || "").toUpperCase() === "GRN" &&
         !!editPurchase.converted_from_id &&
         (editPurchase.status || "").toLowerCase() === "draft";
+
+    const isPurFromGrn =
+        !!editId &&
+        !!editPurchase &&
+        editPurchase.id === editId &&
+        (editPurchase.document_type || "").toUpperCase() === "PUR" &&
+        !!editPurchase.converted_from_id;
 
     const addItemRow = () => {
         setFormItems((prev) => [
@@ -886,14 +882,13 @@ export default function Purchases() {
     );
 
     const inMainForm =
-        !showPaymentPanel &&
         !showPartialReturnPanel &&
         !showQuickCreateVendor &&
         !negativeStockConfirm &&
         deleteConfirmId === null;
     const docType = (editId && editPurchase?.id === editId ? editPurchase?.document_type : formDocumentType) || "PUR";
     const docStatus = (editId && editPurchase?.id === editId ? editPurchase?.status : formStatus) || "draft";
-    const hasPayments = (editPurchase?.payments?.length ?? 0) > 0;
+    const hasPayments = (editPurchase?.payments?.filter(p => p.status !== "reversed").length ?? 0) > 0;
     const hasLinkedInvoice = (docType === "GRN" && !!editPurchase?.converted_to) || false;
 
     const purchaseFooterActions = useMemo((): FooterButton[] => {
@@ -909,23 +904,46 @@ export default function Purchases() {
             hasLinkedInvoice
         );
         return buttons
-            .filter((b) => !b.disabled)
+            .filter((b) => !b.disabled || b.key === "reverse")
             .map((btn) => {
-                const base: FooterButton = { label: btn.label, onClick: () => {}, variant: "outline", tooltip: btn.tooltip ?? undefined };
+                const base: FooterButton = { label: btn.label, onClick: () => {}, variant: "outline", tooltip: btn.tooltip ?? undefined, disabled: btn.disabled };
                 if (btn.key === "record_payment") {
-                    base.onClick = () => {
-                        setDeleteConfirmId(null);
-                        setDeleteNegativeStockConfirm(null);
-                        setShowPaymentPanel(true);
+                    base.onClick = async () => {
+                        if (!editId || !editPurchase || !activeStore?.id) return;
+                        try {
+                            const defaultPm = paymentMethods.find((pm) => pm.is_active)?.id ?? paymentMethods[0]?.id;
+                            const res = await axiosPrivate.post("/api/shared/company/payments", {
+                                store_id: activeStore.id,
+                                purchase_id: editId,
+                                vendor_id: editPurchase.vendor_id,
+                                payment_method_id: defaultPm,
+                            });
+                            if (res.data.success && res.data.data?.id) {
+                                await Promise.all([
+                                    queryClient.invalidateQueries({ queryKey: ["payments"] }),
+                                    queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+                                    queryClient.invalidateQueries({ queryKey: ["purchase"] }),
+                                ]);
+                                closePopup();
+                                navigate(`/payments?open=${res.data.data.id}`);
+                            }
+                        } catch (e) {
+                            showToast({ message: (e as Error).message || "Σφάλμα δημιουργίας πληρωμής", type: "error" });
+                        }
                     };
                     base.variant = "primary";
                 } else if (btn.key === "create_invoice" && effectiveDocType === "GRN" && editId) {
                     base.variant = "primary";
                     base.onClick = async () => {
                         try {
-                            const newPur = await mutations.convertFromGrn.mutateAsync(editId);
-                            showToast({ message: "Το GRN μετατράπηκε σε Τιμολόγιο Αγοράς", type: "success" });
-                            openEdit(newPur as unknown as Purchase);
+                            const { purchase: created, reused_existing_draft: reusedDraft } = await mutations.convertFromGrn.mutateAsync(editId);
+                            showToast({
+                                message: reusedDraft
+                                    ? "Υπήρχε ήδη πρόχειρο Τιμολόγιο Αγοράς — ανοίγει το υπάρχον."
+                                    : "Δημιουργήθηκε πρόχειρο Τιμολόγιο Αγοράς",
+                                type: reusedDraft ? "info" : "success",
+                            });
+                            openEdit(created as unknown as Purchase);
                         } catch (e) {
                             showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
                         }
@@ -961,7 +979,7 @@ export default function Purchases() {
                     base.onClick = () => {
                         if (poDeleteBlock) return;
                         setShowQuickCreateVendor(false);
-                        setShowPaymentPanel(false);
+
                         setShowPartialReturnPanel(false);
                         setNegativeStockConfirm(null);
                         setDeleteConfirmId(editId);
@@ -998,8 +1016,13 @@ export default function Purchases() {
                     };
                     base.loading = mutations.updatePurchase.isPending;
                 } else if (btn.key === "close_order" && effectiveDocType === "PO" && editId) {
+                    const poCloseBlock =
+                        editPurchase?.id === editId ? getPoCloseBlockMessageFromLinked(editPurchase?.linked_documents) : null;
                     base.variant = "primary";
+                    base.disabled = !!poCloseBlock;
+                    base.tooltip = poCloseBlock ?? undefined;
                     base.onClick = async () => {
+                        if (poCloseBlock) return;
                         try {
                             await mutations.updatePurchase.mutateAsync({
                                 id: editId,
@@ -1016,7 +1039,12 @@ export default function Purchases() {
                     base.loading = mutations.updatePurchase.isPending;
                 } else if (btn.key === "reverse" && editId && effectiveDocType === "GRN") {
                     base.variant = "outline";
+                    if (hasLinkedInvoice) {
+                        base.disabled = true;
+                        base.tooltip = "Υπάρχει συνδεδεμένο Τιμολόγιο Αγοράς. Διαγράψτε πρώτα το τιμολόγιο.";
+                    }
                     base.onClick = async () => {
+                        if (hasLinkedInvoice) return;
                         try {
                             await mutations.updatePurchase.mutateAsync({
                                 id: editId,
@@ -1031,9 +1059,52 @@ export default function Purchases() {
                         }
                     };
                     base.loading = mutations.updatePurchase.isPending;
+                } else if (btn.key === "reverse" && editId && effectiveDocType === "PUR") {
+                    base.variant = "outline";
+                    if (btn.disabled) {
+                        base.disabled = true;
+                        base.tooltip = btn.tooltip ?? undefined;
+                    }
+                    base.onClick = async () => {
+                        if (btn.disabled) return;
+                        try {
+                            await mutations.updatePurchase.mutateAsync({
+                                id: editId,
+                                status: "reversed",
+                                payment_method_id: formPaymentMethodId,
+                                items: buildItems(),
+                            });
+                            showToast({ message: "Το τιμολόγιο αντιλογίστηκε", type: "success" });
+                            closePopup();
+                        } catch (e) {
+                            showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
+                        }
+                    };
+                    base.loading = mutations.updatePurchase.isPending;
+                } else if (btn.key === "reverse" && editId && effectiveDocType === "DBN") {
+                    base.variant = "outline";
+                    base.onClick = async () => {
+                        try {
+                            await mutations.updatePurchase.mutateAsync({
+                                id: editId,
+                                status: "reversed",
+                                payment_method_id: formPaymentMethodId,
+                                items: buildItems(),
+                            });
+                            showToast({ message: "Το πιστωτικό αντιλογίστηκε", type: "success" });
+                            closePopup();
+                        } catch (e) {
+                            showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
+                        }
+                    };
+                    base.loading = mutations.updatePurchase.isPending;
                 } else if (btn.key === "pdf" && editPurchase) {
                     base.onClick = () => handleDownloadPurchasePdf(editPurchase);
                     base.loading = purchasePdfLoadingId === editId;
+                } else if (["apply", "refund"].includes(btn.key)) {
+                    base.onClick = () => {};
+                    base.disabled = true;
+                    base.tooltip = "Αυτή η λειτουργία δεν είναι ακόμα διαθέσιμη";
                 } else {
                     return null;
                 }
@@ -1069,7 +1140,7 @@ export default function Purchases() {
     const handleOpenConvertedDoc = useCallback(() => {
         if (!editPurchase?.converted_to) return;
         setShowPartialReturnPanel(false);
-        setShowPaymentPanel(false);
+
         setPendingConvertedId(editPurchase.converted_to.id);
         setEditId(editPurchase.converted_to.id);
     }, [editPurchase?.converted_to]);
@@ -1077,7 +1148,7 @@ export default function Purchases() {
     const handleOpenReturnFromDoc = useCallback(() => {
         if (!editPurchase?.return_from) return;
         setShowPartialReturnPanel(false);
-        setShowPaymentPanel(false);
+
         setPendingConvertedId(editPurchase.return_from.id);
         setEditId(editPurchase.return_from.id);
     }, [editPurchase?.return_from]);
@@ -1086,10 +1157,28 @@ export default function Purchases() {
         const pid = editPurchase?.source_purchase?.id;
         if (pid == null) return;
         setShowPartialReturnPanel(false);
-        setShowPaymentPanel(false);
+
         setPendingConvertedId(pid);
         setEditId(pid);
     }, [editPurchase?.source_purchase?.id]);
+
+    const handleOpenSourceGrnDoc = useCallback(() => {
+        const gid = editPurchase?.source_grn?.id;
+        if (gid == null) return;
+        setShowPartialReturnPanel(false);
+
+        setPendingConvertedId(gid);
+        setEditId(gid);
+    }, [editPurchase?.source_grn?.id]);
+
+    const handleOpenSourcePoFromPur = useCallback(() => {
+        const pid = editPurchase?.source_po?.id;
+        if (pid == null) return;
+        setShowPartialReturnPanel(false);
+
+        setPendingConvertedId(pid);
+        setEditId(pid);
+    }, [editPurchase?.source_po?.id]);
 
     useEffect(() => {
         if (pendingConvertedId && editPurchase?.id === pendingConvertedId) {
@@ -1098,12 +1187,6 @@ export default function Purchases() {
         }
     }, [pendingConvertedId, editPurchase, openEdit]);
 
-    const openPayment = useCallback((p: Purchase) => {
-        setDeleteConfirmId(null);
-        setDeleteNegativeStockConfirm(null);
-        openEdit(p);
-        setShowPaymentPanel(true);
-    }, [openEdit]);
 
     const handlePartialReturnSubmit = async () => {
         if (!editId || !editPurchase || editPurchase.id !== editId) return;
@@ -1115,46 +1198,19 @@ export default function Purchases() {
             return;
         }
         try {
-            await mutations.partialReturn.mutateAsync({ id: editId, items });
-            showToast({ message: "Η μερική επιστροφή δημιουργήθηκε επιτυχώς", type: "success" });
-            closePopup();
+            const created = await mutations.partialReturn.mutateAsync({ id: editId, items });
+            showToast({ message: "Το πιστωτικό δημιουργήθηκε σε πρόχειρη κατάσταση", type: "success" });
+            setShowPartialReturnPanel(false);
+            setPartialReturnQuantities({});
+            if (created?.id) {
+                setPendingConvertedId(created.id);
+                setEditId(created.id);
+            }
         } catch (e: unknown) {
             showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
         }
     };
 
-    const handlePaymentSubmit = async () => {
-        if (!editId || !editPurchase || editPurchase.id !== editId || !activeStore?.id) return;
-        const err: Record<string, string> = {};
-        const amt = parseFloat(paymentAmount);
-        const maxDue = editPurchase.amount_due ?? editPurchase.total_amount ?? 0;
-        if (isNaN(amt) || amt <= 0) err.amount = "Το ποσό πρέπει να είναι θετικό";
-        else if (amt > maxDue) err.amount = `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο (${maxDue} €)`;
-        if (!paymentPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
-        setPaymentErrors(err);
-        if (Object.keys(err).length > 0) return;
-        try {
-            await mutations.createPayment.mutateAsync({
-                store_id: activeStore.id,
-                purchase_id: editId,
-                vendor_id: editPurchase.vendor_id ?? undefined,
-                amount: amt,
-                payment_method_id: paymentPaymentMethodId,
-                payment_date: paymentPaymentDate || new Date().toISOString().slice(0, 10),
-                notes: paymentNotes.trim() || undefined,
-            });
-            showToast({ message: "Η πληρωμή καταγράφηκε επιτυχώς", type: "success" });
-            setShowPaymentPanel(false);
-            setPaymentAmount("");
-            setPaymentPaymentMethodId("");
-            setPaymentPaymentDate("");
-            setPaymentNotes("");
-            setPaymentErrors({});
-            void mutations.createPayment.reset();
-        } catch (e: unknown) {
-            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
-        }
-    };
 
     return (
         <div className={styles.wrapper}>
@@ -1307,12 +1363,14 @@ export default function Purchases() {
                                                 {(() => {
                                                     const doc = (p.document_type || "PUR").toUpperCase();
                                                     const st = (p.status || "").toLowerCase();
-                                                    const hasPayments = (p.payments?.length ?? 0) > 0;
+                                                    const hasPayments = p.has_payments || (p.payments?.filter(pay => pay.status !== "reversed").length ?? 0) > 0;
                                                     const hasLinkedInvoice = doc === "GRN" && !!p.converted_to;
                                                     const poCancelBlockList =
                                                         doc === "PO" ? getPoCancelBlockMessageFromLinked(p.linked_documents) : null;
+                                                    const poCloseBlockList =
+                                                        doc === "PO" ? getPoCloseBlockMessageFromLinked(p.linked_documents) : null;
                                                     const listButtons = getPurchaseButtons(doc, st, p.payment_status ?? null, hasPayments, hasLinkedInvoice)
-                                                        .filter((b) => !b.disabled && b.key !== "save" && b.key !== "finalize");
+                                                        .filter((b) => (!b.disabled || b.key === "reverse") && b.key !== "save" && b.key !== "finalize");
 
                                                     return (
                                                         <>
@@ -1324,7 +1382,7 @@ export default function Purchases() {
                                                                 const btnClass = btn.key === "delete" ? styles.deleteBtn : btn.key === "pdf" ? styles.pdfBtn : (btn.key === "record_payment" || btn.key === "create_credit_note") ? styles.mailSendBtn : styles.editBtn;
                                                                 const handler = btn.key === "delete" ? () => {
                                                                         setShowQuickCreateVendor(false);
-                                                                        setShowPaymentPanel(false);
+                                                
                                                                         setShowPartialReturnPanel(false);
                                                                         setNegativeStockConfirm(null);
                                                                         setDeleteNegativeStockConfirm(null);
@@ -1348,15 +1406,43 @@ export default function Purchases() {
                                                                     }
                                                                     : btn.key === "create_invoice" && doc === "GRN" ? async () => {
                                                                         try {
-                                                                            const newPur = await mutations.convertFromGrn.mutateAsync(p.id);
-                                                                            showToast({ message: "Το GRN μετατράπηκε σε Τιμολόγιο Αγοράς", type: "success" });
+                                                                            const { purchase: created, reused_existing_draft: reusedDraft } =
+                                                                                await mutations.convertFromGrn.mutateAsync(p.id);
+                                                                            showToast({
+                                                                                message: reusedDraft
+                                                                                    ? "Υπήρχε ήδη πρόχειρο Τιμολόγιο Αγοράς — ανοίγει το υπάρχον."
+                                                                                    : "Δημιουργήθηκε πρόχειρο Τιμολόγιο Αγοράς",
+                                                                                type: reusedDraft ? "info" : "success",
+                                                                            });
                                                                             if (editId === p.id) { setEditId(null); setPopupOpen(false); }
-                                                                            openEdit(newPur as unknown as Purchase);
+                                                                            openEdit(created as unknown as Purchase);
                                                                         } catch (e) {
                                                                             showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
                                                                         }
                                                                     }
-                                                                    : btn.key === "record_payment" ? () => openPayment(p)
+                                                                    : btn.key === "record_payment" ? async () => {
+                                                                          if (!activeStore?.id) return;
+                                                                          try {
+                                                                              const defaultPm = paymentMethods.find((pm) => pm.is_active)?.id ?? paymentMethods[0]?.id;
+                                                                              const res = await axiosPrivate.post("/api/shared/company/payments", {
+                                                                                  store_id: activeStore.id,
+                                                                                  purchase_id: p.id,
+                                                                                  vendor_id: p.vendor_id,
+                                                                                  payment_method_id: defaultPm,
+                                                                              });
+                                                                              if (res.data.success && res.data.data?.id) {
+                                                                                  await Promise.all([
+                                                                                      queryClient.invalidateQueries({ queryKey: ["payments"] }),
+                                                                                      queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+                                                                                      queryClient.invalidateQueries({ queryKey: ["purchase"] }),
+                                                                                  ]);
+                                                                                  if (editId === p.id) closePopup();
+                                                                                  navigate(`/payments?open=${res.data.data.id}`);
+                                                                              }
+                                                                          } catch (e) {
+                                                                              showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+                                                                          }
+                                                                      }
                                                                     : btn.key === "create_credit_note" ? () => openPartialReturn(p)
                                                                     : btn.key === "pdf" ? () => handleDownloadPurchasePdf(p)
                                                                     : btn.key === "cancel_order" && doc === "PO" ? async () => {
@@ -1421,7 +1507,43 @@ export default function Purchases() {
                                                                                 showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
                                                                             }
                                                                         }
-                                                                      : null;
+                                                                      : btn.key === "reverse" && doc === "PUR"
+                                                                        ? async () => {
+                                                                              try {
+                                                                                  await mutations.updatePurchase.mutateAsync({
+                                                                                      id: p.id,
+                                                                                      status: "reversed",
+                                                                                      payment_method_id: p.payment_method_id,
+                                                                                      items: purchaseItemsToPatchPayload(p),
+                                                                                  });
+                                                                                  showToast({
+                                                                                      message: "Το τιμολόγιο αντιλογίστηκε",
+                                                                                      type: "success",
+                                                                                  });
+                                                                                  if (editId === p.id) closePopup();
+                                                                              } catch (e) {
+                                                                                  showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
+                                                                              }
+                                                                          }
+                                                                        : btn.key === "reverse" && doc === "DBN"
+                                                                          ? async () => {
+                                                                                try {
+                                                                                    await mutations.updatePurchase.mutateAsync({
+                                                                                        id: p.id,
+                                                                                        status: "reversed",
+                                                                                        payment_method_id: p.payment_method_id,
+                                                                                        items: purchaseItemsToPatchPayload(p),
+                                                                                    });
+                                                                                    showToast({
+                                                                                        message: "Το πιστωτικό αντιλογίστηκε",
+                                                                                        type: "success",
+                                                                                    });
+                                                                                    if (editId === p.id) closePopup();
+                                                                                } catch (e) {
+                                                                                    showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
+                                                                                }
+                                                                            }
+                                                                          : null;
 
                                                                 if (!handler && !["reverse", "apply", "refund"].includes(btn.key)) return null;
 
@@ -1435,9 +1557,16 @@ export default function Purchases() {
                                                                             (btn.key === "cancel_order" || btn.key === "delete") &&
                                                                             poCancelBlockList
                                                                                 ? poCancelBlockList
-                                                                                : btn.tooltip || btn.label
+                                                                                : btn.key === "close_order" && poCloseBlockList
+                                                                                    ? poCloseBlockList
+                                                                                    : btn.key === "reverse" && hasLinkedInvoice
+                                                                                        ? "Υπάρχει συνδεδεμένο Τιμολόγιο Αγοράς. Διαγράψτε πρώτα το τιμολόγιο."
+                                                                                        : btn.key === "reverse" && btn.disabled
+                                                                                            ? btn.tooltip || btn.label
+                                                                                            : btn.tooltip || btn.label
                                                                         }
                                                                         disabled={
+                                                                            btn.disabled ||
                                                                             (btn.key === "create_grn" && mutations.createGrnFromPo.isPending) ||
                                                                             (btn.key === "create_invoice" && mutations.convertFromGrn.isPending) ||
                                                                             (btn.key === "cancel_order" &&
@@ -1445,8 +1574,10 @@ export default function Purchases() {
                                                                             (btn.key === "delete" &&
                                                                                 doc === "PO" &&
                                                                                 (!!poCancelBlockList || mutations.deletePurchase.isPending)) ||
-                                                                            (btn.key === "close_order" && mutations.updatePurchase.isPending) ||
-                                                                            (btn.key === "reverse" && mutations.updatePurchase.isPending) ||
+                                                                            (btn.key === "close_order" &&
+                                                                                (!!poCloseBlockList || mutations.updatePurchase.isPending)) ||
+                                                                            (btn.key === "reverse" &&
+                                                                                (hasLinkedInvoice || mutations.updatePurchase.isPending)) ||
                                                                             (btn.key === "pdf" && purchasePdfLoadingId === p.id)
                                                                         }
                                                                     >
@@ -1485,9 +1616,7 @@ export default function Purchases() {
                           ? "Επιβεβαίωση επεξεργασίας με αρνητικό απόθεμα"
                           : showPartialReturnPanel
                             ? "Επιστροφή Προϊόντων"
-                            : showPaymentPanel
-                              ? "Καταχώρηση Πληρωμής"
-                              : showQuickCreateVendor
+                            : showQuickCreateVendor
                                 ? "Νέος Προμηθευτής"
                                 : editId
                                   ? "Επεξεργασία αγοράς"
@@ -1508,9 +1637,7 @@ export default function Purchases() {
                           ? { label: "Ακύρωση", onClick: () => setNegativeStockConfirm(null), variant: "outline" }
                           : showPartialReturnPanel
                             ? { label: "← Πίσω", onClick: () => { setShowPartialReturnPanel(false); setPartialReturnQuantities({}); }, variant: "outline" }
-                            : showPaymentPanel
-                              ? { label: "← Πίσω", onClick: () => { setShowPaymentPanel(false); setPaymentAmount(""); setPaymentPaymentMethodId(""); setPaymentPaymentDate(""); setPaymentNotes(""); setPaymentErrors({}); }, variant: "outline" }
-                              : showQuickCreateVendor
+                            : showQuickCreateVendor
                                 ? { label: "← Πίσω", onClick: () => { setShowQuickCreateVendor(false); setQcVendorErrors({}); }, variant: "outline" }
                                 : { label: "Κλείσιμο", onClick: closePopup, variant: "outline" }
                 }
@@ -1543,14 +1670,7 @@ export default function Purchases() {
                                   variant: "primary",
                                   loading: mutations.partialReturn.isPending,
                               }
-                            : showPaymentPanel
-                              ? {
-                                    label: "Καταχώρηση",
-                                    onClick: handlePaymentSubmit,
-                                    variant: "primary",
-                                    loading: mutations.createPayment.isPending,
-                                }
-                              : showQuickCreateVendor
+                            : showQuickCreateVendor
                                 ? {
                                       label: "Αποθήκευση",
                                       onClick: handleSaveVendorQuickCreate,
@@ -1625,7 +1745,7 @@ export default function Purchases() {
                                         className={styles.convertedToLink}
                                         onClick={() => {
                                             setShowPartialReturnPanel(false);
-                                            setShowPaymentPanel(false);
+                    
                                             setPendingConvertedId(doc.id);
                                             setEditId(doc.id);
                                         }}
@@ -1640,18 +1760,82 @@ export default function Purchases() {
                 {editPurchase &&
                     editId === editPurchase.id &&
                     (editPurchase.document_type || "").toUpperCase() === "GRN" &&
-                    editPurchase.source_purchase && (
+                    (editPurchase.source_purchase || editPurchase.converted_to) && (
                         <div className={styles.formRow} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e5e7eb" }}>
                             <div className={styles.formGroup} style={{ flex: 1 }}>
                                 <span className={styles.formLabel}>Σχετικά έγγραφα</span>
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                                    <button type="button" className={styles.convertedToLink} onClick={handleOpenSourcePoDoc}>
-                                        {purchaseDocDisplayLabel(
-                                            "PO",
-                                            editPurchase.source_purchase.invoice_number,
-                                            editPurchase.source_purchase.id
-                                        )}
-                                    </button>
+                                    {editPurchase.source_purchase && (
+                                        <button type="button" className={styles.convertedToLink} onClick={handleOpenSourcePoDoc}>
+                                            {purchaseDocDisplayLabel(
+                                                "PO",
+                                                editPurchase.source_purchase.invoice_number,
+                                                editPurchase.source_purchase.id
+                                            )}
+                                        </button>
+                                    )}
+                                    {editPurchase.converted_to && editPurchase.status !== "cancelled" && (
+                                        <button type="button" className={styles.convertedToLink} onClick={handleOpenConvertedDoc}>
+                                            {purchaseDocDisplayLabel(
+                                                editPurchase.converted_to.document_type,
+                                                editPurchase.converted_to.invoice_number,
+                                                editPurchase.converted_to.id
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                {editPurchase &&
+                    editId === editPurchase.id &&
+                    (editPurchase.document_type || "").toUpperCase() === "PUR" &&
+                    (editPurchase.source_grn || editPurchase.source_po || (editPurchase.linked_documents?.length ?? 0) > 0 || (editPurchase.payments?.length ?? 0) > 0) && (
+                        <div className={styles.formRow} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e5e7eb" }}>
+                            <div className={styles.formGroup} style={{ flex: 1 }}>
+                                <span className={styles.formLabel}>Σχετικά έγγραφα</span>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                                    {editPurchase.source_po && (
+                                        <button type="button" className={styles.convertedToLink} onClick={handleOpenSourcePoFromPur}>
+                                            {purchaseDocDisplayLabel(
+                                                editPurchase.source_po.document_type,
+                                                editPurchase.source_po.invoice_number,
+                                                editPurchase.source_po.id
+                                            )}
+                                        </button>
+                                    )}
+                                    {editPurchase.source_grn && (
+                                        <button type="button" className={styles.convertedToLink} onClick={handleOpenSourceGrnDoc}>
+                                            {purchaseDocDisplayLabel(
+                                                editPurchase.source_grn.document_type,
+                                                editPurchase.source_grn.invoice_number,
+                                                editPurchase.source_grn.id
+                                            )}
+                                        </button>
+                                    )}
+                                    {editPurchase.linked_documents?.filter(d => (d.document_type || "").toUpperCase() === "DBN").map(doc => (
+                                        <button
+                                            key={doc.id}
+                                            type="button"
+                                            className={styles.convertedToLink}
+                                            onClick={() => setEditId(doc.id)}
+                                        >
+                                            {purchaseDocDisplayLabel(doc.document_type, doc.invoice_number, doc.id)}
+                                        </button>
+                                    ))}
+                                    {editPurchase.payments?.map(pay => (
+                                        <button
+                                            key={pay.id}
+                                            type="button"
+                                            className={styles.convertedToLink}
+                                            onClick={() => {
+                                                closePopup();
+                                                navigate(`/payments?open=${pay.id}`);
+                                            }}
+                                        >
+                                            {`PAY-${String(pay.id).padStart(4, "0")}`}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -1664,7 +1848,6 @@ export default function Purchases() {
                                 showQuickCreateVendor ||
                                 negativeStockConfirm ||
                                 showPartialReturnPanel ||
-                                showPaymentPanel ||
                                 deleteConfirmId !== null
                                     ? "translateX(-50%)"
                                     : undefined,
@@ -1698,7 +1881,7 @@ export default function Purchases() {
                                             setShowQuickCreateVendor(true);
                                         }}
                                         placeholder="Επιλέξτε προμηθευτή (προαιρετικό)"
-                                        disabled={isFormReadOnly || isGrnFromPo}
+                                        disabled={isFormReadOnly || isGrnFromPo || isPurFromGrn}
                                     />
                                 </div>
                             </div>
@@ -1711,15 +1894,16 @@ export default function Purchases() {
                                     </div>
                                 </div>
                                 <div className={styles.formGroup}>
-                                    <label className={styles.formLabel}>Αριθμός τιμολογίου</label>
+                                    <label className={styles.formLabel}>
+                                        {docType === "PO" ? "Αριθμός παραγγελίας" : "Αριθμός παραστατικού"}
+                                    </label>
                                     <input
                                         type="text"
                                         className={styles.formInput}
                                         value={formInvoiceNumber}
                                         onChange={(e) => setFormInvoiceNumber(e.target.value)}
-                                        placeholder="Προαιρετικό"
+                                        placeholder={!editId ? "Αυτόματη αρίθμηση" : ""}
                                         disabled={((editId && editPurchase?.id === editId ? (editPurchase?.status || "").toLowerCase() : formStatus) !== "draft") || isFormReadOnly}
-                                        title={((editId && editPurchase?.id === editId ? (editPurchase?.status || "").toLowerCase() : formStatus) !== "draft" || isFormReadOnly) ? "Το πεδίο τιμολογίου δεν αλλάζει" : undefined}
                                     />
                                 </div>
                                 <div className={styles.formGroup}>
@@ -1792,7 +1976,7 @@ export default function Purchases() {
                                     <h4 className={styles.itemsTitle}>
                                         {docType === "GRN" ? "Παραλαβή ειδών" : docType === "PO" ? "Είδη παραγγελίας" : "Είδη"}
                                     </h4>
-                                    <button type="button" className={styles.addItemBtn} onClick={addItemRow} disabled={isFormReadOnly}>
+                                    <button type="button" className={styles.addItemBtn} onClick={addItemRow} disabled={isFormReadOnly || isPurFromGrn}>
                                         <Plus size={14} />
                                         {isGrnFromPo ? "Προσθήκη επιπλέον είδους (εκτός παραγγελίας)" : "Προσθήκη γραμμής"}
                                     </button>
@@ -1817,7 +2001,7 @@ export default function Purchases() {
                                         orderedQty != null && row.poLineId != null && recBefore + recv > orderedQty
                                             ? recBefore + recv - orderedQty
                                             : 0;
-                                    const useOrderLineLayout = docType === "GRN" || docType === "PO";
+                                    const useOrderLineLayout = true;
                                     const qtyColumnClass = useOrderLineLayout ? styles.formGroupQtyGrn : "";
                                     const qtyLabel = docType === "GRN" ? "Παραληφθείσα ποσότητα" : "Ποσότητα";
                                     return (
@@ -1832,7 +2016,7 @@ export default function Purchases() {
                                             type="text"
                                             className={styles.formInput}
                                             placeholder="Αναζήτηση προϊόντος ή παραλλαγής..."
-                                            disabled={isFormReadOnly || lockPoLine}
+                                            disabled={isFormReadOnly || lockPoLine || isPurFromGrn}
                                             value={
                                                 variantDropdownRowId === row.id
                                                     ? variantSearchByRow[row.id] ?? ""
@@ -1898,7 +2082,7 @@ export default function Purchases() {
                                         placeholder="Ποσότ."
                                         value={row.quantity}
                                         onChange={(e) => updateItemRow(row.id, "quantity", e.target.value)}
-                                        disabled={isFormReadOnly}
+                                        disabled={isFormReadOnly || isPurFromGrn}
                                     />
                                     {isGrnFromPo && row.poLineId != null && !row.isExtra && orderedQty != null && (
                                         <div className={styles.grnQtyMeta} title={`Παραγγελία: ${orderedQty} · Ήδη παραλήφθηκαν: ${recBefore}`}>
@@ -1978,7 +2162,7 @@ export default function Purchases() {
                                         className={styles.removeItemBtn}
                                         onClick={() => removeItemRow(row.id)}
                                         title="Αφαίρεση"
-                                        disabled={isFormReadOnly}
+                                        disabled={isFormReadOnly || isPurFromGrn}
                                     >
                                         <Trash2 size={16} />
                                     </button>
@@ -2006,10 +2190,9 @@ export default function Purchases() {
 
                             {formDocumentType === "PUR" && (editPurchase?.status || "").toLowerCase() === "completed" && editPurchase && editId === editPurchase.id && (
                                 <div className={styles.paymentSection} style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #e5e7eb" }}>
-                                    <h4 className={styles.formLabel} style={{ marginBottom: 12 }}>Πληρωμές</h4>
-                                    <div className={styles.formRow} style={{ marginBottom: 12, flexWrap: "wrap", gap: 12 }}>
+                                    <div className={styles.formRow} style={{ flexWrap: "wrap", gap: 12 }}>
                                         <span>
-                                            Κατάσταση:{" "}
+                                            Κατάσταση πληρωμής:{" "}
                                             <span className={styles[`paymentStatus_${(editPurchase.payment_status || "unpaid")}`] ?? styles.paymentStatus_unpaid}>
                                                 {PAYMENT_STATUS_LABELS[editPurchase.payment_status as keyof typeof PAYMENT_STATUS_LABELS] ?? editPurchase.payment_status ?? "—"}
                                             </span>
@@ -2021,36 +2204,6 @@ export default function Purchases() {
                                             </>
                                         )}
                                     </div>
-                                    {(editPurchase.payments?.length ?? 0) > 0 && (
-                                        <div style={{ marginBottom: 12 }}>
-                                            <span className={styles.formLabel}>Πληρωμές:</span>
-                                            <ul style={{ margin: "8px 0 0 0", paddingLeft: 20 }}>
-                                                {editPurchase.payments!.map((r) => (
-                                                    <li key={r.id} style={{ marginBottom: 4 }}>
-                                                        {formatDate(r.payment_date)} — {formatCurrency(r.amount)}
-                                                        {r.is_auto && <span style={{ marginLeft: 6, fontSize: 12, color: "#6b7280" }}>(αυτόματη)</span>}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                    {(editPurchase.amount_due ?? 0) > 0 && activeStore?.id && (
-                                        <Button
-                                            variant="primary"
-                                            onClick={() => {
-                                                setDeleteConfirmId(null);
-                                                setDeleteNegativeStockConfirm(null);
-                                                setPaymentAmount(String(editPurchase.amount_due ?? ""));
-                                                setPaymentPaymentMethodId(paymentMethods[0]?.id ?? "");
-                                                setPaymentPaymentDate(new Date().toISOString().slice(0, 10));
-                                                setPaymentNotes("");
-                                                setPaymentErrors({});
-                                                setShowPaymentPanel(true);
-                                            }}
-                                        >
-                                            Καταχώρηση Πληρωμής
-                                        </Button>
-                                    )}
                                 </div>
                             )}
 
@@ -2132,62 +2285,6 @@ export default function Purchases() {
                                             </div>
                                         );
                                     })}
-                                </div>
-                            ) : showPaymentPanel ? (
-                                <div className={styles.quickCreateForm}>
-                                    <div className={styles.formGroup}>
-                                        <label className={styles.formLabel}>Ποσό *</label>
-                                        <input
-                                            type="number"
-                                            className={styles.formInput}
-                                            min={0}
-                                            max={editPurchase?.amount_due ?? editPurchase?.total_amount ?? 0}
-                                            step={0.01}
-                                            value={paymentAmount}
-                                            onChange={(e) => {
-                                                setPaymentAmount(e.target.value);
-                                                setPaymentErrors((prev) => ({ ...prev, amount: "" }));
-                                            }}
-                                            placeholder="0.00"
-                                        />
-                                        {paymentErrors.amount && <span className={styles.formError}>{paymentErrors.amount}</span>}
-                                    </div>
-                                    <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                                        <label className={styles.formLabel}>Τρόπος πληρωμής *</label>
-                                        <select
-                                            className={styles.formSelect}
-                                            value={paymentPaymentMethodId}
-                                            onChange={(e) => {
-                                                setPaymentPaymentMethodId(e.target.value);
-                                                setPaymentErrors((prev) => ({ ...prev, payment_method_id: "" }));
-                                            }}
-                                        >
-                                            <option value="">Επιλέξτε</option>
-                                            {paymentMethods.filter((pm) => pm.is_active).map((pm) => (
-                                                <option key={pm.id} value={pm.id}>{pm.name}</option>
-                                            ))}
-                                        </select>
-                                        {paymentErrors.payment_method_id && <span className={styles.formError}>{paymentErrors.payment_method_id}</span>}
-                                    </div>
-                                    <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                                        <label className={styles.formLabel}>Ημερομηνία</label>
-                                        <input
-                                            type="date"
-                                            className={styles.formInput}
-                                            value={paymentPaymentDate}
-                                            onChange={(e) => setPaymentPaymentDate(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                                        <label className={styles.formLabel}>Σημειώσεις</label>
-                                        <input
-                                            type="text"
-                                            className={styles.formInput}
-                                            value={paymentNotes}
-                                            onChange={(e) => setPaymentNotes(e.target.value)}
-                                            placeholder="Προαιρετικό"
-                                        />
-                                    </div>
                                 </div>
                             ) : (
                                 <div className={styles.quickCreateForm}>

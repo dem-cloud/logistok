@@ -25,6 +25,7 @@ export type PurchasePayment = {
     payment_date: string;
     notes: string | null;
     is_auto?: boolean;
+    status?: "draft" | "posted" | "reversed";
 };
 
 export type Purchase = {
@@ -53,6 +54,10 @@ export type Purchase = {
         status?: string;
         purchase_items: PurchaseItem[];
     } | null;
+    /** PUR from GRN: source receipt note */
+    source_grn?: { id: number; document_type: string; invoice_number: string | null; status?: string } | null;
+    /** PUR from GRN from PO: original purchase order */
+    source_po?: { id: number; document_type: string; invoice_number: string | null; status?: string } | null;
     /** GRN from PO: cumulative received per PO line id (excludes current draft GRN) */
     po_line_received_totals?: Record<string, number> | null;
     payment_terms?: string | null;
@@ -60,6 +65,7 @@ export type Purchase = {
     payment_status?: string | null;
     amount_due?: number | null;
     payments?: PurchasePayment[];
+    has_payments?: boolean;
     purchase_items: PurchaseItem[];
     store?: { id: string; name: string } | null;
     vendor?: { id: string; name: string } | null;
@@ -281,12 +287,17 @@ export function usePurchaseMutations() {
         mutationFn: async (id: number) => {
             const res = await axiosPrivate.post(`/api/shared/company/purchases/${id}/convert-from-grn`);
             if (!res.data.success) throw new Error(res.data.message || "Αποτυχία μετατροπής GRN σε τιμολόγιο");
-            return res.data.data as Purchase;
+            return {
+                purchase: res.data.data as Purchase,
+                reused_existing_draft: Boolean(res.data.reused_existing_draft),
+            };
         },
-        onSuccess: () => {
+        onSuccess: (result, grnId) => {
             queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] });
-            queryClient.invalidateQueries({ queryKey: ["store-products", activeCompany?.id] });
-            queryClient.invalidateQueries({ queryKey: ["stock-movements", activeCompany?.id] });
+            queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id, grnId] });
+            if (result.purchase?.id != null) {
+                queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id, result.purchase.id] });
+            }
         },
     });
 

@@ -11,7 +11,8 @@ async function recomputeSalePaymentStatus(supabase, companyId, saleId) {
     const { data: receipts } = await supabase
         .from("receipts")
         .select("amount")
-        .eq("sale_id", saleId);
+        .eq("sale_id", saleId)
+        .eq("status", "posted");
     const sum = receipts?.reduce((s, r) => s + Number(r.amount), 0) ?? 0;
     const total = Number(sale?.total_amount ?? 0);
     const payment_status = total <= 0 ? "paid" : sum >= total ? "paid" : sum > 0 ? "partial" : "unpaid";
@@ -36,7 +37,8 @@ async function recomputePurchasePaymentStatus(supabase, companyId, purchaseId) {
     const { data: payments } = await supabase
         .from("payments")
         .select("amount")
-        .eq("purchase_id", purchaseId);
+        .eq("purchase_id", purchaseId)
+        .eq("status", "posted");
     const sum = payments?.reduce((s, p) => s + Number(p.amount), 0) ?? 0;
     const total = Number(purchase?.total_amount ?? 0);
     const payment_status = total <= 0 ? "paid" : sum >= total ? "paid" : sum > 0 ? "partial" : "unpaid";

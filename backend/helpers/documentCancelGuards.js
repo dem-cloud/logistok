@@ -113,6 +113,48 @@ async function getPoCancelBlockReason(supabase, companyId, poId) {
 }
 
 /**
+ * Close guard: only draft GRNs block closing a partially-received PO.
+ * Finalized GRNs are expected and must NOT block.
+ * @returns {Promise<null | { code: string, message: string, blockingChildren: Array<{id:number,document_type:string,status:string}> }>}
+ */
+async function getPoCloseBlockReason(supabase, companyId, poId) {
+    const { data: grns, error } = await supabase
+        .from("purchases")
+        .select("id, document_type, status, invoice_number")
+        .eq("company_id", companyId)
+        .eq("converted_from_id", poId)
+        .eq("document_type", "GRN");
+
+    if (error) {
+        return {
+            code: "GUARD_QUERY_FAILED",
+            message: "Σφάλμα ελέγχου συνδεδεμένων παραλαβών",
+            blockingChildren: [],
+        };
+    }
+
+    for (const row of grns || []) {
+        const st = normalizeStatus(row.status);
+        if (GRN_STATUS_DELETE_FIRST.has(st)) {
+            return {
+                code: "LINKED_DRAFT_EXISTS",
+                message:
+                    "Υπάρχει πρόχειρο Δελτίο Παραλαβής συνδεδεμένο με την παραγγελία. Διαγράψτε πρώτα το δελτίο και μετά κλείστε την παραγγελία.",
+                blockingChildren: [
+                    {
+                        id: row.id,
+                        document_type: "GRN",
+                        status: st,
+                        invoice_number: row.invoice_number ?? null,
+                    },
+                ],
+            };
+        }
+    }
+    return null;
+}
+
+/**
  * @returns {Promise<null | { code: string, message: string, blockingChildren: Array<{id:number,invoice_type:string,status:string}> }>}
  */
 async function getSoCancelBlockReason(supabase, companyId, soId) {
@@ -153,6 +195,7 @@ async function getSoCancelBlockReason(supabase, companyId, soId) {
 
 module.exports = {
     getPoCancelBlockReason,
+    getPoCloseBlockReason,
     getSoCancelBlockReason,
     GRN_STATUSES_ALLOW_PO_CANCEL,
     GRN_STATUS_DELETE_FIRST,
