@@ -104,22 +104,38 @@ export function useVendor(id: string | null) {
     };
 }
 
+export type VendorOutstandingData = {
+    amount: number;
+    amountPayables: number;
+    amountReceivables: number;
+};
+
 export function useVendorOutstanding(id: string | null) {
     const { activeCompany } = useAuth();
 
-    const query = useQuery<{ amount: number }>({
+    const query = useQuery<VendorOutstandingData>({
         queryKey: ["vendorOutstanding", activeCompany?.id, id],
         queryFn: async () => {
             const res = await axiosPrivate.get(`/api/shared/company/vendors/${id}/outstanding`);
-            if (res.data.success) return res.data.data;
-            return { amount: 0 };
+            if (res.data.success) {
+                const d = res.data.data;
+                const pay = Number(d?.amountPayables ?? d?.amount ?? 0) || 0;
+                const rec = Number(d?.amountReceivables ?? 0) || 0;
+                return { amount: pay, amountPayables: pay, amountReceivables: rec };
+            }
+            return { amount: 0, amountPayables: 0, amountReceivables: 0 };
         },
         enabled: !!activeCompany?.id && !!id,
         staleTime: 1000 * 30,
     });
 
+    const payables = query.data?.amountPayables ?? query.data?.amount ?? 0;
+    const receivables = query.data?.amountReceivables ?? 0;
+
     return {
-        outstandingAmount: query.data?.amount ?? 0,
+        outstandingAmount: payables,
+        payablesAmount: payables,
+        receivablesAmount: receivables,
         isLoading: query.isLoading,
         refetch: query.refetch,
     };

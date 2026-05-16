@@ -458,7 +458,9 @@ Disabled αν το Τιμολόγιο ήταν Unpaid.
 
 4. Φάση: Κλειστό (Closed / Applied)
 
-Όταν η αξία του Πιστωτικού έχει χρησιμοποιηθεί πλήρως για να μειώσει ένα χρέος ή έχει επιστραφεί το ποσό.
+Μετάβαση σε Κλειστό όταν:
+- Έχει καταχωρηθεί Είσπραξη που καλύπτει πλήρως την Απαίτηση (Paid case)
+- ή το τιμολόγιο έχει πιστωθεί πλήρως (Fully Credited case)
 
 Reference Links:
 Εφαρμόστηκε στο Τιμολόγιο: #INV-2024-001.
@@ -467,7 +469,9 @@ Status Label: Κλειστό
 Buttons: [Αντιλογισμός Πιστωτικού], [Λήψη PDF], [Κλείσιμο]
 
 [Αντιλογισμός Πιστωτικού] -> DISABLED.
-Tooltip: "Το πιστωτικό είναι κλειστό. Ακυρώστε πρώτα τον συμψηφισμό ή την είσπραξη #PAY-RET-05 για να προχωρήσετε".
+Tooltip: 
+Αν έκλεισε λόγω Είσπραξης: "Το πιστωτικό είναι κλειστό. Ακυρώστε πρώτα την Είσπραξη για να προχωρήσετε."
+Αν έκλεισε λόγω Fully Credited: "Το πιστωτικό είναι κλειστό. Το τιμολόγιο έχει πιστωθεί πλήρως."
 [Λήψη PDF].
 [Κλείσιμο].
 
@@ -505,6 +509,56 @@ Business Logic: Αντιλογισμός Πιστωτικού (Background)
 3. Οικονομικός Αντιλογισμός (Accounting Logic)
 Αν το Τιμολόγιο ήταν Unpaid (ή Partially Paid): Ο Αντιλογισμός δημιουργεί νέα εγγραφή που επαναφέρει το χρέος (Liability +). Το Τιμολόγιο επανέρχεται δυναμικά σε Unpaid ή Partially Paid.
 Αν το Τιμολόγιο ήταν Paid: Ο Αντιλογισμός μηδενίζει την Απαίτηση από τον προμηθευτή. Το Τιμολόγιο παραμένει Paid.
+
+===
+
+Τιμολόγιο Unpaid = χρωστάς 1000€ στον προμηθευτή
+Δημιουργείς Πιστωτικό 200€
+Οριστικοποιείς το Πιστωτικό
+Το σύστημα απλά μειώνει την οφειλή: χρωστάς πλέον 800€
+
+Δεν κινούνται χρήματα πουθενά. Απλά αλλάζει ο αριθμός που χρωστάς. Το Πιστωτικό μένει Οριστικοποιημένο και το Τιμολόγιο παραμένει Unpaid με νέο υπόλοιπο 800€.
+
+===
+
+Partially Paid = χρωστάς 1000€, έχεις πληρώσει 400€, υπόλοιπο 600€
+Δημιουργείς Πιστωτικό 200€:
+
+Το υπόλοιπο μειώνεται: χρωστάς πλέον 400€
+Δεν κινούνται χρήματα
+Τιμολόγιο παραμένει Partially Paid με νέο υπόλοιπο 400€
+Πιστωτικό μένει Οριστικοποιημένο
+
+===
+
+Paid = έχεις πληρώσει 1000€, δεν χρωστάς τίποτα
+Δημιουργείς Πιστωτικό 200€:
+
+Δεν υπάρχει οφειλή να μειωθεί
+Ο προμηθευτής χρωστάει σε εσένα 200€
+Δημιουργείται Απαίτηση στην καρτέλα προμηθευτή
+Τιμολόγιο παραμένει Paid
+Πιστωτικό μένει Οριστικοποιημένο μέχρι να καταχωρηθεί Είσπραξη
+Μόλις καταχωρηθεί η Είσπραξη → Πιστωτικό πάει σε Κλειστό
+
+//////////////
+The Invoice needs 3 separate status fields, not 2:
+1. General Status (Γενική Κατάσταση)
+Reflects the document lifecycle: Draft, Posted, Reversed
+2. Payment Status (Κατάσταση Πληρωμής)
+Reflects the payment state: Unpaid, Partially Paid, Paid
+3. Credit Status (Κατάσταση Πίστωσης)
+Reflects whether a credit note has been applied: Partially Credited, Fully Credited
+This field should only be visible when a credit note exists. Otherwise it stays hidden/empty.
+Example combinations:
+
+Posted + Unpaid + (hidden) → normal unpaid invoice
+Posted + Paid + (hidden) → fully paid invoice
+Posted + Paid + Partially Credited → paid invoice with partial return
+Posted + Unpaid + Fully Credited → unpaid invoice fully covered by credit note
+Posted + Partially Paid + Partially Credited → partially paid with partial return
+Reversed + (hidden) + (hidden) → reversed invoice, payment and credit status irrelevant
+
 ------------
 
 Πωλησεις ↓
@@ -1126,31 +1180,3 @@ Business Logic: Αντιλογισμός Εξαγωγής (Background)
 Αντιλογισμός Εξαγωγής: +2
 Κόστος: Η αξία της αποθήκης αποκαθίσταται βάσει της τιμής που είχε το είδος κατά την έξοδο.
 ------------
-
-## Ακύρωση γονικού παραστατικού (μόνο άμεσα παιδιά)
-
-Η επικύρωση γίνεται **μόνο** για εγγραφές με `converted_from_id = parent.id` (ίδιο `company_id`), **όχι** διαδοχικά (π.χ. PO δεν ελέγχει PUR μέσω GRN).
-
-### PO → GRN
-
-- **Επιτρεπτό ακύρωμα PO** μόνο αν κάθε συνδεδεμένο GRN έχει `status` **ακριβώς** `reversed` (lowercase).
-- **Μπλοκάρισμα (παραδείγματα ακριβών τιμών DB):**
-  - `draft` → κωδικός `LINKED_DRAFT_EXISTS` (διαγραφή GRN πρώτα).
-  - `pending_invoice`, `received`, `completed`, `invoiced` → `LINKED_POSTED_REQUIRES_REVERSAL` (αντιλογισμός GRN πρώτα).
-  - Οποιαδήποτε άλλη τιμή → `LINKED_CHILD_STATUS_NOT_ALLOWED` (fail-closed).
-
-### SO → DNO
-
-- **Επιτρεπτό ακύρωμα SO** μόνο αν κάθε συνδεδεμένο DNO έχει `status` **ακριβώς** `reversed`.
-- **Μπλοκάρισμα (παραδείγματα):**
-  - `draft` → `LINKED_DRAFT_EXISTS`.
-  - `pending_invoicing`, `completed`, `invoiced` → `LINKED_POSTED_REQUIRES_REVERSAL`.
-  - Άλλη τιμή → `LINKED_CHILD_STATUS_NOT_ALLOWED`.
-
-### API
-
-- `PATCH /company/purchases/:id` με `status: cancelled` για PO: 400 + `code`, `message`, `blocking_children` όταν μπλοκάρεται.
-- `PATCH /company/sales/:id` με ακύρωση SO: ίδια μορφή.
-- `GET /company/purchases` / `GET /company/purchases/:id`: για PO, `linked_documents` περιλαμβάνει GRN (λίστα λεπτομερειών μπορεί να εμφανίζει και άλλα συνδεδεμένα· το **cancel guard** στο backend ελέγχει μόνο GRN).
-- `GET /company/sales` / `GET /company/sales/:id`: για SO, `linked_documents` = άμεσα DNO.
-

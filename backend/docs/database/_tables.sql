@@ -447,7 +447,7 @@ create table public.purchases (
   constraint purchases_vendor_id_fkey foreign KEY (vendor_id) references vendors (id),
   constraint purchases_document_type_check check (
     (
-      document_type = any (array['PUR'::text, 'GRN'::text, 'DBN'::text, 'PO'::text])
+      document_type = any (array['PUR'::text, 'GRN'::text, 'CN'::text, 'PO'::text])
     )
   ),
   constraint purchases_status_check check (
@@ -675,8 +675,7 @@ create table public.stock_movements (
             'adjustment'::text,
             'transfer'::text,
             'sale_reversal'::text,
-            'credit_note'::text,
-            'debit_note'::text
+            'credit_note'::text
           ]
         )
       )

@@ -460,7 +460,7 @@ line items:       Disabled
 PDF button:       ✅ show (με watermark ΑΚΥΡΩΘΗΚΕ)
 Payment panel:    ❌ not show
 Delete:           ❌ not show
-Reference:        ✅ "Ακυρώθηκε → DBN-2026-0001" (clickable link)
+Reference:        ✅ "Ακυρώθηκε → CN-2026-0001" (clickable link)
 
 ## Δελτιο Παραλαβης - Goods Receipt Note (GRN) | Παραλαβή χωρίς τιμολόγιο ακόμα
 
@@ -520,14 +520,14 @@ PDF button:       ✅ show (με watermark ΑΚΥΡΩΘΗΚΕ)
 Conversion:       ❌ not show
 Delete:           ❌ not show
 
-## Χρεωστικό Σημείωμα - Debit Note (DBN) | για επιστροφές προς προμηθευτή
+## Πιστωτικό Σημείωμα - Credit Note (CN) | για επιστροφές προς προμηθευτή
 
 Δημιουργία: Μόνο από κουμπί "Επιστροφή Προϊόντων" σε Completed/Received PUR
             ΟΧΙ από dropdown τύπων
 
 1. Δημιουργία (New) — από κουμπί "Επιστροφή Προϊόντων"
 Status options:   Draft, Completed
-document_type:    Disabled (πάντα DBN, ορίζεται αυτόματα)
+document_type:    Disabled (πάντα CN, ορίζεται αυτόματα)
 invoice_date:     Ενεργό (default σήμερα)
 vendor:           Disabled (auto-filled από original PUR)
 line items:       Ποσότητες ενεργές (max = original quantity)
@@ -558,7 +558,7 @@ PDF button:       ✅ show
 Delete:           ❌ not show
 Reference:        ✅ "Επιστροφή από [PUR-2026-0001]" (clickable link)
 
-4. Auto-created DBN (από ακύρωση Completed/Received PUR)
+4. Auto-created CN (από ακύρωση Completed/Received PUR)
 Status:           Completed (αυτόματα, skip Draft)
 Πεδία:            Όλα disabled (read-only)
 document_type:    Disabled

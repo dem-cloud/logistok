@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Search, ArrowRight, Package, FileDown, Banknote, RotateCcw, XCircle, Link2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ArrowRight, Package, FileDown, Banknote, RotateCcw, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -37,14 +37,22 @@ const PURCHASE_ICON_MAP: Record<string, React.ComponentType<{ size?: number; cla
     ArrowRight,
     Package,
     XCircle,
-    Link2,
 };
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
     unpaid: "Απλήρωτο",
-    partial: "Μερική",
-    paid: "Πληρωμένο",
-    overdue: "Εκπροθεσμο",
+    partial: "Μερικώς Εξοφλημένο",
+    paid: "Εξοφλημένο",
+    overdue: "Εκπρόθεσμο",
+};
+
+/**
+ * Credit status labels (independent dimension from payment_status). Only shown
+ * when the PUR has a non-reversed credit note linked.
+ */
+const CREDIT_STATUS_LABELS: Record<string, string> = {
+    partially_credited: "Μερικώς Πιστωμένο",
+    credited: "Πλήρως Πιστωμένο",
 };
 
 const PURCHASE_STATUSES: { value: string; label: string }[] = [
@@ -111,6 +119,22 @@ function getPurchaseApiErrorMessage(e: unknown): string {
 }
 
 /** invoice_number is already full (e.g. GRN-2026-0013); avoid GRN-GRN-2026-0013 when joining with document_type */
+/** PUR credit badge / buttons: never show monetary «credited» when cash-paid unless every line is returned. */
+function effectivePurCreditStatusForUi(p: {
+    document_type?: string | null;
+    payment_status?: string | null;
+    credit_status?: string | null;
+    fully_credited?: boolean | null;
+} | null | undefined): "partially_credited" | "credited" | null {
+    if (!p || String(p.document_type || "").toUpperCase() !== "PUR") return null;
+    const cs = p.credit_status || null;
+    if (!cs) return null;
+    const ps = String(p.payment_status || "").toLowerCase();
+    if (ps === "paid" && cs === "credited" && !p.fully_credited) return "partially_credited";
+    if (cs === "credited" || cs === "partially_credited") return cs;
+    return null;
+}
+
 function purchaseDocDisplayLabel(
     documentType: string | null | undefined,
     invoiceNumber: string | null | undefined,
@@ -146,16 +170,33 @@ function formatCurrency(amount: number) {
     }).format(amount);
 }
 
+function formatDateDMY(iso: string) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    if (!y || !m || !d) return iso;
+    return `${d}/${m}/${y}`;
+}
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
 export default function Purchases() {
     const { activeStore, showToast } = useAuth();
     const [searchFilter, setSearchFilter] = useState("");
     const [vendorFilter, setVendorFilter] = useState<string>("");
     const [dateFrom, setDateFrom] = useState<string>("");
     const [dateTo, setDateTo] = useState<string>("");
+    // Hidden native date-picker refs — see openDatePicker below. Keeping the
+    // visible input as plain text guarantees our dd/mm/yyyy formatting and
+    // the Greek placeholder regardless of the browser locale.
+    const dateFromRef = useRef<HTMLInputElement | null>(null);
+    const dateToRef = useRef<HTMLInputElement | null>(null);
     const [documentTypeFilter, setDocumentTypeFilter] = useState<string>("");
     const [statusFilter, setStatusFilter] = useState<string>("");
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState<number>(20);
     const [popupOpen, setPopupOpen] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
+    const [pendingFooterKey, setPendingFooterKey] = useState<string | null>(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
     const [deleteNegativeStockConfirm, setDeleteNegativeStockConfirm] = useState<
         Array<{ product_name: string; variant_name: string; required: number; available: number }> | null
@@ -173,6 +214,38 @@ export default function Purchases() {
         documentType: documentTypeFilter || undefined,
         status: statusFilter || undefined,
     });
+
+    // Reset pagination when any filter changes so the user isn't stranded on
+    // a page that no longer exists in the filtered result set.
+    useEffect(() => {
+        setPage(1);
+    }, [searchDebounced, vendorFilter, dateFrom, dateTo, documentTypeFilter, statusFilter, pageSize]);
+
+    const totalPages = Math.max(1, Math.ceil(purchases.length / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const paginatedPurchases = useMemo(
+        () => purchases.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+        [purchases, currentPage, pageSize],
+    );
+    const rangeStart = purchases.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const rangeEnd = Math.min(currentPage * pageSize, purchases.length);
+
+    const openDatePicker = useCallback((ref: React.RefObject<HTMLInputElement | null>) => {
+        const el = ref.current;
+        if (!el) return;
+        // showPicker is the only reliable cross-browser way to open the native
+        // calendar on first click when the visible input is a sibling.
+        if (typeof el.showPicker === "function") {
+            try {
+                el.showPicker();
+                return;
+            } catch {
+                /* fall through */
+            }
+        }
+        el.focus();
+        el.click();
+    }, []);
 
     const { purchase: editPurchase, isLoading: editLoading } = usePurchase(editId);
     const location = useLocation();
@@ -334,18 +407,6 @@ export default function Purchases() {
         resetForm();
         navigate(location.pathname, { replace: true, state: {} });
     }, [resetForm, navigate, location.pathname]);
-
-    const openPartialReturn = useCallback((p: Purchase) => {
-        setDeleteConfirmId(null);
-        setDeleteNegativeStockConfirm(null);
-        openEdit(p);
-        setShowPartialReturnPanel(true);
-        const init: Record<number, number> = {};
-        for (const it of p.purchase_items || []) {
-            init[it.id] = it.quantity;
-        }
-        setPartialReturnQuantities(init);
-    }, [openEdit]);
 
     useEffect(() => {
         const openId = (location.state as { openPurchaseId?: number })?.openPurchaseId;
@@ -625,22 +686,26 @@ export default function Purchases() {
         };
     }, [formItems]);
 
+    const isValidItemRow = useCallback((r: LineItemRow): boolean => {
+        if (r.productId === "" || r.variantId === "") return false;
+        if (!(Number(r.quantity) > 0)) return false;
+        const c = Number(r.costPriceWithoutVat);
+        if (!Number.isFinite(c)) return false;
+        return formDocumentType === "CN" ? c <= 0 : c >= 0;
+    }, [formDocumentType]);
+
     const validateForm = (): boolean => {
         const err: Record<string, string> = {};
         if (!activeStore?.id) err.store_id = "Επιλέξτε κατάστημα από την πλευρική μπάρα";
         if (!formPaymentMethodId) err.payment_method_id = "Επιλέξτε τρόπο πληρωμής";
-        const validItems = formItems.filter(
-            (r) => r.productId !== "" && r.variantId !== "" && Number(r.quantity) > 0 && Number(r.costPriceWithoutVat) >= 0
-        );
+        const validItems = formItems.filter(isValidItemRow);
         if (validItems.length === 0) err.items = "Προσθέστε τουλάχιστον ένα είδος με ποσότητα και τιμή αγοράς";
         setFormErrors(err);
         return Object.keys(err).length === 0;
     };
 
     useEffect(() => {
-        const validItems = formItems.filter(
-            (r) => r.productId !== "" && r.variantId !== "" && Number(r.quantity) > 0 && Number(r.costPriceWithoutVat) >= 0
-        );
+        const validItems = formItems.filter(isValidItemRow);
         if (validItems.length === 0) return;
         setFormErrors((prev) => {
             if (!prev.items) return prev;
@@ -648,12 +713,10 @@ export default function Purchases() {
             delete next.items;
             return next;
         });
-    }, [formItems]);
+    }, [formItems, isValidItemRow]);
 
     const buildItems = (): PurchaseItemInput[] => {
-        const validItems = formItems.filter(
-            (r) => r.productId !== "" && r.variantId !== "" && Number(r.quantity) > 0 && Number(r.costPriceWithoutVat) >= 0
-        );
+        const validItems = formItems.filter(isValidItemRow);
         return validItems.map((r) => {
             const vatExempt = r.vatExempt === true;
             const vatRate = vatExempt ? 0 : (r.vatRate ?? 0);
@@ -814,9 +877,8 @@ export default function Purchases() {
             const dt = (editPurchase.document_type || "").toUpperCase();
             const st = (editPurchase.status || "").toLowerCase();
             if (dt === "PUR") return st === "received" || st === "completed";
-            // Δελτίο παραλαβής: μετά την οριστικοποίηση (π.χ. Προς Τιμολόγηση) τα είδη είναι μόνο για προβολή
             if (dt === "GRN") return st !== "draft";
-            if (dt === "DBN") return st === "completed";
+            if (dt === "CN") return st !== "draft";
             return false;
         })()
     );
@@ -858,7 +920,7 @@ export default function Purchases() {
                         ? "paraggelia"
                         : (p.document_type || "").toUpperCase() === "GRN"
                           ? "paralavi"
-                          : (p.document_type || "").toUpperCase() === "DBN"
+                          : (p.document_type || "").toUpperCase() === "CN"
                             ? "pistotiko"
                             : "agora";
                 const filename = `${prefix}-${p.invoice_number ?? p.id}.pdf`;
@@ -891,20 +953,68 @@ export default function Purchases() {
     const hasPayments = (editPurchase?.payments?.filter(p => p.status !== "reversed").length ?? 0) > 0;
     const hasLinkedInvoice = (docType === "GRN" && !!editPurchase?.converted_to) || false;
 
+    const handleCreateCreditNote = useCallback(async (p: Purchase) => {
+        const items = (p.purchase_items || [])
+            .map((it) => {
+                const remaining =
+                    it.remaining_credit_quantity != null && Number.isFinite(Number(it.remaining_credit_quantity))
+                        ? Number(it.remaining_credit_quantity)
+                        : Number(it.quantity);
+                return { purchase_item_id: it.id, quantity: Math.max(0, remaining) };
+            })
+            .filter((row) => row.quantity > 0);
+        if (items.length === 0) {
+            showToast({ message: "Δεν απομένει ποσότητα για νέο πιστωτικό σε αυτό το παραστατικό", type: "error" });
+            return;
+        }
+        try {
+            const created = await mutations.partialReturn.mutateAsync({ id: p.id, items });
+            const reused = (created as unknown as { reused_existing_draft?: boolean })?.reused_existing_draft;
+            showToast({
+                message: reused
+                    ? "Άνοιξε το υπάρχον πρόχειρο πιστωτικό"
+                    : "Το πιστωτικό δημιουργήθηκε σε πρόχειρη κατάσταση",
+                type: "success",
+            });
+            if (created?.id) {
+                openEdit(created as unknown as Purchase);
+            }
+        } catch (e: unknown) {
+            showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
+        }
+    }, [mutations.partialReturn, openEdit, showToast]);
+
     const purchaseFooterActions = useMemo((): FooterButton[] => {
         if (!inMainForm) return [];
         if (editId && editLoading) return [];
         const effectiveDocType = (editId && editPurchase?.id === editId ? editPurchase?.document_type : formDocumentType) || "PUR";
         const effectiveStatus = (editId && editPurchase?.id === editId ? editPurchase?.status : formStatus) || "draft";
+        const p = editPurchase?.id === editId ? editPurchase : null;
+        const amountDueForButtons = (() => {
+            if (!p) return 0;
+            const raw = p.amount_due;
+            if (raw != null && Number.isFinite(Number(raw))) return Number(raw);
+            const ps = String(p.payment_status || "").toLowerCase();
+            if (ps === "paid") return 0;
+            // Legacy / race: amount_due not yet persisted — unpaid PUR still owes the full total.
+            return Number(p.total_amount ?? 0);
+        })();
         const buttons = getPurchaseButtons(
             effectiveDocType,
             effectiveStatus,
             editPurchase?.payment_status ?? null,
             hasPayments,
-            hasLinkedInvoice
+            hasLinkedInvoice,
+            {
+                fullyCredited: !!editPurchase?.fully_credited,
+                cnCloseReason: editPurchase?.cn_close_reason ?? null,
+                creditStatus: effectivePurCreditStatusForUi(editPurchase),
+                hasDraftCn: !!editPurchase?.has_draft_cn,
+                amountDue: amountDueForButtons,
+            }
         );
         return buttons
-            .filter((b) => !b.disabled || b.key === "reverse")
+            .filter((b) => !b.disabled || b.key === "reverse" || b.key === "create_credit_note" || b.key === "record_payment")
             .map((btn) => {
                 const base: FooterButton = { label: btn.label, onClick: () => {}, variant: "outline", tooltip: btn.tooltip ?? undefined, disabled: btn.disabled };
                 if (btn.key === "record_payment") {
@@ -967,8 +1077,9 @@ export default function Purchases() {
                     };
                     base.loading = mutations.createGrnFromPo.isPending;
                 } else if (btn.key === "create_credit_note" && editPurchase) {
-                    base.onClick = () => openPartialReturn(editPurchase);
+                    base.onClick = () => handleCreateCreditNote(editPurchase);
                     base.variant = "primary";
+                    base.loading = mutations.partialReturn.isPending;
                 } else if (btn.key === "delete" && editId) {
                     const poDeleteBlock =
                         effectiveDocType === "PO" && effectiveStatus === "draft"
@@ -986,18 +1097,26 @@ export default function Purchases() {
                     };
                     base.variant = "danger";
                 } else if (btn.key === "save" || btn.key === "finalize") {
-                    base.onClick = () => {
-                        if (btn.key === "finalize") {
-                            let nextStatus = formStatus;
-                            if (effectiveDocType === "PO") nextStatus = "sent";
-                            else if (effectiveDocType === "GRN") nextStatus = "pending_invoice";
-                            else if (effectiveDocType === "PUR" || effectiveDocType === "DBN") nextStatus = "completed";
-                            void handleSave(nextStatus);
-                        } else {
-                            void handleSave();
+                    const key = btn.key;
+                    base.onClick = async () => {
+                        setPendingFooterKey(key);
+                        try {
+                            if (key === "finalize") {
+                                let nextStatus = formStatus;
+                                if (effectiveDocType === "PO") nextStatus = "sent";
+                                else if (effectiveDocType === "GRN") nextStatus = "pending_invoice";
+                                else if (effectiveDocType === "PUR") nextStatus = "completed";
+                                else if (effectiveDocType === "CN") nextStatus = "completed";
+                                await handleSave(nextStatus);
+                            } else {
+                                await handleSave();
+                            }
+                        } finally {
+                            setPendingFooterKey(null);
                         }
                     };
                     base.variant = "primary";
+                    base.loading = pendingFooterKey === key;
                 } else if (btn.key === "cancel_order" && effectiveDocType === "PO" && editId) {
                     const poCancelBlock =
                         editPurchase?.id === editId ? getPoCancelBlockMessageFromLinked(editPurchase?.linked_documents) : null;
@@ -1081,9 +1200,10 @@ export default function Purchases() {
                         }
                     };
                     base.loading = mutations.updatePurchase.isPending;
-                } else if (btn.key === "reverse" && editId && effectiveDocType === "DBN") {
+                } else if (btn.key === "reverse" && editId && effectiveDocType === "CN") {
                     base.variant = "outline";
                     base.onClick = async () => {
+                        setPendingFooterKey("reverse");
                         try {
                             await mutations.updatePurchase.mutateAsync({
                                 id: editId,
@@ -1095,16 +1215,48 @@ export default function Purchases() {
                             closePopup();
                         } catch (e) {
                             showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
+                        } finally {
+                            setPendingFooterKey(null);
                         }
                     };
-                    base.loading = mutations.updatePurchase.isPending;
+                    base.loading = pendingFooterKey === "reverse";
                 } else if (btn.key === "pdf" && editPurchase) {
                     base.onClick = () => handleDownloadPurchasePdf(editPurchase);
                     base.loading = purchasePdfLoadingId === editId;
-                } else if (["apply", "refund"].includes(btn.key)) {
-                    base.onClick = () => {};
-                    base.disabled = true;
-                    base.tooltip = "Αυτή η λειτουργία δεν είναι ακόμα διαθέσιμη";
+                } else if (btn.key === "create_receipt" && editId && effectiveDocType === "CN") {
+                    base.variant = "primary";
+                    base.onClick = async () => {
+                        if (!activeStore?.id || !editPurchase) return;
+                        setPendingFooterKey("create_receipt");
+                        try {
+                            // Create (or reuse) a draft Receipt linked to the CN, then
+                            // navigate to /receipts so the user finalizes it there — this
+                            // mirrors the "Καταχώρηση Πληρωμής" flow on PUR invoices.
+                            // The CN itself stays "completed" until the receipt is
+                            // finalized; the backend cascades it to "closed" at that point.
+                            const defaultPm = paymentMethods.find((pm) => pm.is_active)?.id
+                                ?? paymentMethods[0]?.id;
+                            const res = await axiosPrivate.post("/api/shared/company/receipts", {
+                                store_id: activeStore.id,
+                                purchase_id: editId,
+                                payment_method_id: defaultPm,
+                            });
+                            if (res.data.success && res.data.data?.id) {
+                                await Promise.all([
+                                    queryClient.invalidateQueries({ queryKey: ["receipts"] }),
+                                    queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+                                    queryClient.invalidateQueries({ queryKey: ["purchase"] }),
+                                ]);
+                                closePopup();
+                                navigate(`/receipts?open=${res.data.data.id}`);
+                            }
+                        } catch (e) {
+                            showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
+                        } finally {
+                            setPendingFooterKey(null);
+                        }
+                    };
+                    base.loading = pendingFooterKey === "create_receipt";
                 } else {
                     return null;
                 }
@@ -1128,11 +1280,13 @@ export default function Purchases() {
         mutations.updatePurchase,
         mutations.createGrnFromPo,
         mutations.convertFromGrn,
+        mutations.partialReturn,
         formPaymentMethodId,
         closePopup,
-        openPartialReturn,
+        handleCreateCreditNote,
         showToast,
         handleSave,
+        pendingFooterKey,
     ]);
 
     const [pendingConvertedId, setPendingConvertedId] = useState<number | null>(null);
@@ -1191,8 +1345,17 @@ export default function Purchases() {
     const handlePartialReturnSubmit = async () => {
         if (!editId || !editPurchase || editPurchase.id !== editId) return;
         const items = (editPurchase.purchase_items || [])
-            .filter((it) => (partialReturnQuantities[it.id] ?? 0) > 0)
-            .map((it) => ({ purchase_item_id: it.id, quantity: partialReturnQuantities[it.id]! }));
+            .map((it) => {
+                const maxRem =
+                    it.remaining_credit_quantity != null && Number.isFinite(Number(it.remaining_credit_quantity))
+                        ? Math.max(0, Number(it.remaining_credit_quantity))
+                        : Number(it.quantity);
+                const q =
+                    partialReturnQuantities[it.id] != null ? partialReturnQuantities[it.id]! : maxRem;
+                return { it, maxRem, q: Math.min(q, maxRem) };
+            })
+            .filter(({ maxRem, q }) => maxRem > 0 && q > 0)
+            .map(({ it, q }) => ({ purchase_item_id: it.id, quantity: q }));
         if (items.length === 0) {
             showToast({ message: "Επιλέξτε ποσότητα επιστροφής για τουλάχιστον μία γραμμή", type: "error" });
             return;
@@ -1251,21 +1414,77 @@ export default function Purchases() {
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Από</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                        />
+                        <div className={styles.dateInputWrap} onClick={() => openDatePicker(dateFromRef)}>
+                            <input
+                                type="text"
+                                className={styles.filterInput}
+                                value={dateFrom ? formatDateDMY(dateFrom) : ""}
+                                placeholder="Ημερομηνία από"
+                                readOnly
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        openDatePicker(dateFromRef);
+                                    }
+                                }}
+                            />
+                            <input
+                                ref={dateFromRef}
+                                type="date"
+                                className={styles.hiddenDateInput}
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                tabIndex={-1}
+                                aria-hidden="true"
+                            />
+                            {dateFrom && (
+                                <button
+                                    type="button"
+                                    className={styles.dateClearBtn}
+                                    aria-label="Καθαρισμός ημερομηνίας"
+                                    onClick={(e) => { e.stopPropagation(); setDateFrom(""); }}
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Έως</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                        />
+                        <div className={styles.dateInputWrap} onClick={() => openDatePicker(dateToRef)}>
+                            <input
+                                type="text"
+                                className={styles.filterInput}
+                                value={dateTo ? formatDateDMY(dateTo) : ""}
+                                placeholder="Ημερομηνία έως"
+                                readOnly
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        openDatePicker(dateToRef);
+                                    }
+                                }}
+                            />
+                            <input
+                                ref={dateToRef}
+                                type="date"
+                                className={styles.hiddenDateInput}
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                tabIndex={-1}
+                                aria-hidden="true"
+                            />
+                            {dateTo && (
+                                <button
+                                    type="button"
+                                    className={styles.dateClearBtn}
+                                    aria-label="Καθαρισμός ημερομηνίας"
+                                    onClick={(e) => { e.stopPropagation(); setDateTo(""); }}
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Τύπος</label>
@@ -1324,7 +1543,6 @@ export default function Purchases() {
             </div>
 
             <div className={styles.section}>
-                <h3 className={styles.sectionTitle}>Λίστα αγορών</h3>
                 {!activeStore?.id ? (
                     <p className={styles.sectionHint}>
                         Επιλέξτε κατάστημα από την πλευρική μπάρα για να δείτε και να δημιουργήσετε αγορές.
@@ -1333,8 +1551,6 @@ export default function Purchases() {
                     <div className={styles.listLoading}>
                         <LoadingSpinner />
                     </div>
-                ) : purchases.length === 0 ? (
-                    <p className={styles.sectionHint}>Δεν υπάρχουν αγορές. Κάντε κλικ στο «Νέα αγορά».</p>
                 ) : (
                     <div className={styles.tableWrapper}>
                         <table className={styles.table}>
@@ -1350,7 +1566,22 @@ export default function Purchases() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {purchases.map((p) => (
+                                {paginatedPurchases.length === 0 ? (
+                                    <tr className={styles.tableEmptyRow}>
+                                        <td colSpan={7}>
+                                            <div className={styles.tableEmptyState}>
+                                                <div className={styles.tableEmptyIcon} aria-hidden>
+                                                    <Package size={32} strokeWidth={1.35} />
+                                                </div>
+                                                <p className={styles.tableEmptyTitle}>Δεν υπάρχουν παραστατικά αγοράς</p>
+                                                <p className={styles.tableEmptyHint}>
+                                                    Ο κατάλογος είναι κενός. Χρησιμοποιήστε «Νέο Παραστατικό» για να δημιουργήσετε την πρώτη σας εγγραφή.
+                                                </p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                paginatedPurchases.map((p) => (
                                     <tr key={p.id}>
                                         <td>{p.invoice_number ?? `#${p.id}`}</td>
                                         <td>{p.vendor?.name ?? "—"}</td>
@@ -1369,8 +1600,14 @@ export default function Purchases() {
                                                         doc === "PO" ? getPoCancelBlockMessageFromLinked(p.linked_documents) : null;
                                                     const poCloseBlockList =
                                                         doc === "PO" ? getPoCloseBlockMessageFromLinked(p.linked_documents) : null;
-                                                    const listButtons = getPurchaseButtons(doc, st, p.payment_status ?? null, hasPayments, hasLinkedInvoice)
-                                                        .filter((b) => (!b.disabled || b.key === "reverse") && b.key !== "save" && b.key !== "finalize");
+                                                    const listAmountDue = (() => {
+                                                        const raw = p.amount_due;
+                                                        if (raw != null && Number.isFinite(Number(raw))) return Number(raw);
+                                                        if (String(p.payment_status || "").toLowerCase() === "paid") return 0;
+                                                        return Number(p.total_amount ?? 0);
+                                                    })();
+                                                    const listButtons = getPurchaseButtons(doc, st, p.payment_status ?? null, hasPayments, hasLinkedInvoice, { fullyCredited: !!p.fully_credited, cnCloseReason: p.cn_close_reason ?? null, creditStatus: effectivePurCreditStatusForUi(p), hasDraftCn: !!p.has_draft_cn, amountDue: listAmountDue })
+                                                        .filter((b) => (!b.disabled || b.key === "reverse" || b.key === "create_credit_note" || b.key === "record_payment") && b.key !== "save" && b.key !== "finalize");
 
                                                     return (
                                                         <>
@@ -1443,7 +1680,7 @@ export default function Purchases() {
                                                                               showToast({ message: (e as Error).message || "Σφάλμα", type: "error" });
                                                                           }
                                                                       }
-                                                                    : btn.key === "create_credit_note" ? () => openPartialReturn(p)
+                                                                    : btn.key === "create_credit_note" ? () => handleCreateCreditNote(p)
                                                                     : btn.key === "pdf" ? () => handleDownloadPurchasePdf(p)
                                                                     : btn.key === "cancel_order" && doc === "PO" ? async () => {
                                                                         try {
@@ -1525,7 +1762,7 @@ export default function Purchases() {
                                                                                   showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
                                                                               }
                                                                           }
-                                                                        : btn.key === "reverse" && doc === "DBN"
+                                                                        : btn.key === "reverse" && doc === "CN"
                                                                           ? async () => {
                                                                                 try {
                                                                                     await mutations.updatePurchase.mutateAsync({
@@ -1543,9 +1780,34 @@ export default function Purchases() {
                                                                                     showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
                                                                                 }
                                                                             }
-                                                                          : null;
+                                                                          : btn.key === "create_receipt" && doc === "CN"
+                                                                            ? async () => {
+                                                                                  if (!activeStore?.id) return;
+                                                                                  try {
+                                                                                      const defaultPm = paymentMethods.find((pm) => pm.is_active)?.id
+                                                                                          ?? paymentMethods[0]?.id
+                                                                                          ?? p.payment_method_id;
+                                                                                      const res = await axiosPrivate.post("/api/shared/company/receipts", {
+                                                                                          store_id: activeStore.id,
+                                                                                          purchase_id: p.id,
+                                                                                          payment_method_id: defaultPm,
+                                                                                      });
+                                                                                      if (res.data.success && res.data.data?.id) {
+                                                                                          await Promise.all([
+                                                                                              queryClient.invalidateQueries({ queryKey: ["receipts"] }),
+                                                                                              queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+                                                                                              queryClient.invalidateQueries({ queryKey: ["purchase"] }),
+                                                                                          ]);
+                                                                                          if (editId === p.id) closePopup();
+                                                                                          navigate(`/receipts?open=${res.data.data.id}`);
+                                                                                      }
+                                                                                  } catch (e) {
+                                                                                      showToast({ message: getPurchaseApiErrorMessage(e), type: "error" });
+                                                                                  }
+                                                                              }
+                                                                            : null;
 
-                                                                if (!handler && !["reverse", "apply", "refund"].includes(btn.key)) return null;
+                                                                if (!handler && btn.key !== "reverse") return null;
 
                                                                 return (
                                                                     <button
@@ -1594,7 +1856,8 @@ export default function Purchases() {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                ))
+                                )}
                             </tbody>
                         </table>
                         {isFetching && (
@@ -1602,6 +1865,50 @@ export default function Purchases() {
                                 <LoadingSpinner />
                             </div>
                         )}
+                    </div>
+                )}
+                {activeStore?.id && purchases.length > 0 && (
+                    <div className={styles.pagination}>
+                        <div className={styles.paginationInfo}>
+                            Εμφάνιση <strong>{rangeStart}</strong>–<strong>{rangeEnd}</strong> από <strong>{purchases.length}</strong>
+                        </div>
+                        <div className={styles.paginationControls}>
+                            <label className={styles.pageSizeLabel}>
+                                Γραμμές
+                                <select
+                                    className={styles.pageSizeSelect}
+                                    value={pageSize}
+                                    onChange={(e) => setPageSize(Number(e.target.value))}
+                                >
+                                    {PAGE_SIZE_OPTIONS.map((n) => (
+                                        <option key={n} value={n}>{n}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <div className={styles.pageNav}>
+                                <button
+                                    type="button"
+                                    className={styles.pageBtn}
+                                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                    disabled={currentPage <= 1}
+                                    aria-label="Προηγούμενη σελίδα"
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                <span className={styles.pageIndicator}>
+                                    Σελίδα <strong>{currentPage}</strong> / {totalPages}
+                                </span>
+                                <button
+                                    type="button"
+                                    className={styles.pageBtn}
+                                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage >= totalPages}
+                                    aria-label="Επόμενη σελίδα"
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
@@ -1694,23 +2001,40 @@ export default function Purchases() {
                 footerActions={purchaseFooterActions.length > 0 ? purchaseFooterActions : undefined}
                 contentLoading={!!editId && editLoading && inMainForm}
             >
-                {editPurchase && editId === editPurchase.id && (editPurchase.document_type || "PUR").toUpperCase() === "DBN" && editPurchase.return_from && (
+                {editPurchase && editId === editPurchase.id && (editPurchase.document_type || "PUR").toUpperCase() === "CN" && (editPurchase.return_from || (editPurchase.linked_documents?.some((d) => (d.document_type || "").toUpperCase() === "RECEIPT") ?? false)) && (
                     <div className={styles.formRow} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e5e7eb" }}>
-                        <div className={styles.formGroup}>
-                            <span className={styles.formLabel}>Αναφορά</span>
-                            <button
-                                type="button"
-                                className={styles.convertedToLink}
-                                onClick={handleOpenReturnFromDoc}
-                            >
-                                Επιστροφή από [
-                                {purchaseDocDisplayLabel(
-                                    editPurchase.return_from.document_type,
-                                    editPurchase.return_from.invoice_number,
-                                    editPurchase.return_from.id,
+                        <div className={styles.formGroup} style={{ flex: 1 }}>
+                            <span className={styles.formLabel}>Σχετικά έγγραφα</span>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                                {editPurchase.return_from && (
+                                    <button
+                                        type="button"
+                                        className={styles.convertedToLink}
+                                        onClick={handleOpenReturnFromDoc}
+                                    >
+                                        {purchaseDocDisplayLabel(
+                                            editPurchase.return_from.document_type,
+                                            editPurchase.return_from.invoice_number,
+                                            editPurchase.return_from.id,
+                                        )}
+                                    </button>
                                 )}
-                                ]
-                            </button>
+                                {editPurchase.linked_documents
+                                    ?.filter((d) => (d.document_type || "").toUpperCase() === "RECEIPT")
+                                    .map((doc) => (
+                                        <button
+                                            key={`rcp-${doc.id}`}
+                                            type="button"
+                                            className={styles.convertedToLink}
+                                            onClick={() => {
+                                                closePopup();
+                                                navigate(`/receipts?open=${doc.id}`);
+                                            }}
+                                        >
+                                            {`REC-${String(doc.id).padStart(4, "0")}`}
+                                        </button>
+                                    ))}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1790,7 +2114,10 @@ export default function Purchases() {
                 {editPurchase &&
                     editId === editPurchase.id &&
                     (editPurchase.document_type || "").toUpperCase() === "PUR" &&
-                    (editPurchase.source_grn || editPurchase.source_po || (editPurchase.linked_documents?.length ?? 0) > 0 || (editPurchase.payments?.length ?? 0) > 0) && (
+                    (editPurchase.source_grn ||
+                        editPurchase.source_po ||
+                        (editPurchase.linked_documents?.length ?? 0) > 0 ||
+                        (editPurchase.payments?.length ?? 0) > 0) && (
                         <div className={styles.formRow} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #e5e7eb" }}>
                             <div className={styles.formGroup} style={{ flex: 1 }}>
                                 <span className={styles.formLabel}>Σχετικά έγγραφα</span>
@@ -1813,7 +2140,7 @@ export default function Purchases() {
                                             )}
                                         </button>
                                     )}
-                                    {editPurchase.linked_documents?.filter(d => (d.document_type || "").toUpperCase() === "DBN").map(doc => (
+                                    {editPurchase.linked_documents?.filter(d => (d.document_type || "").toUpperCase() === "CN").map(doc => (
                                         <button
                                             key={doc.id}
                                             type="button"
@@ -1823,6 +2150,21 @@ export default function Purchases() {
                                             {purchaseDocDisplayLabel(doc.document_type, doc.invoice_number, doc.id)}
                                         </button>
                                     ))}
+                                    {editPurchase.linked_documents
+                                        ?.filter((d) => (d.document_type || "").toUpperCase() === "RECEIPT")
+                                        .map((doc) => (
+                                            <button
+                                                key={`rcp-${doc.id}`}
+                                                type="button"
+                                                className={styles.convertedToLink}
+                                                onClick={() => {
+                                                    closePopup();
+                                                    navigate(`/receipts?open=${doc.id}`);
+                                                }}
+                                            >
+                                                {`REC-${String(doc.id).padStart(4, "0")}`}
+                                            </button>
+                                        ))}
                                     {editPurchase.payments?.map(pay => (
                                         <button
                                             key={pay.id}
@@ -2197,6 +2539,23 @@ export default function Purchases() {
                                                 {PAYMENT_STATUS_LABELS[editPurchase.payment_status as keyof typeof PAYMENT_STATUS_LABELS] ?? editPurchase.payment_status ?? "—"}
                                             </span>
                                         </span>
+                                        {/* credit_status: paid + partial CN must not read as «Πλήρως» unless every line is returned. */}
+                                        {(() => {
+                                            const creditUi = effectivePurCreditStatusForUi(editPurchase);
+                                            if (!creditUi) return null;
+                                            return (
+                                                <span>
+                                                    Κατάσταση πίστωσης:{" "}
+                                                    <span
+                                                        className={
+                                                            styles[`creditStatus_${creditUi}`] ?? styles.creditStatus_partially_credited
+                                                        }
+                                                    >
+                                                        {CREDIT_STATUS_LABELS[creditUi] ?? creditUi}
+                                                    </span>
+                                                </span>
+                                            );
+                                        })()}
                                         {(editPurchase.amount_due ?? 0) > 0 && (
                                             <>
                                                 <span>Υπόλοιπο: {formatCurrency(editPurchase.amount_due ?? 0)}</span>
@@ -2262,8 +2621,16 @@ export default function Purchases() {
                                         const prod = products.find((p) => p.id === it.product_id);
                                         const variant = prod?.variants?.find((v) => v.id === it.product_variant_id);
                                         const label = prod && variant ? `${prod.name} — ${variant.name}` : `#${it.id}`;
-                                        const maxQty = it.quantity;
-                                        const qty = partialReturnQuantities[it.id] ?? 0;
+                                        const maxQty =
+                                            it.remaining_credit_quantity != null &&
+                                            Number.isFinite(Number(it.remaining_credit_quantity))
+                                                ? Math.max(0, Number(it.remaining_credit_quantity))
+                                                : Number(it.quantity);
+                                        const qty =
+                                            partialReturnQuantities[it.id] != null
+                                                ? partialReturnQuantities[it.id]!
+                                                : maxQty;
+                                        if (maxQty <= 0) return null;
                                         return (
                                             <div key={it.id} className={styles.formRow} style={{ marginBottom: 12, alignItems: "center" }}>
                                                 <div style={{ flex: 2 }}>{label}</div>

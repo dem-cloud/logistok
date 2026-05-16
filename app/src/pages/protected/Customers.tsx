@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCustomers, useCustomerMutations, useCustomerOutstanding, type Customer } from "@/hooks/useCustomers";
 import SidePopup from "@/components/reusable/SidePopup";
@@ -15,16 +15,35 @@ const countryList = Object.entries(countries.getNames("el"))
     .map(([code, name]) => ({ code, name }))
     .sort((a, b) => a.name.localeCompare(b.name, "el"));
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
 export default function Customers() {
     const { showToast } = useAuth();
     const [searchFilter, setSearchFilter] = useState("");
     const [popupOpen, setPopupOpen] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState<number>(20);
 
     const { customers, isLoading, isFetching } = useCustomers({
         search: searchFilter.trim() || undefined,
     });
+
+    // Reset pagination when filters change so the user doesn't land on a page
+    // that no longer exists in the filtered set.
+    useEffect(() => {
+        setPage(1);
+    }, [searchFilter, pageSize]);
+
+    const totalPages = Math.max(1, Math.ceil(customers.length / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const paginatedCustomers = useMemo(
+        () => customers.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+        [customers, currentPage, pageSize],
+    );
+    const rangeStart = customers.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const rangeEnd = Math.min(currentPage * pageSize, customers.length);
 
     const mutations = useCustomerMutations();
     const { outstandingAmount, isLoading: outstandingLoading } = useCustomerOutstanding(editId);
@@ -166,14 +185,6 @@ export default function Customers() {
         }
     };
 
-    const formatMeta = (c: Customer) => {
-        const parts: string[] = [];
-        if (c.phone) parts.push(c.phone);
-        if (c.email) parts.push(c.email);
-        if (c.tax_id) parts.push(`ΑΦΜ: ${c.tax_id}`);
-        return parts.join(" · ") || "—";
-    };
-
     const showCustomersLoading = isLoading && customers.length === 0;
 
     return (
@@ -187,13 +198,16 @@ export default function Customers() {
                 <div className={styles.filtersRow}>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Αναζήτηση</label>
-                        <input
-                            type="text"
-                            className={styles.filterInput}
-                            placeholder="Όνομα, email ή τηλέφωνο..."
-                            value={searchFilter}
-                            onChange={(e) => setSearchFilter(e.target.value)}
-                        />
+                        <div className={styles.searchWrapper}>
+                            <Search size={16} className={styles.searchIcon} />
+                            <input
+                                type="text"
+                                className={styles.filterInput}
+                                placeholder="Όνομα, email ή τηλέφωνο..."
+                                value={searchFilter}
+                                onChange={(e) => setSearchFilter(e.target.value)}
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className={styles.addBtn}>
@@ -205,49 +219,119 @@ export default function Customers() {
             </div>
 
             <div className={styles.section}>
-                <h3 className={styles.sectionTitle}>Λίστα πελατών</h3>
                 {showCustomersLoading ? (
                     <div className={styles.listLoading}>
                         <LoadingSpinner />
                     </div>
-                ) : customers.length === 0 ? (
-                    <p className={styles.sectionHint}>
-                        Δεν υπάρχουν πελάτες. Κάντε κλικ στο «Προσθήκη πελάτη».
-                    </p>
                 ) : (
                     <div className={styles.listWrapper}>
-                        <div className={styles.customerList}>
-                        {customers.map((c) => (
-                            <div key={c.id} className={styles.customerCard}>
-                                <div className={styles.customerInfo}>
-                                    <span className={styles.customerName}>{c.full_name}</span>
-                                    <span className={styles.customerMeta}>{formatMeta(c)}</span>
-                                </div>
-                                <div className={styles.customerCardActions}>
-                                    <button
-                                        type="button"
-                                        className={styles.editBtn}
-                                        onClick={() => openEdit(c)}
-                                        title="Επεξεργασία"
-                                    >
-                                        <Pencil size={16} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={styles.deleteBtn}
-                                        onClick={() => setDeleteConfirmId(c.id)}
-                                        title="Διαγραφή"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                        <div className={styles.tableWrap}>
+                            <table className={styles.table}>
+                                <thead>
+                                    <tr>
+                                        <th>Όνομα</th>
+                                        <th>Τηλέφωνο</th>
+                                        <th>Email</th>
+                                        <th>ΑΦΜ</th>
+                                        <th className={styles.actionsCol}></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {paginatedCustomers.length === 0 ? (
+                                        <tr className={styles.tableEmptyRow}>
+                                            <td colSpan={5}>
+                                                <div className={styles.tableEmptyState}>
+                                                    <div className={styles.tableEmptyIcon} aria-hidden>
+                                                        <Users size={32} strokeWidth={1.35} />
+                                                    </div>
+                                                    <p className={styles.tableEmptyTitle}>Δεν υπάρχουν πελάτες</p>
+                                                    <p className={styles.tableEmptyHint}>
+                                                        Ο κατάλογος είναι κενός ή δεν ταιριάζει με την αναζήτηση. Χρησιμοποιήστε «Προσθήκη πελάτη» για την πρώτη εγγραφή.
+                                                    </p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        paginatedCustomers.map((c) => (
+                                            <tr key={c.id} onClick={() => openEdit(c)}>
+                                                <td className={styles.primaryCell}>{c.full_name}</td>
+                                                <td>{c.phone || "—"}</td>
+                                                <td>{c.email || "—"}</td>
+                                                <td>{c.tax_id || "—"}</td>
+                                                <td className={styles.actionsCol}>
+                                                    <div className={styles.cellActions}>
+                                                        <button
+                                                            type="button"
+                                                            className={styles.editBtn}
+                                                            onClick={(e) => { e.stopPropagation(); openEdit(c); }}
+                                                            title="Επεξεργασία"
+                                                        >
+                                                            <Pencil size={16} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={styles.deleteBtn}
+                                                            onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(c.id); }}
+                                                            title="Διαγραφή"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                         {isFetching && (
                             <div className={styles.listOverlay}>
                                 <LoadingSpinner />
                             </div>
+                        )}
+                        {customers.length > 0 && (
+                        <div className={styles.pagination}>
+                            <div className={styles.paginationInfo}>
+                                Εμφάνιση <strong>{rangeStart}</strong>–<strong>{rangeEnd}</strong> από <strong>{customers.length}</strong>
+                            </div>
+                            <div className={styles.paginationControls}>
+                                <label className={styles.pageSizeLabel}>
+                                    Γραμμές
+                                    <select
+                                        className={styles.pageSizeSelect}
+                                        value={pageSize}
+                                        onChange={(e) => setPageSize(Number(e.target.value))}
+                                    >
+                                        {PAGE_SIZE_OPTIONS.map((n) => (
+                                            <option key={n} value={n}>{n}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <div className={styles.pageNav}>
+                                    <button
+                                        type="button"
+                                        className={styles.pageBtn}
+                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                        disabled={currentPage <= 1}
+                                        aria-label="Προηγούμενη σελίδα"
+                                    >
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                    <span className={styles.pageIndicator}>
+                                        Σελίδα <strong>{currentPage}</strong> / {totalPages}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className={styles.pageBtn}
+                                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage >= totalPages}
+                                        aria-label="Επόμενη σελίδα"
+                                    >
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         )}
                     </div>
                 )}

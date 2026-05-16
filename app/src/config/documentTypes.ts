@@ -17,7 +17,7 @@ export const PURCHASE_DOC_TYPES = [
     { value: "PO", label: "Παραγγελία Αγοράς", prefix: "PO", badgeColor: "#6366f1" },
     { value: "GRN", label: "Δελτίο Παραλαβής", prefix: "GRN", badgeColor: "#a855f7" },
     { value: "PUR", label: "Τιμολόγιο Αγοράς", prefix: "PUR", badgeColor: "#0ea5e9" },
-    { value: "DBN", label: "Πιστωτικό Αγοράς", prefix: "DBN", badgeColor: "#f59e0b" },
+    { value: "CN", label: "Πιστωτικό Αγοράς", prefix: "CN", badgeColor: "#f59e0b" },
 ] as const;
 
 /** Options for [+ Νέο Παραστατικό] dropdown - documents creatable from scratch */
@@ -77,9 +77,28 @@ export const PURCHASE_STATUS_CONFIG: Record<string, { label: string; color: stri
     unpaid: { label: "Απλήρωτο", color: "#f59e0b" },
     partial: { label: "Μερικώς Εξοφλημένο", color: "#f59e0b" },
     paid: { label: "Εξοφλημένο", color: "#22c55e" },
-    credited: { label: "Πιστωμένο", color: "#22c55e" },
+    overdue: { label: "Εκπρόθεσμο", color: "#ef4444" },
     posted: { label: "Οριστικοποιημένο", color: "#22c55e" },
 };
+
+/**
+ * Credit status labels. This dimension is independent of payment_status and is
+ * only rendered when a (non-reversed) credit note exists for the invoice.
+ */
+export const CREDIT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+    partially_credited: { label: "Μερικώς Πιστωμένο", color: "#f59e0b" },
+    credited: { label: "Πλήρως Πιστωμένο", color: "#8b5cf6" },
+};
+
+export function getCreditStatusLabel(creditStatus?: string | null): string | null {
+    if (!creditStatus) return null;
+    return CREDIT_STATUS_CONFIG[creditStatus]?.label ?? null;
+}
+
+export function getCreditStatusColor(creditStatus?: string | null): string | null {
+    if (!creditStatus) return null;
+    return CREDIT_STATUS_CONFIG[creditStatus]?.color ?? null;
+}
 
 const LEGACY_SALES_MAP: Record<string, string> = { receipt: "REC", invoice: "INV" };
 
@@ -104,6 +123,6 @@ export function getSalesStatusLabel(status: string): string {
     return SALES_STATUS_CONFIG[status]?.label ?? status;
 }
 
-export function getPurchaseStatusLabel(status: string): string {
+export function getPurchaseStatusLabel(status: string, _documentType?: string): string {
     return PURCHASE_STATUS_CONFIG[status]?.label ?? status;
 }

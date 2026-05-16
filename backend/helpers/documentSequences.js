@@ -15,7 +15,7 @@ const DOC_TYPE_PREFIXES = {
     PUR: "PUR",
     PO: "PO",
     GRN: "GRN",
-    DBN: "DBN",
+    CN: "CN",
 };
 
 /**

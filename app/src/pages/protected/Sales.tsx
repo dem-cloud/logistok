@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Search, FileDown, Mail, Repeat, Check, Banknote, RotateCcw, Package, XCircle, Link2, X, Receipt, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, FileDown, Mail, Repeat, Check, Banknote, RotateCcw, Package, XCircle, Link2, X, Receipt, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -108,6 +108,15 @@ function formatCurrency(amount: number) {
     }).format(amount);
 }
 
+function formatDateDMY(iso: string) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    if (!y || !m || !d) return iso;
+    return `${d}/${m}/${y}`;
+}
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
 export default function Sales() {
     const { activeStore, activeCompany, showToast } = useAuth();
     const [searchFilter, setSearchFilter] = useState("");
@@ -116,6 +125,13 @@ export default function Sales() {
     const [statusFilter, setStatusFilter] = useState<string>("");
     const [dateFrom, setDateFrom] = useState<string>("");
     const [dateTo, setDateTo] = useState<string>("");
+    // Hidden native date-picker refs — see openDatePicker below. Keeping the
+    // visible input as plain text guarantees our dd/mm/yyyy formatting and
+    // the Greek placeholder regardless of the browser locale.
+    const dateFromRef = useRef<HTMLInputElement | null>(null);
+    const dateToRef = useRef<HTMLInputElement | null>(null);
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState<number>(20);
     const [popupOpen, setPopupOpen] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -138,6 +154,38 @@ export default function Sales() {
         documentType: documentTypeFilter || undefined,
         status: statusFilter || undefined,
     });
+
+    // Reset pagination when any filter changes so the user isn't stranded on
+    // a page that no longer exists in the filtered result set.
+    useEffect(() => {
+        setPage(1);
+    }, [searchDebounced, customerFilter, dateFrom, dateTo, documentTypeFilter, statusFilter, pageSize]);
+
+    const totalPages = Math.max(1, Math.ceil(sales.length / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const paginatedSales = useMemo(
+        () => sales.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+        [sales, currentPage, pageSize],
+    );
+    const rangeStart = sales.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const rangeEnd = Math.min(currentPage * pageSize, sales.length);
+
+    const openDatePicker = useCallback((ref: React.RefObject<HTMLInputElement | null>) => {
+        const el = ref.current;
+        if (!el) return;
+        // showPicker is the only reliable cross-browser way to open the native
+        // calendar on first click when the visible input is a sibling.
+        if (typeof el.showPicker === "function") {
+            try {
+                el.showPicker();
+                return;
+            } catch {
+                /* fall through */
+            }
+        }
+        el.focus();
+        el.click();
+    }, []);
 
     const { sale: editSale, isLoading: editLoading } = useSale(editId);
     const { customers } = useCustomers();
@@ -1069,21 +1117,77 @@ export default function Sales() {
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Από</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                        />
+                        <div className={styles.dateInputWrap} onClick={() => openDatePicker(dateFromRef)}>
+                            <input
+                                type="text"
+                                className={styles.filterInput}
+                                value={dateFrom ? formatDateDMY(dateFrom) : ""}
+                                placeholder="Ημερομηνία από"
+                                readOnly
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        openDatePicker(dateFromRef);
+                                    }
+                                }}
+                            />
+                            <input
+                                ref={dateFromRef}
+                                type="date"
+                                className={styles.hiddenDateInput}
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                tabIndex={-1}
+                                aria-hidden="true"
+                            />
+                            {dateFrom && (
+                                <button
+                                    type="button"
+                                    className={styles.dateClearBtn}
+                                    aria-label="Καθαρισμός ημερομηνίας"
+                                    onClick={(e) => { e.stopPropagation(); setDateFrom(""); }}
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Έως</label>
-                        <input
-                            type="date"
-                            className={styles.filterInput}
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                        />
+                        <div className={styles.dateInputWrap} onClick={() => openDatePicker(dateToRef)}>
+                            <input
+                                type="text"
+                                className={styles.filterInput}
+                                value={dateTo ? formatDateDMY(dateTo) : ""}
+                                placeholder="Ημερομηνία έως"
+                                readOnly
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        openDatePicker(dateToRef);
+                                    }
+                                }}
+                            />
+                            <input
+                                ref={dateToRef}
+                                type="date"
+                                className={styles.hiddenDateInput}
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                tabIndex={-1}
+                                aria-hidden="true"
+                            />
+                            {dateTo && (
+                                <button
+                                    type="button"
+                                    className={styles.dateClearBtn}
+                                    aria-label="Καθαρισμός ημερομηνίας"
+                                    onClick={(e) => { e.stopPropagation(); setDateTo(""); }}
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Τύπος</label>
@@ -1146,7 +1250,6 @@ export default function Sales() {
             </div>
 
             <div className={styles.section}>
-                <h3 className={styles.sectionTitle}>Λίστα πωλήσεων</h3>
                 {!activeStore?.id ? (
                     <p className={styles.sectionHint}>
                         Επιλέξτε κατάστημα από την πλευρική μπάρα για να δείτε και να δημιουργήσετε πωλήσεις.
@@ -1155,8 +1258,6 @@ export default function Sales() {
                     <div className={styles.listLoading}>
                         <LoadingSpinner />
                     </div>
-                ) : sales.length === 0 ? (
-                    <p className={styles.sectionHint}>Δεν υπάρχουν πωλήσεις. Κάντε κλικ στο «Νέα πώληση».</p>
                 ) : (
                     <div className={styles.tableScrollWrapper}>
                         <div className={styles.tableWrapper}>
@@ -1182,7 +1283,22 @@ export default function Sales() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {sales.map((s) => (
+                                {paginatedSales.length === 0 ? (
+                                    <tr className={styles.tableEmptyRow}>
+                                        <td colSpan={7}>
+                                            <div className={styles.tableEmptyState}>
+                                                <div className={styles.tableEmptyIcon} aria-hidden>
+                                                    <Receipt size={32} strokeWidth={1.35} />
+                                                </div>
+                                                <p className={styles.tableEmptyTitle}>Δεν υπάρχουν παραστατικά πώλησης</p>
+                                                <p className={styles.tableEmptyHint}>
+                                                    Ο κατάλογος είναι κενός. Χρησιμοποιήστε «Νέο Παραστατικό» για να δημιουργήσετε την πρώτη σας εγγραφή.
+                                                </p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                paginatedSales.map((s) => (
                                     <tr key={s.id}>
                                         <td>{s.invoice_number ?? `#${s.id}`}</td>
                                         <td>{s.customer?.full_name ?? "Περαστικός"}</td>
@@ -1316,7 +1432,8 @@ export default function Sales() {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                ))
+                                )}
                             </tbody>
                         </table>
                         {isFetching && (
@@ -1324,6 +1441,50 @@ export default function Sales() {
                                 <LoadingSpinner />
                             </div>
                         )}
+                        </div>
+                    </div>
+                )}
+                {activeStore?.id && sales.length > 0 && (
+                    <div className={styles.pagination}>
+                        <div className={styles.paginationInfo}>
+                            Εμφάνιση <strong>{rangeStart}</strong>–<strong>{rangeEnd}</strong> από <strong>{sales.length}</strong>
+                        </div>
+                        <div className={styles.paginationControls}>
+                            <label className={styles.pageSizeLabel}>
+                                Γραμμές
+                                <select
+                                    className={styles.pageSizeSelect}
+                                    value={pageSize}
+                                    onChange={(e) => setPageSize(Number(e.target.value))}
+                                >
+                                    {PAGE_SIZE_OPTIONS.map((n) => (
+                                        <option key={n} value={n}>{n}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <div className={styles.pageNav}>
+                                <button
+                                    type="button"
+                                    className={styles.pageBtn}
+                                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                    disabled={currentPage <= 1}
+                                    aria-label="Προηγούμενη σελίδα"
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                <span className={styles.pageIndicator}>
+                                    Σελίδα <strong>{currentPage}</strong> / {totalPages}
+                                </span>
+                                <button
+                                    type="button"
+                                    className={styles.pageBtn}
+                                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage >= totalPages}
+                                    aria-label="Επόμενη σελίδα"
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1883,7 +2044,6 @@ export default function Sales() {
                                                 {editSale.receipts!.map((r) => (
                                                     <li key={r.id} style={{ marginBottom: 4 }}>
                                                         {formatDate(r.payment_date)} — {formatCurrency(r.amount)}
-                                                        {r.is_auto && <span style={{ marginLeft: 6, fontSize: 12, color: "#6b7280" }}>(αυτόματη)</span>}
                                                     </li>
                                                 ))}
                                             </ul>

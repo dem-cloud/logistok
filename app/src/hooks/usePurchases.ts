@@ -10,6 +10,8 @@ export type PurchaseItem = {
     product_id: number;
     product_variant_id: number;
     quantity: number;
+    /** Qty still returnable on new CNs (PUR/GRN); from API. */
+    remaining_credit_quantity?: number;
     cost_price: number;
     total_cost: number;
     vat_rate?: number;
@@ -45,8 +47,18 @@ export type Purchase = {
     converted_from_id?: number | null;
     converted_to?: { id: number; document_type: string; invoice_number: string } | null;
     return_from?: { id: number; document_type: string; invoice_number: string } | null;
-    /** PO only: linked GRN / PUR rows (from converted_from_id chain) */
-    linked_documents?: Array<{ id: number; document_type: string; invoice_number: string | null; status?: string }>;
+    /**
+     * PO: linked GRN / PUR rows. PUR: linked CN rows plus supplier-refund
+     * receipts (`document_type: "RECEIPT"`, `purchase_id` on the CN). CN:
+     * receipts posted against this credit note.
+     */
+    linked_documents?: Array<{
+        id: number;
+        document_type: string;
+        invoice_number: string | null;
+        status?: string;
+        payment_date?: string | null;
+    }>;
     /** GRN from PO: source order for ordered qty per line */
     source_purchase?: {
         id: number;
@@ -63,9 +75,19 @@ export type Purchase = {
     payment_terms?: string | null;
     due_date?: string | null;
     payment_status?: string | null;
+    /**
+     * Credit status lives on a separate dimension from payment_status: it is
+     * populated only when a (non-reversed) CN exists for the PUR. `null` means
+     * no credit note exists and the UI should hide the credit-status badge.
+     */
+    credit_status?: "partially_credited" | "credited" | null;
     amount_due?: number | null;
     payments?: PurchasePayment[];
     has_payments?: boolean;
+    fully_credited?: boolean;
+    has_draft_cn?: boolean;
+    /** CN closed: why was it closed (drives the disabled-reverse tooltip). */
+    cn_close_reason?: "fully_credited" | "receipt" | null;
     purchase_items: PurchaseItem[];
     store?: { id: string; name: string } | null;
     vendor?: { id: string; name: string } | null;
@@ -89,7 +111,7 @@ export type CreatePurchaseParams = {
     invoice_number?: string | null;
     invoice_date?: string | null;
     status?: string;
-    document_type?: "PUR" | "GRN" | "DBN" | "PO";
+    document_type?: "PUR" | "GRN" | "CN" | "PO";
     payment_terms?: string | null;
     notes?: string | null;
     items: PurchaseItemInput[];
@@ -101,7 +123,7 @@ export type UpdatePurchaseParams = {
     invoice_number?: string | null;
     invoice_date?: string | null;
     status?: string;
-    document_type?: "PUR" | "GRN" | "DBN" | "PO";
+    document_type?: "PUR" | "GRN" | "CN" | "PO";
     payment_terms?: string | null;
     notes?: string | null;
     items: PurchaseItemInput[];
@@ -173,7 +195,10 @@ export function usePurchase(id: number | null) {
             throw new Error(res.data.message || "Αποτυχία φόρτωσης αγοράς");
         },
         enabled: !!activeCompany?.id && id != null,
-        staleTime: 1000 * 60,
+        // Always refetch on mount: after finalize we PATCH then close the popup;
+        // a long stale window could keep a draft snapshot (amount_due null) and
+        // leave «Καταχώρηση Πληρωμής» disabled until a manual refresh.
+        staleTime: 0,
     });
 
     return {
@@ -194,10 +219,13 @@ export function usePurchaseMutations() {
             if (!res.data.success) throw new Error(res.data.message || "Αποτυχία δημιουργίας αγοράς");
             return res.data.data as Purchase;
         },
-        onSuccess: () => {
+        onSuccess: async (data) => {
             queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] });
             queryClient.invalidateQueries({ queryKey: ["store-products", activeCompany?.id] });
             queryClient.invalidateQueries({ queryKey: ["stock-movements", activeCompany?.id] });
+            if (data?.id != null) {
+                await queryClient.refetchQueries({ queryKey: ["purchase", activeCompany?.id, data.id] });
+            }
         },
     });
 
@@ -233,7 +261,7 @@ export function usePurchaseMutations() {
                 throw e;
             }
         },
-        onSuccess: (data, v) => {
+        onSuccess: async (data, v) => {
             queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] });
             queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id, v.id] });
             const rawParent = data?.converted_from_id;
@@ -245,6 +273,11 @@ export function usePurchaseMutations() {
             }
             queryClient.invalidateQueries({ queryKey: ["store-products", activeCompany?.id] });
             queryClient.invalidateQueries({ queryKey: ["stock-movements", activeCompany?.id] });
+            // Await so mutateAsync does not resolve until the detail query has the
+            // latest payment_status / amount_due / payments from GET. Otherwise
+            // closePopup() disables this query mid-refetch and the cache can keep
+            // the old draft row (amount_due null → «υπόλοιπο 0»).
+            await queryClient.refetchQueries({ queryKey: ["purchase", activeCompany?.id, v.id] });
         },
     });
 
@@ -256,10 +289,12 @@ export function usePurchaseMutations() {
             if (!res.data.success) throw new Error(res.data.message || "Αποτυχία επιστροφής προϊόντων");
             return res.data.data as Purchase;
         },
-        onSuccess: () => {
+        onSuccess: async (_data, vars) => {
             queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] });
+            queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id, vars.id] });
             queryClient.invalidateQueries({ queryKey: ["store-products", activeCompany?.id] });
             queryClient.invalidateQueries({ queryKey: ["stock-movements", activeCompany?.id] });
+            await queryClient.refetchQueries({ queryKey: ["purchase", activeCompany?.id, vars.id] });
         },
     });
 

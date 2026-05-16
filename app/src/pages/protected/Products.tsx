@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Package, FolderTree } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -28,6 +28,8 @@ type VariantFormRow = {
 
 type Tab = "products" | "categories";
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
 export default function Products() {
     const { showToast } = useAuth();
     const [activeTab, setActiveTab] = useState<Tab>("products");
@@ -40,6 +42,10 @@ export default function Products() {
     const [categoryEditId, setCategoryEditId] = useState<number | null>(null);
     const [categoryDeleteConfirmId, setCategoryDeleteConfirmId] = useState<number | null>(null);
     const [categorySearchFilter, setCategorySearchFilter] = useState("");
+    const [productPage, setProductPage] = useState(1);
+    const [productPageSize, setProductPageSize] = useState<number>(20);
+    const [categoryPage, setCategoryPage] = useState(1);
+    const [categoryPageSize, setCategoryPageSize] = useState<number>(20);
 
     const searchDebounced = useDebounce(searchFilter.trim(), 300);
     const { products, isLoading, isFetching } = useProducts({
@@ -326,6 +332,37 @@ export default function Products() {
         : categories;
     const rootCategories = filteredCategories.filter((c) => !c.parent_id);
     const childCategories = filteredCategories.filter((c) => c.parent_id);
+    const orderedCategories = useMemo(
+        () => [...rootCategories, ...childCategories],
+        [rootCategories, childCategories],
+    );
+
+    // Reset pagination when filters change so we don't land on an empty page.
+    useEffect(() => {
+        setProductPage(1);
+    }, [searchDebounced, categoryFilter, productPageSize]);
+
+    useEffect(() => {
+        setCategoryPage(1);
+    }, [categorySearchFilter, categoryPageSize]);
+
+    const productTotalPages = Math.max(1, Math.ceil(products.length / productPageSize));
+    const productCurrentPage = Math.min(productPage, productTotalPages);
+    const paginatedProducts = useMemo(
+        () => products.slice((productCurrentPage - 1) * productPageSize, productCurrentPage * productPageSize),
+        [products, productCurrentPage, productPageSize],
+    );
+    const productRangeStart = products.length === 0 ? 0 : (productCurrentPage - 1) * productPageSize + 1;
+    const productRangeEnd = Math.min(productCurrentPage * productPageSize, products.length);
+
+    const categoryTotalPages = Math.max(1, Math.ceil(orderedCategories.length / categoryPageSize));
+    const categoryCurrentPage = Math.min(categoryPage, categoryTotalPages);
+    const paginatedCategories = useMemo(
+        () => orderedCategories.slice((categoryCurrentPage - 1) * categoryPageSize, categoryCurrentPage * categoryPageSize),
+        [orderedCategories, categoryCurrentPage, categoryPageSize],
+    );
+    const categoryRangeStart = orderedCategories.length === 0 ? 0 : (categoryCurrentPage - 1) * categoryPageSize + 1;
+    const categoryRangeEnd = Math.min(categoryCurrentPage * categoryPageSize, orderedCategories.length);
 
     const showProductsLoading = activeTab === "products" && isLoading && products.length === 0;
 
@@ -395,66 +432,123 @@ export default function Products() {
                     </div>
 
                     <div className={styles.section}>
-                        <h3 className={styles.sectionTitle}>Λίστα προϊόντων</h3>
                         {showProductsLoading ? (
                             <div className={styles.listLoading}>
                                 <LoadingSpinner />
                             </div>
-                        ) : products.length === 0 ? (
-                            <p className={styles.sectionHint}>
-                                Δεν υπάρχουν προϊόντα. Κάντε κλικ στο «Προσθήκη προϊόντος».
-                            </p>
                         ) : (
-                            <div className={styles.tableWrapper}>
-                                <table className={styles.table}>
-                                    <thead>
-                                        <tr>
-                                            <th>Όνομα</th>
-                                            <th>Κατηγορία</th>
-                                            <th>Μονάδα</th>
-                                            <th>Παραλλαγές</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {products.map((p) => (
-                                            <tr key={p.id}>
-                                                <td>
-                                                    <span className={styles.productName}>{p.name}</span>
-                                                </td>
-                                                <td>{p.category?.name ?? "—"}</td>
-                                                <td>{p.unit?.symbol ?? p.unit?.unit_key ?? "—"}</td>
-                                                <td>{p.variants.length}</td>
-                                                <td>
-                                                    <div className={styles.cellActions}>
-                                                        <button
-                                                            type="button"
-                                                            className={styles.editBtn}
-                                                            onClick={() => openEdit(p)}
-                                                            title="Επεξεργασία"
-                                                        >
-                                                            <Pencil size={16} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className={styles.deleteBtn}
-                                                            onClick={() => setDeleteConfirmId(p.id)}
-                                                            title="Διαγραφή"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                </td>
+                            <>
+                                <div className={styles.tableWrapper}>
+                                    <table className={styles.table}>
+                                        <thead>
+                                            <tr>
+                                                <th>Όνομα</th>
+                                                <th>Κατηγορία</th>
+                                                <th>Μονάδα</th>
+                                                <th>Παραλλαγές</th>
+                                                <th className={styles.actionsCol}></th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {isFetching && (
-                                    <div className={styles.tableOverlay}>
-                                        <LoadingSpinner />
+                                        </thead>
+                                        <tbody>
+                                            {paginatedProducts.length === 0 ? (
+                                                <tr className={styles.tableEmptyRow}>
+                                                    <td colSpan={5}>
+                                                        <div className={styles.tableEmptyState}>
+                                                            <div className={styles.tableEmptyIcon} aria-hidden>
+                                                                <Package size={32} strokeWidth={1.35} />
+                                                            </div>
+                                                            <p className={styles.tableEmptyTitle}>Δεν υπάρχουν προϊόντα</p>
+                                                            <p className={styles.tableEmptyHint}>
+                                                                Ο κατάλογος είναι κενός ή δεν ταιριάζει με τα φίλτρα. Χρησιμοποιήστε «Προσθήκη προϊόντος» για την πρώτη εγγραφή.
+                                                            </p>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                paginatedProducts.map((p) => (
+                                                    <tr key={p.id} onClick={() => openEdit(p)}>
+                                                        <td>
+                                                            <span className={styles.productName}>{p.name}</span>
+                                                        </td>
+                                                        <td>{p.category?.name ?? "—"}</td>
+                                                        <td>{p.unit?.symbol ?? p.unit?.unit_key ?? "—"}</td>
+                                                        <td>{p.variants.length}</td>
+                                                        <td className={styles.actionsCol}>
+                                                            <div className={styles.cellActions}>
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.editBtn}
+                                                                    onClick={(e) => { e.stopPropagation(); openEdit(p); }}
+                                                                    title="Επεξεργασία"
+                                                                >
+                                                                    <Pencil size={16} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.deleteBtn}
+                                                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(p.id); }}
+                                                                    title="Διαγραφή"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                    {isFetching && (
+                                        <div className={styles.tableOverlay}>
+                                            <LoadingSpinner />
+                                        </div>
+                                    )}
+                                </div>
+                                {products.length > 0 && (
+                                <div className={styles.pagination}>
+                                    <div className={styles.paginationInfo}>
+                                        Εμφάνιση <strong>{productRangeStart}</strong>–<strong>{productRangeEnd}</strong> από <strong>{products.length}</strong>
                                     </div>
+                                    <div className={styles.paginationControls}>
+                                        <label className={styles.pageSizeLabel}>
+                                            Γραμμές
+                                            <select
+                                                className={styles.pageSizeSelect}
+                                                value={productPageSize}
+                                                onChange={(e) => setProductPageSize(Number(e.target.value))}
+                                            >
+                                                {PAGE_SIZE_OPTIONS.map((n) => (
+                                                    <option key={n} value={n}>{n}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <div className={styles.pageNav}>
+                                            <button
+                                                type="button"
+                                                className={styles.pageBtn}
+                                                onClick={() => setProductPage((p) => Math.max(1, p - 1))}
+                                                disabled={productCurrentPage <= 1}
+                                                aria-label="Προηγούμενη σελίδα"
+                                            >
+                                                <ChevronLeft size={16} />
+                                            </button>
+                                            <span className={styles.pageIndicator}>
+                                                Σελίδα <strong>{productCurrentPage}</strong> / {productTotalPages}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className={styles.pageBtn}
+                                                onClick={() => setProductPage((p) => Math.min(productTotalPages, p + 1))}
+                                                disabled={productCurrentPage >= productTotalPages}
+                                                aria-label="Επόμενη σελίδα"
+                                            >
+                                                <ChevronRight size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                                 )}
-                            </div>
+                            </>
                         )}
                     </div>
                 </>
@@ -487,59 +581,115 @@ export default function Products() {
                     </div>
 
                     <div className={styles.section}>
-                        <h3 className={styles.sectionTitle}>Λίστα κατηγοριών</h3>
-
                         {categoriesLoading ? (
-                        <LoadingSpinner />
-                    ) : filteredCategories.length === 0 ? (
-                        <p className={styles.sectionHint}>
-                            {categories.length === 0
-                                ? "Δεν υπάρχουν κατηγορίες. Κάντε κλικ στο «Προσθήκη κατηγορίας»."
-                                : "Δεν βρέθηκαν κατηγορίες για την αναζήτησή σας."}
-                        </p>
-                    ) : (
-                        <div className={styles.tableWrapper}>
-                            <table className={styles.table}>
-                                <thead>
-                                    <tr>
-                                        <th>Όνομα</th>
-                                        <th>Γονική κατηγορία</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {[...rootCategories, ...childCategories].map((c) => (
-                                        <tr key={c.id}>
-                                            <td>
-                                                <span className={styles.productName}>{c.name}</span>
-                                            </td>
-                                            <td>{c.parent?.name ?? "—"}</td>
-                                            <td>
-                                                <div className={styles.cellActions}>
-                                                    <button
-                                                        type="button"
-                                                        className={styles.editBtn}
-                                                        onClick={() => openCategoryEdit(c)}
-                                                        title="Επεξεργασία"
-                                                    >
-                                                        <Pencil size={16} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className={styles.deleteBtn}
-                                                        onClick={() => setCategoryDeleteConfirmId(c.id)}
-                                                        title="Διαγραφή"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                            <LoadingSpinner />
+                        ) : (
+                            <>
+                                <div className={styles.tableWrapper}>
+                                    <table className={styles.table}>
+                                        <thead>
+                                            <tr>
+                                                <th>Όνομα</th>
+                                                <th>Γονική κατηγορία</th>
+                                                <th className={styles.actionsCol}></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {paginatedCategories.length === 0 ? (
+                                                <tr className={styles.tableEmptyRow}>
+                                                    <td colSpan={3}>
+                                                        <div className={styles.tableEmptyState}>
+                                                            <div className={styles.tableEmptyIcon} aria-hidden>
+                                                                <FolderTree size={32} strokeWidth={1.35} />
+                                                            </div>
+                                                            <p className={styles.tableEmptyTitle}>Δεν υπάρχουν κατηγορίες</p>
+                                                            <p className={styles.tableEmptyHint}>
+                                                                {categories.length === 0
+                                                                    ? "Ο κατάλογος είναι κενός. Χρησιμοποιήστε «Προσθήκη κατηγορίας» για την πρώτη εγγραφή."
+                                                                    : "Δεν ταιριάζει κάποια κατηγορία με την αναζήτησή σας. Δοκιμάστε άλλους όρους ή προσθέστε νέα κατηγορία."}
+                                                            </p>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                paginatedCategories.map((c) => (
+                                                    <tr key={c.id} onClick={() => openCategoryEdit(c)}>
+                                                        <td>
+                                                            <span className={styles.productName}>{c.name}</span>
+                                                        </td>
+                                                        <td>{c.parent?.name ?? "—"}</td>
+                                                        <td className={styles.actionsCol}>
+                                                            <div className={styles.cellActions}>
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.editBtn}
+                                                                    onClick={(e) => { e.stopPropagation(); openCategoryEdit(c); }}
+                                                                    title="Επεξεργασία"
+                                                                >
+                                                                    <Pencil size={16} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.deleteBtn}
+                                                                    onClick={(e) => { e.stopPropagation(); setCategoryDeleteConfirmId(c.id); }}
+                                                                    title="Διαγραφή"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {orderedCategories.length > 0 && (
+                                <div className={styles.pagination}>
+                                    <div className={styles.paginationInfo}>
+                                        Εμφάνιση <strong>{categoryRangeStart}</strong>–<strong>{categoryRangeEnd}</strong> από <strong>{orderedCategories.length}</strong>
+                                    </div>
+                                    <div className={styles.paginationControls}>
+                                        <label className={styles.pageSizeLabel}>
+                                            Γραμμές
+                                            <select
+                                                className={styles.pageSizeSelect}
+                                                value={categoryPageSize}
+                                                onChange={(e) => setCategoryPageSize(Number(e.target.value))}
+                                            >
+                                                {PAGE_SIZE_OPTIONS.map((n) => (
+                                                    <option key={n} value={n}>{n}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <div className={styles.pageNav}>
+                                            <button
+                                                type="button"
+                                                className={styles.pageBtn}
+                                                onClick={() => setCategoryPage((p) => Math.max(1, p - 1))}
+                                                disabled={categoryCurrentPage <= 1}
+                                                aria-label="Προηγούμενη σελίδα"
+                                            >
+                                                <ChevronLeft size={16} />
+                                            </button>
+                                            <span className={styles.pageIndicator}>
+                                                Σελίδα <strong>{categoryCurrentPage}</strong> / {categoryTotalPages}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className={styles.pageBtn}
+                                                onClick={() => setCategoryPage((p) => Math.min(categoryTotalPages, p + 1))}
+                                                disabled={categoryCurrentPage >= categoryTotalPages}
+                                                aria-label="Επόμενη σελίδα"
+                                            >
+                                                <ChevronRight size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 </>
             )}

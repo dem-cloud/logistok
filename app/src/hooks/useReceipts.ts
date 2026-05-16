@@ -9,7 +9,13 @@ export type Receipt = {
     id: number;
     created_at: string;
     store_id: string;
+    /**
+     * A receipt is linked to EITHER a sale (customer paid us for a sales invoice)
+     * OR a purchase (supplier refunded us for a CN credit note). The two fields
+     * are mutually exclusive at the database level.
+     */
     sale_id: number | null;
+    purchase_id: number | null;
     customer_id: string | null;
     amount: number;
     payment_method_id: string | null;
@@ -19,7 +25,12 @@ export type Receipt = {
     status: "draft" | "posted" | "reversed";
     payment_method_name?: string | null;
     customer_name?: string | null;
+    vendor_name?: string | null;
     invoice_number?: string | null;
+    /** "INV" for sale-linked receipts, "CN" for supplier-refund receipts. */
+    source_document_type?: string | null;
+    /** Set on GET list: max amount this CN-linked draft can still take (posted receipts reduce it). */
+    cn_refund_remaining?: number | null;
 };
 
 export type ReceiptFilters = {
@@ -58,7 +69,9 @@ export function useReceipts(filters: ReceiptFilters) {
     const createReceipt = useMutation({
         mutationFn: async (params: {
             store_id: string;
-            sale_id: number;
+            /** Provide EITHER sale_id OR purchase_id (enforced server-side). */
+            sale_id?: number;
+            purchase_id?: number;
             customer_id?: string | null;
             amount?: number;
             payment_method_id?: string;
@@ -69,8 +82,13 @@ export function useReceipts(filters: ReceiptFilters) {
             if (!res.data.success) throw new Error(res.data.message || "Αποτυχία δημιουργίας είσπραξης");
             return res.data.data as Receipt;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] });
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["sales", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id] }),
+            ]);
         },
     });
 
@@ -88,9 +106,13 @@ export function useReceipts(filters: ReceiptFilters) {
             if (!res.data.success) throw new Error(res.data.message || "Αποτυχία ενημέρωσης είσπραξης");
             return res.data.data as Receipt;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] });
-            queryClient.invalidateQueries({ queryKey: ["sales", activeCompany?.id] });
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["sales", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id] }),
+            ]);
         },
     });
 
@@ -99,8 +121,13 @@ export function useReceipts(filters: ReceiptFilters) {
             const res = await axiosPrivate.delete(`/api/shared/company/receipts/${id}`);
             if (!res.data.success) throw new Error(res.data.message || "Αποτυχία διαγραφής είσπραξης");
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] });
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["receipts", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["sales", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchases", activeCompany?.id] }),
+                queryClient.invalidateQueries({ queryKey: ["purchase", activeCompany?.id] }),
+            ]);
         },
     });
 

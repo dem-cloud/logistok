@@ -1,5 +1,5 @@
 /**
- * Server-side PDF for purchase documents (PO, GRN, PUR, DBN).
+ * Server-side PDF for purchase documents (PO, GRN, PUR, CN).
  */
 const puppeteer = require("puppeteer");
 
@@ -7,7 +7,7 @@ const DOC_TYPE_LABELS = {
     PO: "Παραγγελία Αγοράς",
     GRN: "Δελτίο Παραλαβής",
     PUR: "Τιμολόγιο Αγοράς",
-    DBN: "Πιστωτικό Αγοράς",
+    CN: "Πιστωτικό Αγοράς",
 };
 
 function formatDate(iso) {

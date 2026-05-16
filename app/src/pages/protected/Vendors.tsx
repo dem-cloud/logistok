@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Truck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendors, useVendorMutations, useVendorOutstanding, type Vendor } from "@/hooks/useVendors";
 import SidePopup from "@/components/reusable/SidePopup";
@@ -15,19 +15,38 @@ const countryList = Object.entries(countries.getNames("el"))
     .map(([code, name]) => ({ code, name }))
     .sort((a, b) => a.name.localeCompare(b.name, "el"));
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
 export default function Vendors() {
     const { showToast } = useAuth();
     const [searchFilter, setSearchFilter] = useState("");
     const [popupOpen, setPopupOpen] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState<number>(20);
 
     const { vendors, isLoading, isFetching } = useVendors({
         search: searchFilter.trim() || undefined,
     });
 
+    // Reset pagination when filters change so the user doesn't land on a page
+    // that no longer exists in the filtered set.
+    useEffect(() => {
+        setPage(1);
+    }, [searchFilter, pageSize]);
+
+    const totalPages = Math.max(1, Math.ceil(vendors.length / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const paginatedVendors = useMemo(
+        () => vendors.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+        [vendors, currentPage, pageSize],
+    );
+    const rangeStart = vendors.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const rangeEnd = Math.min(currentPage * pageSize, vendors.length);
+
     const mutations = useVendorMutations();
-    const { outstandingAmount, isLoading: outstandingLoading } = useVendorOutstanding(editId);
+    const { payablesAmount, receivablesAmount, isLoading: outstandingLoading } = useVendorOutstanding(editId);
 
     const [formName, setFormName] = useState("");
     const [formContactName, setFormContactName] = useState("");
@@ -169,15 +188,6 @@ export default function Vendors() {
         }
     };
 
-    const formatMeta = (v: Vendor) => {
-        const parts: string[] = [];
-        if (v.contact_name) parts.push(v.contact_name);
-        if (v.phone) parts.push(v.phone);
-        if (v.email) parts.push(v.email);
-        if (v.tax_id) parts.push(`ΑΦΜ: ${v.tax_id}`);
-        return parts.join(" · ") || "—";
-    };
-
     const showVendorsLoading = isLoading && vendors.length === 0;
 
     return (
@@ -191,13 +201,16 @@ export default function Vendors() {
                 <div className={styles.filtersRow}>
                     <div className={styles.filterGroup}>
                         <label className={styles.filterLabel}>Αναζήτηση</label>
-                        <input
-                            type="text"
-                            className={styles.filterInput}
-                            placeholder="Όνομα, επαφή, email ή τηλέφωνο..."
-                            value={searchFilter}
-                            onChange={(e) => setSearchFilter(e.target.value)}
-                        />
+                        <div className={styles.searchWrapper}>
+                            <Search size={16} className={styles.searchIcon} />
+                            <input
+                                type="text"
+                                className={styles.filterInput}
+                                placeholder="Όνομα, επαφή, email ή τηλέφωνο..."
+                                value={searchFilter}
+                                onChange={(e) => setSearchFilter(e.target.value)}
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className={styles.addBtn}>
@@ -209,49 +222,121 @@ export default function Vendors() {
             </div>
 
             <div className={styles.section}>
-                <h3 className={styles.sectionTitle}>Λίστα προμηθευτών</h3>
                 {showVendorsLoading ? (
                     <div className={styles.listLoading}>
                         <LoadingSpinner />
                     </div>
-                ) : vendors.length === 0 ? (
-                    <p className={styles.sectionHint}>
-                        Δεν υπάρχουν προμηθευτές. Κάντε κλικ στο «Προσθήκη προμηθευτή».
-                    </p>
                 ) : (
                     <div className={styles.listWrapper}>
-                        <div className={styles.vendorList}>
-                        {vendors.map((v) => (
-                            <div key={v.id} className={styles.vendorCard}>
-                                <div className={styles.vendorInfo}>
-                                    <span className={styles.vendorName}>{v.name}</span>
-                                    <span className={styles.vendorMeta}>{formatMeta(v)}</span>
-                                </div>
-                                <div className={styles.vendorCardActions}>
-                                    <button
-                                        type="button"
-                                        className={styles.editBtn}
-                                        onClick={() => openEdit(v)}
-                                        title="Επεξεργασία"
-                                    >
-                                        <Pencil size={16} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={styles.deleteBtn}
-                                        onClick={() => setDeleteConfirmId(v.id)}
-                                        title="Διαγραφή"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                        <div className={styles.tableWrap}>
+                            <table className={styles.table}>
+                                <thead>
+                                    <tr>
+                                        <th>Όνομα</th>
+                                        <th>Επαφή</th>
+                                        <th>Τηλέφωνο</th>
+                                        <th>Email</th>
+                                        <th>ΑΦΜ</th>
+                                        <th className={styles.actionsCol}></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {paginatedVendors.length === 0 ? (
+                                        <tr className={styles.tableEmptyRow}>
+                                            <td colSpan={6}>
+                                                <div className={styles.tableEmptyState}>
+                                                    <div className={styles.tableEmptyIcon} aria-hidden>
+                                                        <Truck size={32} strokeWidth={1.35} />
+                                                    </div>
+                                                    <p className={styles.tableEmptyTitle}>Δεν υπάρχουν προμηθευτές</p>
+                                                    <p className={styles.tableEmptyHint}>
+                                                        Ο κατάλογος είναι κενός ή δεν ταιριάζει με την αναζήτηση. Χρησιμοποιήστε «Προσθήκη προμηθευτή» για την πρώτη εγγραφή.
+                                                    </p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        paginatedVendors.map((v) => (
+                                            <tr key={v.id} onClick={() => openEdit(v)}>
+                                                <td className={styles.primaryCell}>{v.name}</td>
+                                                <td>{v.contact_name || "—"}</td>
+                                                <td>{v.phone || "—"}</td>
+                                                <td>{v.email || "—"}</td>
+                                                <td>{v.tax_id || "—"}</td>
+                                                <td className={styles.actionsCol}>
+                                                    <div className={styles.cellActions}>
+                                                        <button
+                                                            type="button"
+                                                            className={styles.editBtn}
+                                                            onClick={(e) => { e.stopPropagation(); openEdit(v); }}
+                                                            title="Επεξεργασία"
+                                                        >
+                                                            <Pencil size={16} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={styles.deleteBtn}
+                                                            onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(v.id); }}
+                                                            title="Διαγραφή"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                         {isFetching && (
                             <div className={styles.listOverlay}>
                                 <LoadingSpinner />
                             </div>
+                        )}
+                        {vendors.length > 0 && (
+                        <div className={styles.pagination}>
+                            <div className={styles.paginationInfo}>
+                                Εμφάνιση <strong>{rangeStart}</strong>–<strong>{rangeEnd}</strong> από <strong>{vendors.length}</strong>
+                            </div>
+                            <div className={styles.paginationControls}>
+                                <label className={styles.pageSizeLabel}>
+                                    Γραμμές
+                                    <select
+                                        className={styles.pageSizeSelect}
+                                        value={pageSize}
+                                        onChange={(e) => setPageSize(Number(e.target.value))}
+                                    >
+                                        {PAGE_SIZE_OPTIONS.map((n) => (
+                                            <option key={n} value={n}>{n}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <div className={styles.pageNav}>
+                                    <button
+                                        type="button"
+                                        className={styles.pageBtn}
+                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                        disabled={currentPage <= 1}
+                                        aria-label="Προηγούμενη σελίδα"
+                                    >
+                                        <ChevronLeft size={16} />
+                                    </button>
+                                    <span className={styles.pageIndicator}>
+                                        Σελίδα <strong>{currentPage}</strong> / {totalPages}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className={styles.pageBtn}
+                                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage >= totalPages}
+                                        aria-label="Επόμενη σελίδα"
+                                    >
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         )}
                     </div>
                 )}
@@ -303,7 +388,15 @@ export default function Vendors() {
                                 {outstandingLoading ? (
                                     "Φόρτωση..."
                                 ) : (
-                                    <>Συνολικές Εκκρεμείς Υποχρεώσεις: {outstandingAmount.toFixed(2)} €</>
+                                    <>
+                                        <div className={styles.outstandingLine}>
+                                            Εκκρεμείς υποχρεώσεις (προς προμηθευτή): {payablesAmount.toFixed(2)} €
+                                        </div>
+                                        <div className={styles.outstandingLine}>
+                                            Εκκρεμείς απαιτήσεις από προμηθευτή (πιστωτικά − εισπράξεις):{" "}
+                                            {receivablesAmount.toFixed(2)} €
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         )}
@@ -398,21 +491,6 @@ export default function Vendors() {
                                 placeholder="π.χ. 10451"
                             />
                         </div>
-                    </div>
-
-                    <div className={styles.formGroup} style={{ marginTop: 16 }}>
-                        <label className={styles.formLabel}>Όροι Πληρωμής</label>
-                        <select
-                            className={styles.formSelect}
-                            value={formPaymentTerms}
-                            onChange={(e) => setFormPaymentTerms(e.target.value as "immediate" | "15" | "30" | "60" | "90")}
-                        >
-                            <option value="immediate">Άμεση Πληρωμή</option>
-                            <option value="15">15 ημέρες</option>
-                            <option value="30">30 ημέρες</option>
-                            <option value="60">60 ημέρες</option>
-                            <option value="90">90 ημέρες</option>
-                        </select>
                     </div>
 
                     <div className={styles.formGroup} style={{ marginTop: 16 }}>

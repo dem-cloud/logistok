@@ -3,7 +3,7 @@
  * Status is never set directly by user - only via button actions.
  */
 
-const PURCHASE_DOC_TYPES = ['PO', 'GRN', 'PUR', 'DBN'];
+const PURCHASE_DOC_TYPES = ['PO', 'GRN', 'PUR', 'CN'];
 const SALES_DOC_TYPES = ['QUO', 'SO', 'DNO', 'INV', 'REC', 'CRN'];
 
 const STATUS_LABELS = {
@@ -39,9 +39,22 @@ function getStatusLabel(status) {
  * Returns buttons available for a purchase document given its type, status, and payment_status.
  * @returns {Array<{key: string, label: string, disabled?: boolean, tooltip?: string}>}
  */
-function getPurchaseButtons(documentType, status, paymentStatus, hasPayments, hasLinkedInvoice) {
+function getPurchaseButtons(documentType, status, paymentStatus, hasPayments, hasLinkedInvoice, extras) {
   const s = (status || '').toLowerCase();
   const doc = (documentType || 'PUR').toUpperCase();
+  const fullyCredited = !!(extras && extras.fullyCredited);
+  const cnCloseReason = (extras && extras.cnCloseReason) || null;
+  // credit_status is independent of payment_status (cash). Only PURs carry it.
+  // It reflects ONLY non-reversed, non-draft CNs — Reversed CNs drop out, so a
+  // PUR whose only CN was reversed has credit_status = null.
+  const creditStatus = (extras && extras.creditStatus) || null;
+  // Set when the PUR has any CN currently in Draft. Blocks reversal because a
+  // draft CN must be deleted before the invoice itself can be reversed.
+  const hasDraftCn = !!(extras && extras.hasDraftCn);
+  // amount_due drives record_payment visibility/enabling: if the PUR has no
+  // remaining cash balance (fully paid OR fully offset by credits) there is
+  // nothing to receive — button stays visible but disabled.
+  const amountDue = Number((extras && extras.amountDue) != null ? extras.amountDue : 0);
 
   if (doc === 'PO') {
     if (s === 'draft') return [
@@ -95,32 +108,61 @@ function getPurchaseButtons(documentType, status, paymentStatus, hasPayments, ha
       { key: 'finalize', label: 'Οριστικοποίηση' },
       { key: 'delete', label: 'Διαγραφή' },
     ];
-    if (s === 'reversed' || s === 'credited') return [{ key: 'pdf', label: 'Εκτύπωση PDF' }];
-    const pay = (paymentStatus || '').toLowerCase();
+    if (s === 'reversed') return [{ key: 'pdf', label: 'Εκτύπωση PDF' }];
     if (s !== 'draft') {
-      const reverseDisabled = hasPayments;
+      // Reversal is blocked by, in priority order:
+      //  1) any posted cash payment on the PUR,
+      //  2) any linked CN currently in Draft (must be deleted first),
+      //  3) any linked CN currently Posted/Open (must be reversed first).
+      // Reversed CNs never block — they're already undone.
+      const hasPostedCreditNote = creditStatus === 'partially_credited' || creditStatus === 'credited';
+      let reverseTooltip = null;
+      if (hasPayments) {
+        reverseTooltip = 'Υπάρχει καταχωρημένη πληρωμή. Διαγράψτε πρώτα την Πληρωμή για να προχωρήσετε.';
+      } else if (hasDraftCn) {
+        reverseTooltip = 'Υπάρχει πιστωτικό σε πρόχειρο. Διαγράψτε πρώτα το Πιστωτικό για να προχωρήσετε.';
+      } else if (hasPostedCreditNote) {
+        reverseTooltip = 'Υπάρχει ενεργό πιστωτικό. Αντιλογίστε πρώτα το Πιστωτικό για να προχωρήσετε.';
+      }
+      const reverseDisabled = hasPayments || hasDraftCn || hasPostedCreditNote;
+      const recordPaymentDisabled = !(amountDue > 0);
       return [
-        { key: 'record_payment', label: 'Καταχώρηση Πληρωμής', show: pay !== 'paid' },
-        { key: 'create_credit_note', label: 'Δημιουργία Πιστωτικού' },
-        { key: 'reverse', label: 'Αντιλογισμός Τιμολογίου', disabled: reverseDisabled, tooltip: reverseDisabled ? 'Υπάρχει συνδεδεμένη πληρωμή. Διαγράψτε ή ακυρώστε πρώτα την πληρωμή.' : null },
+        {
+          key: 'record_payment',
+          label: 'Καταχώρηση Πληρωμής',
+          disabled: recordPaymentDisabled,
+          tooltip: recordPaymentDisabled
+            ? 'Το υπόλοιπο του τιμολογίου είναι 0. Δεν απαιτείται επιπλέον πληρωμή.'
+            : null,
+        },
+        { key: 'create_credit_note', label: 'Δημιουργία Πιστωτικού', disabled: fullyCredited, tooltip: fullyCredited ? 'Όλα τα είδη του τιμολογίου έχουν ήδη πιστωθεί.' : null },
+        { key: 'reverse', label: 'Αντιλογισμός Τιμολογίου', disabled: reverseDisabled, tooltip: reverseTooltip },
         { key: 'pdf', label: 'Εκτύπωση PDF' },
-      ].filter(b => b.show !== false);
+      ];
     }
   }
 
-  if (doc === 'DBN') {
+  if (doc === 'CN') {
     if (s === 'draft') return [
       { key: 'save', label: 'Αποθήκευση' },
       { key: 'finalize', label: 'Οριστικοποίηση' },
       { key: 'delete', label: 'Διαγραφή' },
     ];
     if (s === 'posted' || s === 'completed') return [
-      { key: 'apply', label: 'Συμψηφισμός με Τιμολόγιο' },
-      { key: 'refund', label: 'Καταχώρηση Επιστροφής Χρημάτων' },
+      { key: 'create_receipt', label: 'Καταχώρηση Είσπραξης' },
       { key: 'reverse', label: 'Αντιλογισμός Πιστωτικού' },
       { key: 'pdf', label: 'Εκτύπωση PDF' },
     ];
-    if (s === 'closed' || s === 'reversed') return [{ key: 'pdf', label: 'Εκτύπωση PDF' }];
+    if (s === 'closed') {
+      const closedTooltip = cnCloseReason === 'fully_credited'
+        ? 'Το πιστωτικό είναι κλειστό. Το τιμολόγιο έχει πιστωθεί πλήρως.'
+        : 'Το πιστωτικό είναι κλειστό. Ακυρώστε πρώτα την Είσπραξη για να προχωρήσετε.';
+      return [
+        { key: 'reverse', label: 'Αντιλογισμός Πιστωτικού', disabled: true, tooltip: closedTooltip },
+        { key: 'pdf', label: 'Εκτύπωση PDF' },
+      ];
+    }
+    if (s === 'reversed') return [{ key: 'pdf', label: 'Εκτύπωση PDF' }];
   }
 
   return [];

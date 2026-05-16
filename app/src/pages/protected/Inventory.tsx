@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Plus, ArrowRightLeft, Search, ClipboardList, Trash2 } from "lucide-react";
+import { Plus, ArrowRightLeft, Search, ClipboardList, Trash2, ChevronLeft, ChevronRight, Package, History } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -19,6 +19,29 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import styles from "./Inventory.module.css";
 
 const LOW_STOCK_THRESHOLD = 5;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
+function formatDateDMY(iso: string): string {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    if (!y || !m || !d) return iso;
+    return `${d}/${m}/${y}`;
+}
+
+function openDatePicker(ref: React.RefObject<HTMLInputElement | null>) {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof el.showPicker === "function") {
+        try {
+            el.showPicker();
+            return;
+        } catch {
+            // fallback below
+        }
+    }
+    el.focus();
+    el.click();
+}
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
     in: "Είσοδος",
@@ -155,6 +178,13 @@ export default function Inventory() {
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
     const [movementTypeFilter, setMovementTypeFilter] = useState("");
+    const dateFromRef = useRef<HTMLInputElement | null>(null);
+    const dateToRef = useRef<HTMLInputElement | null>(null);
+
+    const [stockPage, setStockPage] = useState(1);
+    const [stockPageSize, setStockPageSize] = useState<number>(20);
+    const [movementPage, setMovementPage] = useState(1);
+    const [movementPageSize, setMovementPageSize] = useState<number>(20);
 
     const { storeProducts, isLoading: storeProductsLoading, isFetching: storeProductsFetching } = useStoreProducts({
         storeId: activeStore?.id ?? undefined,
@@ -510,6 +540,32 @@ export default function Inventory() {
     const showStockLoading = activeTab === "stock" && storeProductsLoading && storeProducts.length === 0;
     const showMovementsLoading = activeTab === "movements" && movementsLoading && movements.length === 0;
 
+    useEffect(() => {
+        setStockPage(1);
+    }, [searchDebounced, activeStore?.id, stockPageSize]);
+
+    useEffect(() => {
+        setMovementPage(1);
+    }, [dateFrom, dateTo, movementTypeFilter, activeStore?.id, movementPageSize]);
+
+    const stockTotalPages = Math.max(1, Math.ceil(storeProducts.length / stockPageSize));
+    const stockCurrentPage = Math.min(stockPage, stockTotalPages);
+    const paginatedStoreProducts = useMemo(
+        () => storeProducts.slice((stockCurrentPage - 1) * stockPageSize, stockCurrentPage * stockPageSize),
+        [storeProducts, stockCurrentPage, stockPageSize],
+    );
+    const stockRangeStart = storeProducts.length === 0 ? 0 : (stockCurrentPage - 1) * stockPageSize + 1;
+    const stockRangeEnd = Math.min(stockCurrentPage * stockPageSize, storeProducts.length);
+
+    const movementTotalPages = Math.max(1, Math.ceil(movements.length / movementPageSize));
+    const movementCurrentPage = Math.min(movementPage, movementTotalPages);
+    const paginatedMovements = useMemo(
+        () => movements.slice((movementCurrentPage - 1) * movementPageSize, movementCurrentPage * movementPageSize),
+        [movements, movementCurrentPage, movementPageSize],
+    );
+    const movementRangeStart = movements.length === 0 ? 0 : (movementCurrentPage - 1) * movementPageSize + 1;
+    const movementRangeEnd = Math.min(movementCurrentPage * movementPageSize, movements.length);
+
     return (
         <div className={styles.wrapper}>
             <div className={styles.headerRow}>
@@ -588,7 +644,6 @@ export default function Inventory() {
                     </div>
 
                     <div className={styles.section}>
-                        <h3 className={styles.sectionTitle}>Λίστα αποθεμάτων</h3>
                         {!activeStore?.id ? (
                             <p className={styles.sectionHint}>
                                 Επιλέξτε κατάστημα από την πλευρική μπάρα για να δείτε και να διαχειριστείτε το απόθεμα.
@@ -597,11 +652,8 @@ export default function Inventory() {
                             <div className={styles.listLoading}>
                                 <LoadingSpinner />
                             </div>
-                        ) : storeProducts.length === 0 ? (
-                            <p className={styles.sectionHint}>
-                                Δεν βρέθηκαν προϊόντα. Προσθέστε προϊόντα ή κάντε αγορά για να εμφανιστούν εδώ.
-                            </p>
                         ) : (
+                            <>
                             <div className={styles.tableWrapper}>
                                 <table className={styles.table}>
                                     <thead>
@@ -615,7 +667,22 @@ export default function Inventory() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {storeProducts.map((sp) => {
+                                        {paginatedStoreProducts.length === 0 ? (
+                                            <tr className={styles.tableEmptyRow}>
+                                                <td colSpan={6}>
+                                                    <div className={styles.tableEmptyState}>
+                                                        <div className={styles.tableEmptyIcon} aria-hidden>
+                                                            <Package size={32} strokeWidth={1.35} />
+                                                        </div>
+                                                        <p className={styles.tableEmptyTitle}>Δεν υπάρχουν γραμμές αποθέματος</p>
+                                                        <p className={styles.tableEmptyHint}>
+                                                            Δεν βρέθηκαν προϊόντα για αυτό το κατάστημα ή για τα φίλτρα. Προσθέστε προϊόντα ή καταχωρήστε αγορές / μεταφορές.
+                                                        </p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                        paginatedStoreProducts.map((sp) => {
                                             const rowKey = sp.id ?? `v-${sp.product_variant_id}`;
                                             const isLowStock = sp.stock_quantity < LOW_STOCK_THRESHOLD && sp.stock_quantity > 0;
                                             const isOutOfStock = sp.stock_quantity === 0;
@@ -669,7 +736,8 @@ export default function Inventory() {
                                                     </td>
                                                 </tr>
                                             );
-                                        })}
+                                        })
+                                        )}
                                     </tbody>
                                 </table>
                                 {storeProductsFetching && (
@@ -678,6 +746,51 @@ export default function Inventory() {
                                     </div>
                                 )}
                             </div>
+                            {storeProducts.length > 0 && (
+                            <div className={styles.pagination}>
+                                <div className={styles.paginationInfo}>
+                                    Εμφάνιση <strong>{stockRangeStart}</strong>–<strong>{stockRangeEnd}</strong> από <strong>{storeProducts.length}</strong>
+                                </div>
+                                <div className={styles.paginationControls}>
+                                    <label className={styles.pageSizeLabel}>
+                                        Γραμμές
+                                        <select
+                                            className={styles.pageSizeSelect}
+                                            value={stockPageSize}
+                                            onChange={(e) => setStockPageSize(Number(e.target.value))}
+                                        >
+                                            {PAGE_SIZE_OPTIONS.map((n) => (
+                                                <option key={n} value={n}>{n}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <div className={styles.pageNav}>
+                                        <button
+                                            type="button"
+                                            className={styles.pageBtn}
+                                            onClick={() => setStockPage((p) => Math.max(1, p - 1))}
+                                            disabled={stockCurrentPage <= 1}
+                                            aria-label="Προηγούμενη σελίδα"
+                                        >
+                                            <ChevronLeft size={16} />
+                                        </button>
+                                        <span className={styles.pageIndicator}>
+                                            Σελίδα <strong>{stockCurrentPage}</strong> / {stockTotalPages}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={styles.pageBtn}
+                                            onClick={() => setStockPage((p) => Math.min(stockTotalPages, p + 1))}
+                                            disabled={stockCurrentPage >= stockTotalPages}
+                                            aria-label="Επόμενη σελίδα"
+                                        >
+                                            <ChevronRight size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            )}
+                            </>
                         )}
                     </div>
                 </>
@@ -689,21 +802,77 @@ export default function Inventory() {
                         <div className={styles.filtersRow}>
                             <div className={styles.filterGroup}>
                                 <label className={styles.filterLabel}>Από</label>
-                                <input
-                                    type="date"
-                                    className={styles.filterInput}
-                                    value={dateFrom}
-                                    onChange={(e) => setDateFrom(e.target.value)}
-                                />
+                                <div className={styles.dateInputWrap} onClick={() => openDatePicker(dateFromRef)}>
+                                    <input
+                                        type="text"
+                                        className={styles.filterInput}
+                                        value={dateFrom ? formatDateDMY(dateFrom) : ""}
+                                        placeholder="Ημερομηνία από"
+                                        readOnly
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                openDatePicker(dateFromRef);
+                                            }
+                                        }}
+                                    />
+                                    <input
+                                        ref={dateFromRef}
+                                        type="date"
+                                        className={styles.hiddenDateInput}
+                                        value={dateFrom}
+                                        onChange={(e) => setDateFrom(e.target.value)}
+                                        tabIndex={-1}
+                                        aria-hidden="true"
+                                    />
+                                    {dateFrom && (
+                                        <button
+                                            type="button"
+                                            className={styles.dateClearBtn}
+                                            aria-label="Καθαρισμός ημερομηνίας"
+                                            onClick={(e) => { e.stopPropagation(); setDateFrom(""); }}
+                                        >
+                                            ×
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                             <div className={styles.filterGroup}>
                                 <label className={styles.filterLabel}>Έως</label>
-                                <input
-                                    type="date"
-                                    className={styles.filterInput}
-                                    value={dateTo}
-                                    onChange={(e) => setDateTo(e.target.value)}
-                                />
+                                <div className={styles.dateInputWrap} onClick={() => openDatePicker(dateToRef)}>
+                                    <input
+                                        type="text"
+                                        className={styles.filterInput}
+                                        value={dateTo ? formatDateDMY(dateTo) : ""}
+                                        placeholder="Ημερομηνία έως"
+                                        readOnly
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                openDatePicker(dateToRef);
+                                            }
+                                        }}
+                                    />
+                                    <input
+                                        ref={dateToRef}
+                                        type="date"
+                                        className={styles.hiddenDateInput}
+                                        value={dateTo}
+                                        onChange={(e) => setDateTo(e.target.value)}
+                                        tabIndex={-1}
+                                        aria-hidden="true"
+                                    />
+                                    {dateTo && (
+                                        <button
+                                            type="button"
+                                            className={styles.dateClearBtn}
+                                            aria-label="Καθαρισμός ημερομηνίας"
+                                            onClick={(e) => { e.stopPropagation(); setDateTo(""); }}
+                                        >
+                                            ×
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                             <div className={styles.filterGroup}>
                                 <label className={styles.filterLabel}>Τύπος κίνησης</label>
@@ -724,7 +893,6 @@ export default function Inventory() {
                     </div>
 
                     <div className={styles.section}>
-                        <h3 className={styles.sectionTitle}>Κινήσεις αποθήκης</h3>
                         {!activeStore?.id ? (
                             <p className={styles.sectionHint}>
                                 Επιλέξτε κατάστημα από την πλευρική μπάρα για να δείτε τις κινήσεις.
@@ -733,9 +901,8 @@ export default function Inventory() {
                             <div className={styles.listLoading}>
                                 <LoadingSpinner />
                             </div>
-                        ) : movements.length === 0 ? (
-                            <p className={styles.sectionHint}>Δεν υπάρχουν κινήσεις για τα επιλεγμένα φίλτρα.</p>
                         ) : (
+                            <>
                             <div className={styles.tableWrapper}>
                                 <table className={styles.table}>
                                     <thead>
@@ -750,7 +917,22 @@ export default function Inventory() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {movements.map((m) => (
+                                        {paginatedMovements.length === 0 ? (
+                                            <tr className={styles.tableEmptyRow}>
+                                                <td colSpan={7}>
+                                                    <div className={styles.tableEmptyState}>
+                                                        <div className={styles.tableEmptyIcon} aria-hidden>
+                                                            <History size={32} strokeWidth={1.35} />
+                                                        </div>
+                                                        <p className={styles.tableEmptyTitle}>Δεν υπάρχουν κινήσεις</p>
+                                                        <p className={styles.tableEmptyHint}>
+                                                            Δεν βρέθηκαν εγγραφές για το κατάστημα και τα επιλεγμένα φίλτρα ημερομηνίας / τύπου.
+                                                        </p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                        paginatedMovements.map((m) => (
                                             <tr key={m.id}>
                                                 <td>{formatDate(m.created_at)}</td>
                                                 <td>{m.product_name ?? "—"}</td>
@@ -766,7 +948,8 @@ export default function Inventory() {
                                                     )}
                                                 </td>
                                             </tr>
-                                        ))}
+                                        ))
+                                        )}
                                     </tbody>
                                 </table>
                                 {movementsFetching && (
@@ -775,6 +958,51 @@ export default function Inventory() {
                                     </div>
                                 )}
                             </div>
+                            {movements.length > 0 && (
+                            <div className={styles.pagination}>
+                                <div className={styles.paginationInfo}>
+                                    Εμφάνιση <strong>{movementRangeStart}</strong>–<strong>{movementRangeEnd}</strong> από <strong>{movements.length}</strong>
+                                </div>
+                                <div className={styles.paginationControls}>
+                                    <label className={styles.pageSizeLabel}>
+                                        Γραμμές
+                                        <select
+                                            className={styles.pageSizeSelect}
+                                            value={movementPageSize}
+                                            onChange={(e) => setMovementPageSize(Number(e.target.value))}
+                                        >
+                                            {PAGE_SIZE_OPTIONS.map((n) => (
+                                                <option key={n} value={n}>{n}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <div className={styles.pageNav}>
+                                        <button
+                                            type="button"
+                                            className={styles.pageBtn}
+                                            onClick={() => setMovementPage((p) => Math.max(1, p - 1))}
+                                            disabled={movementCurrentPage <= 1}
+                                            aria-label="Προηγούμενη σελίδα"
+                                        >
+                                            <ChevronLeft size={16} />
+                                        </button>
+                                        <span className={styles.pageIndicator}>
+                                            Σελίδα <strong>{movementCurrentPage}</strong> / {movementTotalPages}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={styles.pageBtn}
+                                            onClick={() => setMovementPage((p) => Math.min(movementTotalPages, p + 1))}
+                                            disabled={movementCurrentPage >= movementTotalPages}
+                                            aria-label="Επόμενη σελίδα"
+                                        >
+                                            <ChevronRight size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            )}
+                            </>
                         )}
                     </div>
                 </>

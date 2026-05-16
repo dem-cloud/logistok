@@ -26,10 +26,10 @@ function getPurchaseNewStatus(documentType, currentStatus, action) {
     if (a === 'create_credit_note' && s !== 'credited') return s; // credited when CN covers full amount
   }
 
-  if (doc === 'DBN') {
-    if (a === 'finalize') return 'posted';
+  if (doc === 'CN') {
+    if (a === 'finalize') return 'completed';
     if (a === 'reverse') return 'reversed';
-    if (a === 'apply' || a === 'refund') return 'closed';
+    if (a === 'create_receipt') return 'closed';
   }
 
   return null;
@@ -80,7 +80,14 @@ function canPerformPurchaseAction(documentType, status, paymentStatus, action, c
   const buttons = require('../config/documentSpec').getPurchaseButtons(
     documentType, status, paymentStatus,
     context?.hasPayments ?? false,
-    context?.hasLinkedInvoice ?? false
+    context?.hasLinkedInvoice ?? false,
+    {
+      fullyCredited: context?.fullyCredited ?? false,
+      cnCloseReason: context?.cnCloseReason ?? null,
+      creditStatus: context?.creditStatus ?? null,
+      hasDraftCn: context?.hasDraftCn ?? false,
+      amountDue: context?.amountDue ?? 0,
+    }
   );
   const btn = buttons.find(b => b.key === action);
   return btn && !btn.disabled;
@@ -105,7 +112,14 @@ function getAllowedPurchaseStatuses(documentType, currentStatus, context) {
   const buttons = getPurchaseButtons(
     documentType, currentStatus, context?.paymentStatus,
     context?.hasPayments ?? false,
-    context?.hasLinkedInvoice ?? false
+    context?.hasLinkedInvoice ?? false,
+    {
+      fullyCredited: context?.fullyCredited ?? false,
+      cnCloseReason: context?.cnCloseReason ?? null,
+      creditStatus: context?.creditStatus ?? null,
+      hasDraftCn: context?.hasDraftCn ?? false,
+      amountDue: context?.amountDue ?? 0,
+    }
   );
   const statuses = new Set([currentStatus]); // allow no change (save)
   for (const btn of buttons) {

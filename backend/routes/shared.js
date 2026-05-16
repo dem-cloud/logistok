@@ -20,6 +20,7 @@ const { checkStockAvailability } = require('../helpers/stockAvailability');
 const { generateSalePdf } = require('../helpers/generateSalePdf');
 const { generatePurchasePdf } = require('../helpers/generatePurchasePdf');
 const { generatePaymentPdf } = require('../helpers/generatePaymentPdf');
+const { generateReceiptPdf } = require('../helpers/generateReceiptPdf');
 const { getNextSequence, isInvoiceNumberUnique } = require('../helpers/documentSequences');
 const { recomputeSalePaymentStatus, recomputePurchasePaymentStatus } = require("../helpers/paymentStatus");
 const { getAllowedPurchaseStatuses, getAllowedSalesStatuses } = require('../helpers/documentTransitions');
@@ -31,6 +32,10 @@ const {
 } = require('../helpers/poGrnSync');
 const { getPoCancelBlockReason, getPoCloseBlockReason, getSoCancelBlockReason } = require('../helpers/documentCancelGuards');
 const { normalizePurchaseDocType, normalizePurchaseStatus } = require('../helpers/purchaseNormalize');
+const {
+    getRemainingCreditQtyByPurchaseItemIdMap,
+    getRemainingCreditQtyByPurchaseItemIdMapsForMany,
+} = require('../helpers/purchaseCreditRemaining');
 
 const multer = require('multer');
 const router = express.Router();
@@ -4301,7 +4306,7 @@ router.patch("/company/vendors/:id", requireAuth, requireAnyPermission(['vendors
     }
 });
 
-// GET /company/vendors/:id/outstanding - Sum of amount_due for unpaid/partial PUR
+// GET /company/vendors/:id/outstanding - Payables (PUR amount_due) + supplier refund still due (CN − posted receipts)
 router.get("/company/vendors/:id/outstanding", requireAuth, requireAnyPermission(['vendors.view', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const { id } = req.params;
@@ -4318,8 +4323,58 @@ router.get("/company/vendors/:id/outstanding", requireAuth, requireAnyPermission
             .eq("vendor_id", id)
             .in("document_type", ["PUR"])
             .in("payment_status", ["unpaid", "partial"]);
-        const amount = (rows || []).reduce((s, r) => s + (Number(r.amount_due) || 0), 0);
-        return res.json({ success: true, data: { amount: Math.round(amount * 100) / 100 } });
+        const amountPayables = Math.round((rows || []).reduce((s, r) => s + (Number(r.amount_due) || 0), 0) * 100) / 100;
+
+        const { data: purRows } = await supabase
+            .from("purchases")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("vendor_id", id)
+            .eq("document_type", "PUR");
+        const purIds = (purRows || []).map((p) => p.id).filter(Boolean);
+        let amountReceivables = 0;
+        if (purIds.length > 0) {
+            const { data: cnRows } = await supabase
+                .from("purchases")
+                .select("id, total_amount, status")
+                .eq("company_id", companyId)
+                .eq("document_type", "CN")
+                .in("converted_from_id", purIds);
+            const activeCn = (cnRows || []).filter((d) => {
+                const s = String(d.status || "").toLowerCase();
+                return s === "completed" || s === "posted" || s === "closed";
+            });
+            const cnIds = activeCn.map((d) => d.id);
+            if (cnIds.length > 0) {
+                const { data: postedRecs } = await supabase
+                    .from("receipts")
+                    .select("purchase_id, amount")
+                    .eq("company_id", companyId)
+                    .eq("status", "posted")
+                    .in("purchase_id", cnIds);
+                const postedByCn = {};
+                for (const pr of postedRecs || []) {
+                    const pid = pr.purchase_id;
+                    if (!pid) continue;
+                    postedByCn[pid] = (postedByCn[pid] || 0) + Math.abs(Number(pr.amount || 0));
+                }
+                for (const cn of activeCn) {
+                    const cap = Math.abs(Number(cn.total_amount || 0));
+                    const used = postedByCn[cn.id] || 0;
+                    amountReceivables += Math.max(0, Math.round((cap - used) * 100) / 100);
+                }
+            }
+        }
+        amountReceivables = Math.round(amountReceivables * 100) / 100;
+
+        return res.json({
+            success: true,
+            data: {
+                amount: amountPayables,
+                amountPayables,
+                amountReceivables,
+            },
+        });
     } catch (err) {
         console.error("GET /company/vendors/:id/outstanding ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error", code: "SERVER_ERROR" });
@@ -5902,7 +5957,7 @@ router.get("/company/sales/:id", requireAuth, requireAnyPermission(['sales.view'
                 .select("id, amount, payment_method_id, payment_date, notes, is_auto")
                 .eq("sale_id", sale.id)
                 .eq("company_id", companyId)
-                .order("payment_date", { ascending: false });
+                .order("created_at", { ascending: false });
             receipts = (receiptRows || []).map(r => ({
                 id: r.id,
                 amount: Number(r.amount),
@@ -6613,13 +6668,9 @@ router.post("/company/sales", requireAuth, requireAnyPermission(['sales.create',
         let salePaymentStatus = null;
         let saleAmountDue = null;
         if (saleStatus === "completed" && (invoiceType === "REC" || invoiceType === "INV")) {
-            if (invoiceType === "REC" || salePaymentTerms === "immediate") {
-                salePaymentStatus = "paid";
-                saleAmountDue = 0;
-            } else {
-                salePaymentStatus = "unpaid";
-                saleAmountDue = totalAmount;
-            }
+            // REC and INV start unpaid; `paid` comes only from posted rows in `receipts` (recompute).
+            salePaymentStatus = "unpaid";
+            saleAmountDue = totalAmount;
         }
 
         const saleData = {
@@ -6827,37 +6878,13 @@ router.post("/company/sales", requireAuth, requireAnyPermission(['sales.create',
             }
         }
 
-        // Auto-receipt for completed REC or INV with immediate payment
-        if (saleStatus === "completed" && (invoiceType === "REC" || (invoiceType === "INV" && salePaymentTerms === "immediate"))) {
-            const receiptData = {
-                company_id: companyId,
-                store_id: store_id.trim(),
-                sale_id: sale.id,
-                customer_id: customer_id && typeof customer_id === "string" && customer_id.trim() ? customer_id.trim() : null,
-                amount: totalAmount,
-                payment_method_id: payment_method_id.trim(),
-                is_auto: true,
-                created_by: userId || null
-            };
-            const { error: receiptErr } = await supabase.from("receipts").insert(receiptData);
-            if (receiptErr) {
-                console.error("POST /company/sales auto-receipt:", receiptErr);
-                if (needsStockOnComplete) {
-                    await reverseSaleStock(companyId, store_id.trim(), sale.id, userId);
-                }
-                await supabase.from("sale_items").delete().eq("sale_id", sale.id);
-                await supabase.from("sales").delete().eq("id", sale.id);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την καταχώρηση απόδειξης πληρωμής",
-                    code: "DB_ERROR"
-                });
-            }
+        if (saleStatus === "completed" && (invoiceType === "REC" || invoiceType === "INV")) {
+            await recomputeSalePaymentStatus(supabase, companyId, sale.id);
         }
 
         const { data: saleRow } = await supabase
             .from("sales")
-            .select("id, created_at, store_id, customer_id, payment_method_id, total_amount, status, notes, subtotal, vat_total, invoice_type, invoice_number, amount_paid, change_returned")
+            .select("id, created_at, store_id, customer_id, payment_method_id, total_amount, status, notes, subtotal, vat_total, invoice_type, invoice_number, amount_paid, change_returned, payment_terms, due_date, payment_status, amount_due")
             .eq("id", sale.id)
             .single();
 
@@ -7075,8 +7102,7 @@ router.patch("/company/sales/:id", requireAuth, requireAnyPermission(['sales.edi
             .from("receipts")
             .select("id")
             .eq("sale_id", id)
-            .eq("company_id", companyId)
-            .eq("is_auto", false);
+            .eq("company_id", companyId);
         const hasReceipts = (receiptsList || []).length > 0;
 
         let hasLinkedInvoice = false;
@@ -7161,8 +7187,7 @@ router.patch("/company/sales/:id", requireAuth, requireAnyPermission(['sales.edi
                 }
             }
 
-            // Delete non-auto receipts linked to this sale
-            await supabase.from("receipts").delete().eq("sale_id", id).eq("company_id", companyId).eq("is_auto", false);
+            await supabase.from("receipts").delete().eq("sale_id", id).eq("company_id", companyId);
 
             const { error: updErr } = await supabase
                 .from("sales")
@@ -7546,38 +7571,13 @@ router.patch("/company/sales/:id", requireAuth, requireAnyPermission(['sales.edi
             const daysToAdd = salePaymentTerms === "immediate" ? 0 : parseInt(salePaymentTerms, 10) || 0;
             updateData.payment_terms = salePaymentTerms;
             updateData.due_date = (invoiceType === "INV" && daysToAdd > 0) ? (() => { const d = new Date(invDateStr); d.setDate(d.getDate() + daysToAdd); return d.toISOString(); })() : null;
-            if (invoiceType === "REC" || salePaymentTerms === "immediate") {
-                updateData.payment_status = "paid";
-                updateData.amount_due = 0;
-            } else {
-                updateData.payment_status = "unpaid";
-                updateData.amount_due = totalAmount;
-            }
+            updateData.payment_status = "unpaid";
+            updateData.amount_due = totalAmount;
         }
         // QUO draft → sent: auto-assign invoice number (QUO-2026-0001)
         if (existingDocType === "QUO" && currentStatus === "draft" && targetStatus === "sent") {
             const quoNum = await getNextSequence(companyId, "QUO");
             updateData.invoice_number = quoNum;
-        }
-        if (targetStatus === "completed" && (invoiceType === "REC" || invoiceType === "INV")) {
-            const validTerms = ["immediate", "15", "30", "60", "90"];
-            let salePaymentTerms = "immediate";
-            if (invoiceType === "INV" && updateData.customer_id) {
-                const { data: cust } = await supabase.from("customers").select("payment_terms").eq("id", updateData.customer_id).eq("company_id", companyId).single();
-                const custTerms = cust?.payment_terms && validTerms.includes(String(cust.payment_terms).toLowerCase()) ? String(cust.payment_terms).toLowerCase() : "immediate";
-                salePaymentTerms = bodyPaymentTerms && validTerms.includes(String(bodyPaymentTerms).toLowerCase()) ? String(bodyPaymentTerms).toLowerCase() : custTerms;
-            }
-            const invDateStr = updateData.invoice_date || new Date().toISOString().slice(0, 10);
-            const daysToAdd = salePaymentTerms === "immediate" ? 0 : parseInt(salePaymentTerms, 10) || 0;
-            updateData.payment_terms = salePaymentTerms;
-            updateData.due_date = (invoiceType === "INV" && daysToAdd > 0) ? (() => { const d = new Date(invDateStr); d.setDate(d.getDate() + daysToAdd); return d.toISOString(); })() : null;
-            if (invoiceType === "REC" || salePaymentTerms === "immediate") {
-                updateData.payment_status = "paid";
-                updateData.amount_due = 0;
-            } else {
-                updateData.payment_status = "unpaid";
-                updateData.amount_due = totalAmount;
-            }
         }
         if (targetStatus === "completed") updateData.status = "completed";
         else if (targetStatus === "sent") updateData.status = "sent";
@@ -7601,12 +7601,16 @@ router.patch("/company/sales/:id", requireAuth, requireAnyPermission(['sales.edi
             });
         }
 
+        if (targetStatus === "completed" && (invoiceType === "REC" || invoiceType === "INV")) {
+            await recomputeSalePaymentStatus(supabase, companyId, parseInt(id, 10));
+        }
+
         const { data: fullSale } = await supabase
             .from("sales")
             .select(`
                 id, created_at, store_id, customer_id, payment_method_id, total_amount, status, notes,
                 subtotal, vat_total, invoice_type, invoice_number, amount_paid, change_returned,
-                invoice_date, expiry_date,
+                invoice_date, expiry_date, payment_terms, due_date, payment_status, amount_due,
                 sale_items (id, product_id, product_variant_id, quantity, sale_price, total_price, vat_rate, vat_exempt)
             `)
             .eq("id", id)
@@ -7688,6 +7692,8 @@ router.post("/company/sales/:id/convert-to-receipt", requireAuth, requireAnyPerm
         const { data: items } = await supabase.from("sale_items").select("product_id, product_variant_id, quantity, sale_price, total_price, vat_rate, vat_exempt").eq("sale_id", id);
         if (!items || items.length === 0) return res.status(400).json({ success: false, message: "Χρειάζονται γραμμές", code: "VALIDATION_ERROR" });
         const recNum = await getNextSequence(companyId, "REC");
+        const recTotal = Math.round(Number(quo.total_amount || 0) * 100) / 100;
+        const recInvDate = new Date().toISOString().slice(0, 10);
         const { data: rec, error: insErr } = await supabase.from("sales").insert({
             company_id: companyId,
             store_id: quo.store_id,
@@ -7696,7 +7702,7 @@ router.post("/company/sales/:id/convert-to-receipt", requireAuth, requireAnyPerm
             subtotal: quo.subtotal,
             vat_total: quo.vat_total,
             total_amount: quo.total_amount,
-            amount_paid: quo.total_amount,
+            amount_paid: 0,
             change_returned: 0,
             notes: quo.notes,
             source: "manual",
@@ -7704,6 +7710,11 @@ router.post("/company/sales/:id/convert-to-receipt", requireAuth, requireAnyPerm
             invoice_type: "REC",
             invoice_number: recNum,
             converted_from_id: parseInt(id, 10),
+            invoice_date: recInvDate,
+            payment_terms: "immediate",
+            due_date: null,
+            payment_status: "unpaid",
+            amount_due: recTotal,
             created_by: userId
         }).select("id").single();
         if (insErr || !rec) return res.status(500).json({ success: false, message: "Σφάλμα δημιουργίας απόδειξης", code: "DB_ERROR" });
@@ -7722,7 +7733,8 @@ router.post("/company/sales/:id/convert-to-receipt", requireAuth, requireAnyPerm
             await supabase.from("stock_movements").insert({ company_id: companyId, store_id: quo.store_id, product_id: it.product_id, product_variant_id: it.product_variant_id, quantity: -it.quantity, movement_type: "sale", source: "sale", related_document_type: "sale", related_document_id: rec.id, created_by: userId });
         }
         await supabase.from("sales").update({ status: "converted" }).eq("id", id).eq("company_id", companyId);
-        const { data: full } = await supabase.from("sales").select("id, created_at, store_id, customer_id, payment_method_id, total_amount, status, notes, subtotal, vat_total, invoice_type, invoice_number, amount_paid, change_returned, converted_from_id, sale_items(id, product_id, product_variant_id, quantity, sale_price, total_price, vat_rate, vat_exempt)").eq("id", rec.id).eq("company_id", companyId).single();
+        await recomputeSalePaymentStatus(supabase, companyId, rec.id);
+        const { data: full } = await supabase.from("sales").select("id, created_at, store_id, customer_id, payment_method_id, total_amount, status, notes, subtotal, vat_total, invoice_type, invoice_number, amount_paid, change_returned, converted_from_id, payment_terms, due_date, payment_status, amount_due, invoice_date, sale_items(id, product_id, product_variant_id, quantity, sale_price, total_price, vat_rate, vat_exempt)").eq("id", rec.id).eq("company_id", companyId).single();
         return res.json({ success: true, data: full });
     } catch (err) {
         console.error("convert-to-receipt:", err);
@@ -7745,6 +7757,13 @@ router.post("/company/sales/:id/convert-to-invoice", requireAuth, requireAnyPerm
         const { data: items } = await supabase.from("sale_items").select("product_id, product_variant_id, quantity, sale_price, total_price, vat_rate, vat_exempt").eq("sale_id", id);
         if (!items || items.length === 0) return res.status(400).json({ success: false, message: "Χρειάζονται γραμμές", code: "VALIDATION_ERROR" });
         const invNum = await getNextSequence(companyId, "INV");
+        const validTerms = ["immediate", "15", "30", "60", "90"];
+        const { data: custInv } = await supabase.from("customers").select("payment_terms").eq("id", src.customer_id).eq("company_id", companyId).single();
+        const custTerms = custInv?.payment_terms && validTerms.includes(String(custInv.payment_terms).toLowerCase()) ? String(custInv.payment_terms).toLowerCase() : "immediate";
+        const invDateStr = new Date().toISOString().slice(0, 10);
+        const daysToAdd = custTerms === "immediate" ? 0 : parseInt(custTerms, 10) || 0;
+        const invDueDate = daysToAdd > 0 ? (() => { const d = new Date(invDateStr); d.setDate(d.getDate() + daysToAdd); return d.toISOString(); })() : null;
+        const invTotal = Math.round(Number(src.total_amount || 0) * 100) / 100;
         const { data: inv, error: insErr } = await supabase.from("sales").insert({
             company_id: companyId,
             store_id: src.store_id,
@@ -7753,7 +7772,7 @@ router.post("/company/sales/:id/convert-to-invoice", requireAuth, requireAnyPerm
             subtotal: src.subtotal,
             vat_total: src.vat_total,
             total_amount: src.total_amount,
-            amount_paid: src.total_amount,
+            amount_paid: 0,
             change_returned: 0,
             notes: src.notes,
             source: "manual",
@@ -7761,6 +7780,11 @@ router.post("/company/sales/:id/convert-to-invoice", requireAuth, requireAnyPerm
             invoice_type: "INV",
             invoice_number: invNum,
             converted_from_id: parseInt(id, 10),
+            invoice_date: invDateStr,
+            payment_terms: custTerms,
+            due_date: invDueDate,
+            payment_status: "unpaid",
+            amount_due: invTotal,
             created_by: userId
         }).select("id").single();
         if (insErr || !inv) return res.status(500).json({ success: false, message: "Σφάλμα δημιουργίας τιμολογίου", code: "DB_ERROR" });
@@ -7780,7 +7804,8 @@ router.post("/company/sales/:id/convert-to-invoice", requireAuth, requireAnyPerm
         }
         if (src.invoice_type === "QUO") await supabase.from("sales").update({ status: "converted" }).eq("id", id).eq("company_id", companyId);
         else await supabase.from("sales").update({ status: "invoiced" }).eq("id", id).eq("company_id", companyId);
-        const { data: full } = await supabase.from("sales").select("id, created_at, store_id, customer_id, payment_method_id, total_amount, status, notes, subtotal, vat_total, invoice_type, invoice_number, amount_paid, change_returned, converted_from_id, sale_items(id, product_id, product_variant_id, quantity, sale_price, total_price, vat_rate, vat_exempt)").eq("id", inv.id).eq("company_id", companyId).single();
+        await recomputeSalePaymentStatus(supabase, companyId, inv.id);
+        const { data: full } = await supabase.from("sales").select("id, created_at, store_id, customer_id, payment_method_id, total_amount, status, notes, subtotal, vat_total, invoice_type, invoice_number, amount_paid, change_returned, converted_from_id, payment_terms, due_date, payment_status, amount_due, invoice_date, sale_items(id, product_id, product_variant_id, quantity, sale_price, total_price, vat_rate, vat_exempt)").eq("id", inv.id).eq("company_id", companyId).single();
         return res.json({ success: true, data: full });
     } catch (err) {
         console.error("convert-to-invoice:", err);
@@ -7948,14 +7973,15 @@ router.get("/company/receipts", requireAuth, requireAnyPermission(['sales.view',
         let query = supabase
             .from("receipts")
             .select(`
-                id, created_at, store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                id, created_at, store_id, sale_id, purchase_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
                 sales (invoice_type, invoice_number),
+                purchases (invoice_number, document_type, vendor_id, total_amount, vendors (name)),
                 customers (full_name),
                 payment_methods (name)
             `)
             .eq("company_id", companyId)
             .eq("store_id", store_id.trim())
-            .order("payment_date", { ascending: false });
+            .order("created_at", { ascending: false });
 
         if (from && typeof from === "string" && from.trim()) {
             query = query.gte("payment_date", from.trim());
@@ -7980,12 +8006,16 @@ router.get("/company/receipts", requireAuth, requireAnyPermission(['sales.view',
             });
         }
 
-        // Resolve payment_status from linked sale when filter applied
+        // Normalize: receipts link to either a sale (customer receipt) or a CN
+        // (supplier-refund receipt). We flatten both into the same row shape so
+        // the frontend can render a single list.
         let result = (receipts ?? []).map(r => ({
             ...r,
             payment_method_name: r.payment_methods?.name ?? null,
             customer_name: r.customers?.full_name ?? null,
-            invoice_number: r.sales?.invoice_number ?? null
+            vendor_name: r.purchases?.vendors?.name ?? null,
+            invoice_number: r.sales?.invoice_number ?? r.purchases?.invoice_number ?? null,
+            source_document_type: r.sale_id ? (r.sales?.invoice_type ?? "INV") : (r.purchases?.document_type ?? "CN")
         }));
 
         if (payment_status && typeof payment_status === "string" && payment_status.trim()) {
@@ -8004,6 +8034,40 @@ router.get("/company/receipts", requireAuth, requireAnyPermission(['sales.view',
             }
         }
 
+        // Per CN row: remaining amount that can still be receipted (posted receipts
+        // already reduce capacity). Used by the client for validation hints.
+        const purchaseIds = [...new Set(result.filter((r) => r.purchase_id).map((r) => r.purchase_id))];
+        if (purchaseIds.length > 0) {
+            const { data: cnTotals } = await supabase
+                .from("purchases")
+                .select("id, total_amount")
+                .in("id", purchaseIds)
+                .eq("company_id", companyId);
+            const { data: postedForCn } = await supabase
+                .from("receipts")
+                .select("purchase_id, amount")
+                .in("purchase_id", purchaseIds)
+                .eq("company_id", companyId)
+                .eq("status", "posted");
+            const cnAbsById = {};
+            for (const p of cnTotals || []) {
+                cnAbsById[p.id] = Math.abs(Number(p.total_amount || 0));
+            }
+            const postedByPur = {};
+            for (const pr of postedForCn || []) {
+                const pid = pr.purchase_id;
+                if (!pid) continue;
+                postedByPur[pid] = (postedByPur[pid] || 0) + Math.abs(Number(pr.amount || 0));
+            }
+            result = result.map((r) => {
+                if (!r.purchase_id) return r;
+                const cap = cnAbsById[r.purchase_id] ?? Math.abs(Number(r.purchases?.total_amount ?? 0));
+                const used = postedByPur[r.purchase_id] || 0;
+                const remaining = Math.max(0, Math.round((cap - used) * 100) / 100);
+                return { ...r, cn_refund_remaining: remaining };
+            });
+        }
+
         return res.json({ success: true, data: result });
     } catch (err) {
         console.error("GET /company/receipts ERROR:", err);
@@ -8012,52 +8076,177 @@ router.get("/company/receipts", requireAuth, requireAnyPermission(['sales.view',
 });
 
 // POST /company/receipts - Create draft receipt
+// Accepts EITHER sale_id (customer receipt against a sales invoice) OR
+// purchase_id (supplier-refund receipt against a finalized CN). The two are
+// mutually exclusive — the DB CHECK constraint enforces this at the row level.
 router.post("/company/receipts", requireAuth, requireAnyPermission(['sales.create', 'sales.edit', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const userId = req.user.id;
-    const { store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes } = req.body;
+    const { store_id, sale_id, purchase_id, customer_id, amount, payment_method_id, payment_date, notes } = req.body;
 
-    if (!companyId || !store_id || !sale_id) {
+    if (!companyId || !store_id || (!sale_id && !purchase_id)) {
         return res.status(400).json({
             success: false,
-            message: "Λείπουν απαραίτητα πεδία (store_id, sale_id)",
+            message: "Λείπουν απαραίτητα πεδία (store_id και sale_id ή purchase_id)",
+            code: "VALIDATION_ERROR"
+        });
+    }
+    if (sale_id && purchase_id) {
+        return res.status(400).json({
+            success: false,
+            message: "Η είσπραξη πρέπει να συνδέεται είτε με πώληση είτε με πιστωτικό αγοράς, όχι και τα δύο",
             code: "VALIDATION_ERROR"
         });
     }
 
     try {
-        const { data: sale, error: saleErr } = await supabase
-            .from("sales")
-            .select("id, store_id, customer_id, total_amount, status, invoice_type, amount_due")
-            .eq("id", sale_id)
+        let sourceSale = null;
+        let sourcePurchase = null;
+
+        if (sale_id) {
+            const { data: sale, error: saleErr } = await supabase
+                .from("sales")
+                .select("id, store_id, customer_id, total_amount, status, invoice_type, amount_due")
+                .eq("id", sale_id)
+                .eq("company_id", companyId)
+                .single();
+
+            if (saleErr || !sale) {
+                return res.status(404).json({ success: false, message: "Η πώληση δεν βρέθηκε", code: "NOT_FOUND" });
+            }
+            if (sale.invoice_type !== "INV") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Οι χειροκίνητες εισπράξεις ισχύουν μόνο για τιμολόγια",
+                    code: "INVALID_STATE"
+                });
+            }
+            if (sale.status !== "completed") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Η πώληση πρέπει να είναι ολοκληρωμένη",
+                    code: "INVALID_STATE"
+                });
+            }
+            sourceSale = sale;
+        } else {
+            const { data: pur, error: purErr } = await supabase
+                .from("purchases")
+                .select("id, store_id, vendor_id, total_amount, status, document_type")
+                .eq("id", purchase_id)
+                .eq("company_id", companyId)
+                .single();
+
+            if (purErr || !pur) {
+                return res.status(404).json({ success: false, message: "Το πιστωτικό δεν βρέθηκε", code: "NOT_FOUND" });
+            }
+            if ((pur.document_type || "").toUpperCase() !== "CN") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Είσπραξη επιτρέπεται μόνο πάνω σε Πιστωτικό Αγοράς",
+                    code: "INVALID_STATE"
+                });
+            }
+            if (!["completed", "posted"].includes((pur.status || "").toLowerCase())) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Το πιστωτικό πρέπει να είναι ολοκληρωμένο",
+                    code: "INVALID_STATE"
+                });
+            }
+            sourcePurchase = pur;
+        }
+
+        // Reuse existing draft receipt for the same source document, if any —
+        // mirrors the Payments endpoint so repeated clicks don't create dupes.
+        const reuseQuery = supabase
+            .from("receipts")
+            .select("id, created_at, store_id, sale_id, purchase_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status")
             .eq("company_id", companyId)
-            .single();
+            .eq("status", "draft")
+            .maybeSingle();
+        const { data: existingDraft } = sale_id
+            ? await reuseQuery.eq("sale_id", sale_id)
+            : await reuseQuery.eq("purchase_id", purchase_id);
 
-        if (saleErr || !sale) {
-            return res.status(404).json({ success: false, message: "Η πώληση δεν βρέθηκε", code: "NOT_FOUND" });
-        }
-        if (sale.invoice_type !== "INV") {
-            return res.status(400).json({
-                success: false,
-                message: "Οι χειροκίνητες εισπράξεις ισχύουν μόνο για τιμολόγια",
-                code: "INVALID_STATE"
-            });
-        }
-        if (sale.status !== "completed") {
-            return res.status(400).json({
-                success: false,
-                message: "Η πώληση πρέπει να είναι ολοκληρωμένη",
-                code: "INVALID_STATE"
-            });
+        // Remaining refundable against a CN = face amount minus already-posted receipts.
+        let cnRefundRemaining = null;
+        if (sourcePurchase) {
+            const cnAbs = Math.abs(Number(sourcePurchase.total_amount || 0));
+            const { data: postedRecs } = await supabase
+                .from("receipts")
+                .select("amount")
+                .eq("purchase_id", purchase_id)
+                .eq("company_id", companyId)
+                .eq("status", "posted");
+            const postedSum = (postedRecs || []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+            cnRefundRemaining = Math.max(0, Math.round((cnAbs - postedSum) * 100) / 100);
         }
 
-        const amt = amount != null ? Math.round(Number(amount) * 100) / 100 : Number(sale.amount_due ?? sale.total_amount) || 0;
+        if (existingDraft) {
+            // If this is a CN, keep the draft amount aligned with what is still refundable
+            // (e.g. after a partial posted receipt, a leftover draft should not stay at full CN).
+            if (cnRefundRemaining != null && existingDraft.id) {
+                const curAmt = Math.round(Number(existingDraft.amount || 0) * 100) / 100;
+                let targetAmt;
+                if (amount != null) {
+                    targetAmt = Math.round(Number(amount) * 100) / 100;
+                } else if (cnRefundRemaining > 0) {
+                    targetAmt = Math.min(curAmt, cnRefundRemaining);
+                } else {
+                    targetAmt = curAmt;
+                }
+                if (targetAmt !== curAmt && targetAmt > 0) {
+                    await supabase
+                        .from("receipts")
+                        .update({ amount: targetAmt })
+                        .eq("id", existingDraft.id)
+                        .eq("company_id", companyId)
+                        .eq("status", "draft");
+                    existingDraft.amount = targetAmt;
+                }
+            }
+            // Re-fetch with joins so the response shape matches the create path.
+            const { data: full } = await supabase
+                .from("receipts")
+                .select(`
+                    id, created_at, store_id, sale_id, purchase_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                    sales (invoice_type, invoice_number),
+                    purchases (invoice_number, document_type, vendor_id, vendors (name)),
+                    customers (full_name),
+                    payment_methods (name)
+                `)
+                .eq("id", existingDraft.id)
+                .eq("company_id", companyId)
+                .single();
+            const hydrated = full ? {
+                ...full,
+                payment_method_name: full.payment_methods?.name ?? null,
+                customer_name: full.customers?.full_name ?? null,
+                vendor_name: full.purchases?.vendors?.name ?? null,
+                invoice_number: full.sales?.invoice_number ?? full.purchases?.invoice_number ?? null,
+                source_document_type: full.sale_id ? (full.sales?.invoice_type ?? "INV") : (full.purchases?.document_type ?? "CN")
+            } : existingDraft;
+            const adjustedHydrated =
+                cnRefundRemaining != null && hydrated && hydrated.purchase_id
+                    ? { ...hydrated, cn_refund_remaining: cnRefundRemaining }
+                    : hydrated;
+            return res.json({ success: true, data: adjustedHydrated, reused_existing_draft: true });
+        }
+
+        const defaultAmt = sourceSale
+            ? Number(sourceSale.amount_due ?? sourceSale.total_amount)
+            : (cnRefundRemaining ?? Math.abs(Number(sourcePurchase.total_amount || 0)));
+        const amt = amount != null
+            ? Math.round(Number(amount) * 100) / 100
+            : (defaultAmt || 0);
 
         const { data: created, error: insErr } = await supabase.from("receipts").insert({
             company_id: companyId,
             store_id: store_id,
-            sale_id: sale_id,
-            customer_id: customer_id || sale.customer_id,
+            sale_id: sale_id || null,
+            purchase_id: purchase_id || null,
+            customer_id: sale_id ? (customer_id || sourceSale.customer_id) : null,
             amount: amt > 0 ? amt : 0,
             payment_method_id: payment_method_id || null,
             payment_date: payment_date && typeof payment_date === "string" ? payment_date : new Date().toISOString(),
@@ -8075,8 +8264,9 @@ router.post("/company/receipts", requireAuth, requireAnyPermission(['sales.creat
         const { data: full } = await supabase
             .from("receipts")
             .select(`
-                id, created_at, store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                id, created_at, store_id, sale_id, purchase_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
                 sales (invoice_type, invoice_number),
+                purchases (invoice_number, document_type, vendor_id, vendors (name)),
                 customers (full_name),
                 payment_methods (name)
             `)
@@ -8088,7 +8278,10 @@ router.post("/company/receipts", requireAuth, requireAnyPermission(['sales.creat
             ...full,
             payment_method_name: full.payment_methods?.name ?? null,
             customer_name: full.customers?.full_name ?? null,
-            invoice_number: full.sales?.invoice_number ?? null
+            vendor_name: full.purchases?.vendors?.name ?? null,
+            invoice_number: full.sales?.invoice_number ?? full.purchases?.invoice_number ?? null,
+            source_document_type: full.sale_id ? (full.sales?.invoice_type ?? "INV") : (full.purchases?.document_type ?? "CN"),
+            ...(full.purchase_id && cnRefundRemaining != null ? { cn_refund_remaining: cnRefundRemaining } : {}),
         } : null;
 
         return res.json({ success: true, data: result });
@@ -8111,7 +8304,7 @@ router.patch("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.
     try {
         const { data: existing, error: fetchErr } = await supabase
             .from("receipts")
-            .select("id, sale_id, customer_id, store_id, amount, payment_method_id, payment_date, notes, status, is_auto, company_id")
+            .select("id, sale_id, purchase_id, customer_id, store_id, amount, payment_method_id, payment_date, notes, status, is_auto, company_id")
             .eq("id", id)
             .eq("company_id", companyId)
             .single();
@@ -8151,11 +8344,46 @@ router.patch("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.
                     .eq("company_id", companyId)
                     .single();
                 if (sale) {
-                    const amountDue = Number(sale.amount_due ?? sale.total_amount) || 0;
-                    if (effectiveAmount > amountDue) {
+                    const amountDue = Math.round((Number(sale.amount_due ?? sale.total_amount) || 0) * 100) / 100;
+                    const EPS = 1e-6;
+                    if (effectiveAmount > amountDue + EPS) {
                         return res.status(400).json({
                             success: false,
-                            message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο (${amountDue} €)`,
+                            message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο τιμολογίου (${amountDue} €)`,
+                            code: "VALIDATION_ERROR"
+                        });
+                    }
+                }
+            } else if (existing.purchase_id) {
+                // Cap = CN face amount minus sums already receipted (posted only).
+                const { data: cn } = await supabase
+                    .from("purchases")
+                    .select("id, total_amount, status, document_type")
+                    .eq("id", existing.purchase_id)
+                    .eq("company_id", companyId)
+                    .single();
+                if (cn) {
+                    if ((cn.document_type || "").toUpperCase() !== "CN") {
+                        return res.status(400).json({
+                            success: false,
+                            message: "Είσπραξη επιτρέπεται μόνο πάνω σε Πιστωτικό Αγοράς",
+                            code: "INVALID_STATE"
+                        });
+                    }
+                    const cnTotalAbs = Math.abs(Number(cn.total_amount || 0));
+                    const { data: cnPosted } = await supabase
+                        .from("receipts")
+                        .select("amount")
+                        .eq("purchase_id", existing.purchase_id)
+                        .eq("company_id", companyId)
+                        .eq("status", "posted");
+                    const postedSum = (cnPosted || []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+                    const EPS = 1e-6;
+                    const remaining = Math.max(0, Math.round((cnTotalAbs - postedSum) * 100) / 100);
+                    if (effectiveAmount > remaining + EPS) {
+                        return res.status(400).json({
+                            success: false,
+                            message: `Το ποσό δεν μπορεί να υπερβαίνει το διαθέσιμο υπόλοιπο είσπραξης (${remaining} €)`,
                             code: "VALIDATION_ERROR"
                         });
                     }
@@ -8176,6 +8404,40 @@ router.patch("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.
 
             if (existing.sale_id) {
                 await recomputeSalePaymentStatus(supabase, companyId, existing.sale_id);
+            } else if (existing.purchase_id) {
+                // CN receipt flow: a posted receipt against a CN means the
+                // supplier actually refunded us. The CN only transitions to
+                // "closed" once the SUM of posted receipts fully covers the
+                // CN amount — a partial receipt keeps the CN open so the user
+                // can record the remainder.
+                const { data: cnRow } = await supabase
+                    .from("purchases")
+                    .select("id, total_amount, status")
+                    .eq("id", existing.purchase_id)
+                    .eq("company_id", companyId)
+                    .single();
+                if (cnRow) {
+                    const cnTotalAbs = Math.abs(Number(cnRow.total_amount || 0));
+                    const { data: cnReceipts } = await supabase
+                        .from("receipts")
+                        .select("amount")
+                        .eq("purchase_id", existing.purchase_id)
+                        .eq("company_id", companyId)
+                        .eq("status", "posted");
+                    const receiptedSum = (cnReceipts || []).reduce(
+                        (s, r) => s + Math.abs(Number(r.amount || 0)),
+                        0
+                    );
+                    const EPS = 1e-6;
+                    if (cnTotalAbs > 0 && receiptedSum + EPS >= cnTotalAbs) {
+                        await supabase
+                            .from("purchases")
+                            .update({ status: "closed" })
+                            .eq("id", existing.purchase_id)
+                            .eq("company_id", companyId)
+                            .in("status", ["completed", "posted"]);
+                    }
+                }
             }
         } else if (oldStatus === "posted" && newStatus === "reversed") {
             const { error: upErr } = await supabase.from("receipts").update({ status: "reversed" }).eq("id", id).eq("company_id", companyId);
@@ -8186,6 +8448,15 @@ router.patch("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.
 
             if (existing.sale_id) {
                 await recomputeSalePaymentStatus(supabase, companyId, existing.sale_id);
+            } else if (existing.purchase_id) {
+                // Reversing a posted CN receipt reopens the CN to `completed`
+                // so the user may record another receipt.
+                await supabase
+                    .from("purchases")
+                    .update({ status: "completed" })
+                    .eq("id", existing.purchase_id)
+                    .eq("company_id", companyId)
+                    .eq("status", "closed");
             }
         } else {
             return res.status(400).json({
@@ -8198,8 +8469,9 @@ router.patch("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.
         const { data: updated } = await supabase
             .from("receipts")
             .select(`
-                id, created_at, store_id, sale_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                id, created_at, store_id, sale_id, purchase_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
                 sales (invoice_type, invoice_number),
+                purchases (invoice_number, document_type, vendor_id, vendors (name)),
                 customers (full_name),
                 payment_methods (name)
             `)
@@ -8211,7 +8483,9 @@ router.patch("/company/receipts/:id", requireAuth, requireAnyPermission(['sales.
             ...updated,
             payment_method_name: updated.payment_methods?.name ?? null,
             customer_name: updated.customers?.full_name ?? null,
-            invoice_number: updated.sales?.invoice_number ?? null
+            vendor_name: updated.purchases?.vendors?.name ?? null,
+            invoice_number: updated.sales?.invoice_number ?? updated.purchases?.invoice_number ?? null,
+            source_document_type: updated.sale_id ? (updated.sales?.invoice_type ?? "INV") : (updated.purchases?.document_type ?? "CN")
         } : null;
 
         return res.json({ success: true, data: result });
@@ -8233,20 +8507,13 @@ router.delete("/company/receipts/:id", requireAuth, requireAnyPermission(['sales
     try {
         const { data: rec, error: fetchErr } = await supabase
             .from("receipts")
-            .select("id, sale_id, is_auto, status")
+            .select("id, sale_id, status")
             .eq("id", id)
             .eq("company_id", companyId)
             .single();
 
         if (fetchErr || !rec) {
             return res.status(404).json({ success: false, message: "Η είσπραξη δεν βρέθηκε", code: "NOT_FOUND" });
-        }
-        if (rec.is_auto) {
-            return res.status(403).json({
-                success: false,
-                message: "Δεν επιτρέπεται η διαγραφή αυτόματων εισπράξεων",
-                code: "CANNOT_DELETE_AUTO"
-            });
         }
         if ((rec.status || "posted") !== "draft") {
             return res.status(403).json({
@@ -8266,6 +8533,77 @@ router.delete("/company/receipts/:id", requireAuth, requireAnyPermission(['sales
     } catch (err) {
         console.error("DELETE /company/receipts ERROR:", err);
         return res.status(500).json({ success: false, message: "Server error", code: "SERVER_ERROR" });
+    }
+});
+
+// GET /company/receipts/:id/pdf - Download receipt as PDF
+router.get("/company/receipts/:id/pdf", requireAuth, requireAnyPermission(['sales.view', '*']), async (req, res) => {
+    const companyId = req.user.companyId;
+    const { id } = req.params;
+
+    if (!companyId || !id) {
+        return res.status(400).json({ success: false, message: "Λείπουν στοιχεία", code: "MISSING_PARAMS" });
+    }
+
+    try {
+        const { data: receipt, error } = await supabase
+            .from("receipts")
+            .select(`
+                id, created_at, store_id, sale_id, purchase_id, customer_id, amount, payment_method_id, payment_date, notes, is_auto, status,
+                sales (invoice_number, invoice_type),
+                purchases (invoice_number, document_type, vendors (name, phone, email)),
+                customers (full_name, phone, email),
+                payment_methods (name),
+                stores (id, name, address)
+            `)
+            .eq("id", id)
+            .eq("company_id", companyId)
+            .single();
+
+        if (error || !receipt) {
+            return res.status(404).json({ success: false, message: "Η είσπραξη δεν βρέθηκε", code: "NOT_FOUND" });
+        }
+
+        if ((receipt.status || "").toLowerCase() === "draft") {
+            return res.status(400).json({ success: false, message: "Δεν υπάρχει PDF για πρόχειρες εισπράξεις", code: "DRAFT_NO_PDF" });
+        }
+
+        const { data: company } = await supabase
+            .from("companies")
+            .select("name, display_name, tax_id, tax_office, address, city, postal_code, country")
+            .eq("id", companyId)
+            .single();
+
+        const isPurchaseRefund = !!receipt.purchase_id;
+        const pdfData = {
+            company: company || {},
+            store: receipt.stores ? { id: receipt.stores.id, name: receipt.stores.name, address: receipt.stores.address } : {},
+            customer: !isPurchaseRefund && receipt.customers
+                ? { full_name: receipt.customers.full_name, phone: receipt.customers.phone, email: receipt.customers.email }
+                : null,
+            vendor: isPurchaseRefund && receipt.purchases?.vendors
+                ? { name: receipt.purchases.vendors.name, phone: receipt.purchases.vendors.phone, email: receipt.purchases.vendors.email }
+                : null,
+            amount: Number(receipt.amount),
+            payment_method_name: receipt.payment_methods?.name || "",
+            payment_date: receipt.payment_date,
+            created_at: receipt.created_at,
+            status: receipt.status || "posted",
+            id: receipt.id,
+            notes: receipt.notes,
+            invoice_number: receipt.sales?.invoice_number || receipt.purchases?.invoice_number || null,
+            source_label: isPurchaseRefund ? "Σχετικό Πιστωτικό" : "Σχετικό Τιμολόγιο",
+        };
+
+        const pdfBuffer = await generateReceiptPdf(pdfData);
+
+        const filename = `eispraxi-REC-${String(receipt.id).padStart(4, "0")}.pdf`;
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.send(pdfBuffer);
+    } catch (err) {
+        console.error("GET /company/receipts/:id/pdf ERROR:", err);
+        return res.status(500).json({ success: false, message: "Σφάλμα δημιουργίας PDF", code: "PDF_ERROR" });
     }
 });
 
@@ -8506,11 +8844,12 @@ router.patch("/company/payments/:id", requireAuth, requireAnyPermission(['purcha
                     .eq("company_id", companyId)
                     .single();
                 if (purchase) {
-                    const amountDue = Number(purchase.amount_due ?? purchase.total_amount) || 0;
-                    if (effectiveAmount > amountDue) {
+                    const amountDue = Math.round((Number(purchase.amount_due ?? purchase.total_amount) || 0) * 100) / 100;
+                    const EPS = 1e-6;
+                    if (effectiveAmount > amountDue + EPS) {
                         return res.status(400).json({
                             success: false,
-                            message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο (${amountDue} €)`,
+                            message: `Το ποσό δεν μπορεί να υπερβαίνει το υπόλοιπο παραστατικού (${amountDue} €)`,
                             code: "VALIDATION_ERROR"
                         });
                     }
@@ -8588,20 +8927,13 @@ router.delete("/company/payments/:id", requireAuth, requireAnyPermission(['purch
     try {
         const { data: pay, error: fetchErr } = await supabase
             .from("payments")
-            .select("id, purchase_id, is_auto, status")
+            .select("id, purchase_id, status")
             .eq("id", id)
             .eq("company_id", companyId)
             .single();
 
         if (fetchErr || !pay) {
             return res.status(404).json({ success: false, message: "Η πληρωμή δεν βρέθηκε", code: "NOT_FOUND" });
-        }
-        if (pay.is_auto) {
-            return res.status(403).json({
-                success: false,
-                message: "Δεν επιτρέπεται η διαγραφή αυτόματων πληρωμών",
-                code: "CANNOT_DELETE_AUTO"
-            });
         }
         if ((pay.status || "posted") !== "draft") {
             return res.status(403).json({
@@ -8691,7 +9023,7 @@ router.get("/company/payments/:id/pdf", requireAuth, requireAnyPermission(['purc
 // PURCHASES APIs
 // ============================================
 
-const PURCHASE_DOC_TYPES = ["PUR", "GRN", "DBN", "PO"];
+const PURCHASE_DOC_TYPES = ["PUR", "GRN", "CN", "PO"];
 
 // GET /company/purchases - List purchases for company with filters
 router.get("/company/purchases", requireAuth, requireAnyPermission(['purchases.view', '*']), async (req, res) => {
@@ -8727,6 +9059,7 @@ router.get("/company/purchases", requireAuth, requireAnyPermission(['purchases.v
                 payment_terms,
                 due_date,
                 payment_status,
+                credit_status,
                 amount_due,
                 purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt, po_line_id, is_extra),
                 stores (id, name),
@@ -8827,6 +9160,102 @@ router.get("/company/purchases", requireAuth, requireAnyPermission(['purchases.v
             }
         }
 
+        // For each PUR in the list, compute `fully_credited` and `has_draft_cn` so the row-level
+        // "Δημιουργία Πιστωτικού" button can be disabled / reused appropriately.
+        const fullyCreditedByPurId = {};
+        const hasDraftCnByPurId = {};
+        if (purIds.length > 0) {
+            const { data: purItems } = await supabase
+                .from("purchase_items")
+                .select("purchase_id, product_id, product_variant_id, quantity")
+                .in("purchase_id", purIds);
+            const srcByPur = new Map();
+            const keyOf = (pid, vid) => `${pid}:${vid}`;
+            for (const it of purItems || []) {
+                if (!srcByPur.has(it.purchase_id)) srcByPur.set(it.purchase_id, new Map());
+                const m = srcByPur.get(it.purchase_id);
+                const k = keyOf(it.product_id, it.product_variant_id);
+                m.set(k, (m.get(k) || 0) + Number(it.quantity || 0));
+            }
+            const { data: cnRowsAll } = await supabase
+                .from("purchases")
+                .select("id, converted_from_id, status")
+                .eq("company_id", companyId)
+                .eq("document_type", "CN")
+                .in("converted_from_id", purIds);
+            const activeCnByPur = new Map();
+            for (const d of cnRowsAll || []) {
+                const st = (d.status || "").toLowerCase();
+                if (st === "draft") hasDraftCnByPurId[d.converted_from_id] = true;
+                if (st === "reversed") continue;
+                if (st !== "completed" && st !== "posted" && st !== "closed") continue;
+                if (!activeCnByPur.has(d.converted_from_id)) activeCnByPur.set(d.converted_from_id, []);
+                activeCnByPur.get(d.converted_from_id).push(d.id);
+            }
+            const allCnIds = (cnRowsAll || [])
+                .filter((d) => {
+                    const st = (d.status || "").toLowerCase();
+                    return st !== "reversed" && (st === "completed" || st === "posted" || st === "closed");
+                })
+                .map((d) => d.id);
+            const returnedByCn = new Map();
+            if (allCnIds.length > 0) {
+                const { data: cnLines } = await supabase
+                    .from("purchase_items")
+                    .select("purchase_id, product_id, product_variant_id, quantity")
+                    .in("purchase_id", allCnIds);
+                for (const l of cnLines || []) {
+                    if (!returnedByCn.has(l.purchase_id)) returnedByCn.set(l.purchase_id, []);
+                    returnedByCn.get(l.purchase_id).push(l);
+                }
+            }
+            for (const purId of purIds) {
+                const src = srcByPur.get(purId);
+                if (!src || src.size === 0) { fullyCreditedByPurId[purId] = false; continue; }
+                const returnedByKey = new Map();
+                for (const cnId of activeCnByPur.get(purId) || []) {
+                    for (const l of returnedByCn.get(cnId) || []) {
+                        const k = keyOf(l.product_id, l.product_variant_id);
+                        returnedByKey.set(k, (returnedByKey.get(k) || 0) + Math.abs(Number(l.quantity || 0)));
+                    }
+                }
+                let full = true;
+                for (const [k, purchased] of src.entries()) {
+                    if ((returnedByKey.get(k) || 0) + 1e-9 < purchased) { full = false; break; }
+                }
+                fullyCreditedByPurId[purId] = full;
+            }
+        }
+
+        // For closed CNs we derive the close reason from the source PUR's state.
+        // A CN is closed via the Fully-Credited cascade only when the source
+        // invoice is Unpaid/Partial AND credit_status = "credited"; otherwise
+        // the closure came from a Receipt (Είσπραξη).
+        const closedCnSourceIds = (purchases ?? [])
+            .filter((p) => (p.document_type || "").toUpperCase() === "CN" && (p.status || "").toLowerCase() === "closed" && p.converted_from_id)
+            .map((p) => p.converted_from_id);
+        const sourcePurStateById = new Map();
+        if (closedCnSourceIds.length > 0) {
+            const { data: srcRows } = await supabase
+                .from("purchases")
+                .select("id, credit_status, payment_status")
+                .eq("company_id", companyId)
+                .in("id", closedCnSourceIds);
+            for (const r of srcRows || []) {
+                sourcePurStateById.set(r.id, {
+                    credit: (r.credit_status || "").toLowerCase(),
+                    payment: (r.payment_status || "").toLowerCase()
+                });
+            }
+        }
+
+        const creditRemainingSourceIds = (purchases ?? [])
+            .filter((p) => ["PUR", "GRN"].includes((p.document_type || "").toUpperCase()))
+            .map((p) => p.id);
+        const creditRemainingByPurId = creditRemainingSourceIds.length > 0
+            ? await getRemainingCreditQtyByPurchaseItemIdMapsForMany(supabase, companyId, creditRemainingSourceIds)
+            : new Map();
+
         const now = new Date();
         const normalized = (purchases ?? []).map(p => {
             let paymentStatus = p.payment_status || null;
@@ -8835,12 +9264,46 @@ router.get("/company/purchases", requireAuth, requireAnyPermission(['purchases.v
             }
             const isPo = (p.document_type || "").toUpperCase() === "PO";
             const isGrn = (p.document_type || "").toUpperCase() === "GRN";
+            const isPur = (p.document_type || "").toUpperCase() === "PUR";
+            const isCn = (p.document_type || "").toUpperCase() === "CN";
+            let cn_close_reason = null;
+            if (isCn && (p.status || "").toLowerCase() === "closed" && p.converted_from_id) {
+                const src = sourcePurStateById.get(p.converted_from_id);
+                const srcCredit = src?.credit || "";
+                const srcPayment = src?.payment || "";
+                cn_close_reason = (srcCredit === "credited" && srcPayment !== "paid")
+                    ? "fully_credited"
+                    : "receipt";
+            }
+            const remMap = creditRemainingByPurId.get(p.id);
+            const purchase_items_enriched = (isPur || isGrn) && remMap
+                ? (p.purchase_items || []).map((it) => ({
+                    ...it,
+                    remaining_credit_quantity: remMap.get(it.id) ?? Number(it.quantity ?? 0),
+                }))
+                : p.purchase_items;
+
             return {
                 ...p,
+                purchase_items: purchase_items_enriched,
                 payment_status: paymentStatus,
+                credit_status: isPur ? (() => {
+                    const raw = p.credit_status || null;
+                    if (!raw) return null;
+                    const ps = String(paymentStatus || "").toLowerCase();
+                    // Paid invoice + partial return: DB may still say "credited" from
+                    // older logic; line-level fully_credited is false → show partial only.
+                    if (ps === "paid" && raw === "credited" && !fullyCreditedByPurId[p.id]) {
+                        return "partially_credited";
+                    }
+                    return raw;
+                })() : null,
                 linked_documents: isPo ? (grnByPoId[p.id] || []) : [],
                 converted_to: isGrn ? (purByGrnId[p.id] || null) : undefined,
                 has_payments: (paymentCountByPurId[p.id] || 0) > 0,
+                fully_credited: isPur ? !!fullyCreditedByPurId[p.id] : false,
+                has_draft_cn: isPur ? !!hasDraftCnByPurId[p.id] : false,
+                cn_close_reason,
                 store: p.stores ? { id: p.stores.id, name: p.stores.name } : null,
                 vendor: p.vendors ? { id: p.vendors.id, name: p.vendors.name } : null,
                 stores: undefined,
@@ -8896,6 +9359,7 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
                 payment_terms,
                 due_date,
                 payment_status,
+                credit_status,
                 amount_due,
                 purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt, po_line_id, is_extra),
                 stores (id, name, address),
@@ -8939,18 +9403,18 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
 
         let converted_to = null;
         if (["PUR", "GRN"].includes((purchase.document_type || "PUR").toUpperCase()) && (purchase.status || "").toLowerCase() === "cancelled") {
-            const { data: dbnPurchase } = await supabase
+            const { data: cnPurchase } = await supabase
                 .from("purchases")
                 .select("id, document_type, invoice_number")
                 .eq("company_id", companyId)
                 .eq("converted_from_id", id)
-                .eq("document_type", "DBN")
+                .eq("document_type", "CN")
                 .single();
-            if (dbnPurchase) {
+            if (cnPurchase) {
                 converted_to = {
-                    id: dbnPurchase.id,
-                    document_type: dbnPurchase.document_type || "DBN",
-                    invoice_number: dbnPurchase.invoice_number || `#${dbnPurchase.id}`
+                    id: cnPurchase.id,
+                    document_type: cnPurchase.document_type || "CN",
+                    invoice_number: cnPurchase.invoice_number || `#${cnPurchase.id}`
                 };
             }
         }
@@ -8976,13 +9440,26 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
         }
 
         let return_from = null;
-        if ((purchase.document_type || "PUR").toUpperCase() === "DBN" && purchase.converted_from_id) {
+        // For a closed CN we derive why it was closed so the UI can show the right
+        // disabled-reverse tooltip: `fully_credited` (Unpaid/Partial source PUR
+        // whose credits wiped the remaining balance) vs `receipt` (user ran
+        // Καταχώρηση Είσπραξης against a Paid-invoice CN, or fully receipted
+        // any other CN).
+        let cn_close_reason = null;
+        if ((purchase.document_type || "PUR").toUpperCase() === "CN" && purchase.converted_from_id) {
             const { data: sourcePurchase } = await supabase
                 .from("purchases")
-                .select("id, document_type, invoice_number")
+                .select("id, document_type, invoice_number, credit_status, payment_status")
                 .eq("id", purchase.converted_from_id)
                 .eq("company_id", companyId)
                 .single();
+            if ((purchase.status || "").toLowerCase() === "closed") {
+                const srcCredit = (sourcePurchase?.credit_status || "").toLowerCase();
+                const srcPayment = (sourcePurchase?.payment_status || "").toLowerCase();
+                cn_close_reason = (srcCredit === "credited" && srcPayment !== "paid")
+                    ? "fully_credited"
+                    : "receipt";
+            }
             if (sourcePurchase) {
                 return_from = {
                     id: sourcePurchase.id,
@@ -9014,14 +9491,45 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
             }
         }
         if ((purchase.document_type || "").toUpperCase() === "PUR") {
-            const { data: dbnRows } = await supabase
+            const { data: cnRows } = await supabase
                 .from("purchases")
                 .select("id, document_type, invoice_number, status")
                 .eq("converted_from_id", id)
-                .eq("document_type", "DBN")
+                .eq("document_type", "CN")
                 .eq("company_id", companyId);
-            if (dbnRows && dbnRows.length > 0) {
-                linked_documents = linked_documents.concat(dbnRows);
+            if (cnRows && cnRows.length > 0) {
+                linked_documents = linked_documents.concat(cnRows);
+                const cnIds = cnRows.map((r) => r.id);
+                const { data: purReceiptRows } = await supabase
+                    .from("receipts")
+                    .select("id, status, payment_date")
+                    .eq("company_id", companyId)
+                    .in("purchase_id", cnIds);
+                for (const rc of purReceiptRows || []) {
+                    linked_documents.push({
+                        id: rc.id,
+                        document_type: "RECEIPT",
+                        invoice_number: null,
+                        status: rc.status || "posted",
+                        payment_date: rc.payment_date ?? null,
+                    });
+                }
+            }
+        }
+        if ((purchase.document_type || "").toUpperCase() === "CN") {
+            const { data: cnReceiptRows } = await supabase
+                .from("receipts")
+                .select("id, status, payment_date")
+                .eq("company_id", companyId)
+                .eq("purchase_id", parseInt(id, 10));
+            for (const rc of cnReceiptRows || []) {
+                linked_documents.push({
+                    id: rc.id,
+                    document_type: "RECEIPT",
+                    invoice_number: null,
+                    status: rc.status || "posted",
+                    payment_date: rc.payment_date ?? null,
+                });
             }
         }
 
@@ -9052,6 +9560,55 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
             }
         }
 
+        // For a PUR, compute whether every purchased (product, variant) quantity has already been
+        // fully returned via non-reversed CN(s). The `create_credit_note` button relies on this to
+        // decide if there is anything left to credit.
+        let fully_credited = false;
+        let has_draft_cn = false;
+        if ((purchase.document_type || "").toUpperCase() === "PUR") {
+            const { data: srcItems } = await supabase
+                .from("purchase_items")
+                .select("product_id, product_variant_id, quantity")
+                .eq("purchase_id", id);
+            const keyOf = (pid, vid) => `${pid}:${vid}`;
+            const srcByKey = new Map();
+            for (const s of srcItems || []) {
+                const k = keyOf(s.product_id, s.product_variant_id);
+                srcByKey.set(k, (srcByKey.get(k) || 0) + Number(s.quantity || 0));
+            }
+            const { data: cnRowsAll } = await supabase
+                .from("purchases")
+                .select("id, status")
+                .eq("company_id", companyId)
+                .eq("converted_from_id", id)
+                .eq("document_type", "CN");
+            const activeCnIds = (cnRowsAll || [])
+                .filter((d) => {
+                    const st = (d.status || "").toLowerCase();
+                    return st !== "reversed" && (st === "completed" || st === "posted" || st === "closed");
+                })
+                .map((d) => d.id);
+            has_draft_cn = (cnRowsAll || []).some((d) => (d.status || "").toLowerCase() === "draft");
+            const returnedByKey = new Map();
+            if (activeCnIds.length > 0) {
+                const { data: cnLines } = await supabase
+                    .from("purchase_items")
+                    .select("product_id, product_variant_id, quantity")
+                    .in("purchase_id", activeCnIds);
+                for (const l of cnLines || []) {
+                    const k = keyOf(l.product_id, l.product_variant_id);
+                    returnedByKey.set(k, (returnedByKey.get(k) || 0) + Math.abs(Number(l.quantity || 0)));
+                }
+            }
+            if (srcByKey.size > 0) {
+                fully_credited = true;
+                for (const [k, purchased] of srcByKey.entries()) {
+                    const already = returnedByKey.get(k) || 0;
+                    if (already + 1e-9 < purchased) { fully_credited = false; break; }
+                }
+            }
+        }
+
         let source_grn = null;
         let source_po = null;
         if ((purchase.document_type || "").toUpperCase() === "PUR" && purchase.converted_from_id) {
@@ -9075,9 +9632,28 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
             }
         }
 
+        let purchase_items_out = purchase.purchase_items;
+        if (["PUR", "GRN"].includes((purchase.document_type || "").toUpperCase())) {
+            const remMap = await getRemainingCreditQtyByPurchaseItemIdMap(supabase, companyId, parseInt(id, 10));
+            purchase_items_out = (purchase.purchase_items || []).map((it) => ({
+                ...it,
+                remaining_credit_quantity: remMap.get(it.id) ?? Number(it.quantity ?? 0),
+            }));
+        }
+
         const normalized = {
             ...purchase,
             payment_status: paymentStatus,
+            credit_status: (() => {
+                const raw = purchase.credit_status || null;
+                if (!raw) return null;
+                if ((purchase.document_type || "").toUpperCase() !== "PUR") return raw;
+                const ps = String(paymentStatus || "").toLowerCase();
+                if (ps === "paid" && raw === "credited" && !fully_credited) {
+                    return "partially_credited";
+                }
+                return raw;
+            })(),
             payments,
             converted_to,
             return_from,
@@ -9086,10 +9662,14 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
             source_grn,
             source_po,
             po_line_received_totals,
+            fully_credited,
+            has_draft_cn,
+            cn_close_reason,
             store: purchase.stores ? { id: purchase.stores.id, name: purchase.stores.name, address: purchase.stores.address } : null,
             vendor: purchase.vendors ? { id: purchase.vendors.id, name: purchase.vendors.name, phone: purchase.vendors.phone, email: purchase.vendors.email } : null,
             stores: undefined,
-            vendors: undefined
+            vendors: undefined,
+            purchase_items: purchase_items_out,
         };
 
         return res.json({
@@ -9106,7 +9686,7 @@ router.get("/company/purchases/:id", requireAuth, requireAnyPermission(['purchas
     }
 });
 
-// GET /company/purchases/:id/pdf - Download purchase as PDF (PO/GRN/PUR/DBN)
+// GET /company/purchases/:id/pdf - Download purchase as PDF (PO/GRN/PUR/CN)
 router.get("/company/purchases/:id/pdf", requireAuth, requireAnyPermission(['purchases.view', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const { id } = req.params;
@@ -9229,7 +9809,7 @@ router.get("/company/purchases/:id/pdf", requireAuth, requireAnyPermission(['pur
 
         const pdfBuffer = await generatePurchasePdf(pdfData);
 
-        const prefix = docType === "PO" ? "paraggelia" : docType === "GRN" ? "paralavi" : docType === "DBN" ? "pistotiko" : "agora";
+        const prefix = docType === "PO" ? "paraggelia" : docType === "GRN" ? "paralavi" : docType === "CN" ? "pistotiko" : "agora";
         const filename = `${prefix}-${purchase.invoice_number || purchase.id}.pdf`;
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -9252,9 +9832,9 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
 
     const docType = (reqDocType && typeof reqDocType === "string" && PURCHASE_DOC_TYPES.includes(reqDocType.trim().toUpperCase()))
         ? normalizePurchaseDocType(reqDocType) : normalizePurchaseDocType("PUR");
-    const isDBN = docType === "DBN";
+    const isCN = docType === "CN";
 
-    if (isDBN && (!reqConvertedFromId || (typeof reqConvertedFromId !== "number" && typeof reqConvertedFromId !== "string"))) {
+    if (isCN && (!reqConvertedFromId || (typeof reqConvertedFromId !== "number" && typeof reqConvertedFromId !== "string"))) {
         return res.status(400).json({
             success: false,
             message: "Το χρεωστικό σημείωμα απαιτεί αναφορά στην αρχική αγορά (converted_from_id)",
@@ -9296,7 +9876,7 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
 
     const validItems = items.filter(it => {
         if (!it || typeof it.product_id !== "number" || typeof it.product_variant_id !== "number" || typeof it.quantity !== "number" || it.quantity <= 0 || typeof it.cost_price !== "number" || typeof it.vat_exempt !== "boolean") return false;
-        if (isDBN) return it.cost_price <= 0;
+        if (isCN) return it.cost_price <= 0;
         return it.cost_price >= 0;
     });
 
@@ -9446,9 +10026,9 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
             "posted",
         ];
         const validStatusesGrn = ["draft", "completed"];
-        const validStatusesDBN = ["draft", "completed"];
-        const validStatuses = isDBN
-            ? validStatusesDBN
+        const validStatusesCN = ["draft", "completed"];
+        const validStatuses = isCN
+            ? validStatusesCN
             : isGrn
               ? validStatusesGrn
               : isPO
@@ -9466,7 +10046,7 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
             });
         }
 
-        const dbnConvertedFromId = isDBN && reqConvertedFromId != null
+        const cnConvertedFromId = isCN && reqConvertedFromId != null
             ? (typeof reqConvertedFromId === "number" ? reqConvertedFromId : parseInt(String(reqConvertedFromId), 10))
             : null;
 
@@ -9483,13 +10063,9 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
             const invDateStr = invoice_date && typeof invoice_date === "string" && invoice_date.trim() ? invoice_date.trim().slice(0, 10) : new Date().toISOString().slice(0, 10);
             const daysToAdd = purchasePaymentTerms === "immediate" ? 0 : parseInt(purchasePaymentTerms, 10) || 0;
             purchaseDueDate = daysToAdd > 0 ? (() => { const d = new Date(invDateStr); d.setDate(d.getDate() + daysToAdd); return d.toISOString(); })() : null;
-            if (purchasePaymentTerms === "immediate") {
-                purchasePaymentStatus = "paid";
-                purchaseAmountDue = 0;
-            } else {
-                purchasePaymentStatus = "unpaid";
-                purchaseAmountDue = totalAmount;
-            }
+            // All PURs start unpaid; `paid` comes only from posted rows in `payments` (recompute).
+            purchasePaymentStatus = "unpaid";
+            purchaseAmountDue = totalAmount;
         }
 
         const userProvidedInvNum = invoice_number && typeof invoice_number === "string" && invoice_number.trim() ? invoice_number.trim() : null;
@@ -9517,7 +10093,7 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
             invoice_date: invoice_date && typeof invoice_date === "string" && invoice_date.trim() ? invoice_date.trim() : null,
             status: purchaseStatus,
             document_type: docType,
-            converted_from_id: isDBN ? dbnConvertedFromId : null,
+            converted_from_id: isCN ? cnConvertedFromId : null,
             created_by: userId || null,
             ...(isPUR && purchasePaymentTerms && { payment_terms: purchasePaymentTerms }),
             ...(purchaseDueDate != null && { due_date: purchaseDueDate }),
@@ -9565,7 +10141,7 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
             });
         }
 
-        const shouldApplyStock = !isDBN && (isGrn
+        const shouldApplyStock = !isCN && (isGrn
             ? purchaseStatus === "completed"
             : (purchaseStatus === "received" || purchaseStatus === "completed"));
         if (shouldApplyStock) {
@@ -9672,31 +10248,9 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
         }
         }
 
-        // Auto-payment for completed PUR with immediate payment terms
-        if (isPUR && purchaseStatus === "completed" && purchasePaymentTerms === "immediate" && vendor_id && typeof vendor_id === "string" && vendor_id.trim()) {
-            const { error: payErr } = await supabase.from("payments").insert({
-                company_id: companyId,
-                store_id: store_id.trim(),
-                purchase_id: purchase.id,
-                vendor_id: vendor_id.trim(),
-                amount: totalAmount,
-                payment_method_id: payment_method_id.trim(),
-                is_auto: true,
-                created_by: userId || null
-            });
-            if (payErr) {
-                console.error("POST /company/purchases auto-payment:", payErr);
-                if (shouldApplyStock) {
-                    await reversePurchaseStock(companyId, store_id.trim(), purchase.id, userId);
-                }
-                await supabase.from("purchase_items").delete().eq("purchase_id", purchase.id);
-                await supabase.from("purchases").delete().eq("id", purchase.id);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την καταχώρηση αυτόματης πληρωμής",
-                    code: "DB_ERROR"
-                });
-            }
+        // Single source of truth for PUR balances (matches PATCH finalize path).
+        if (isPUR && purchaseStatus === "completed") {
+            await recomputePurchasePaymentStatus(supabase, companyId, purchase.id);
         }
 
         const { data: fullPurchase } = await supabase
@@ -9719,6 +10273,7 @@ router.post("/company/purchases", requireAuth, requireAnyPermission(['purchases.
                 payment_terms,
                 due_date,
                 payment_status,
+                credit_status,
                 amount_due,
                 purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt)
             `)
@@ -9808,10 +10363,10 @@ async function applyPurchaseStock(companyId, storeId, purchaseId, userId, items)
 }
 
 /**
- * Apply stock OUT (decrease) for DBN when completed.
- * Used for manual DBN completion and partial returns.
+ * Apply stock OUT (decrease) for CN when completed.
+ * Used for manual CN completion and partial returns.
  */
-async function applyDbnStock(companyId, storeId, purchaseId, userId, items) {
+async function applyCnStock(companyId, storeId, purchaseId, userId, items) {
     for (const it of items) {
         const qty = Math.abs(Number(it.quantity));
         if (qty <= 0) continue;
@@ -9835,8 +10390,8 @@ async function applyDbnStock(companyId, storeId, purchaseId, userId, items) {
             product_variant_id: it.product_variant_id,
             quantity: -qty,
             movement_type: "out",
-            source: "debit_note",
-            related_document_type: "debit_note",
+            source: "credit_note",
+            related_document_type: "credit_note",
             related_document_id: purchaseId,
             created_by: userId || null
         });
@@ -9844,17 +10399,102 @@ async function applyDbnStock(companyId, storeId, purchaseId, userId, items) {
 }
 
 /**
- * Create an accounting-only DBN when a PUR or GRN is fully cancelled.
- * Stock is already reversed by reversePurchaseStock - do NOT call applyDbnStock.
+ * Reverse CN stock: undo the -quantity credit_note movements for this CN.
+ * Mirrors reversePurchaseStock but for related_document_type = "credit_note".
  */
-async function createAutoDbnOnCancellation(companyId, originalPurchase, userId) {
+async function reverseCnStock(companyId, storeId, cnId) {
+    const { data: movements } = await supabase
+        .from("stock_movements")
+        .select("id, product_variant_id, quantity")
+        .eq("company_id", companyId)
+        .eq("store_id", storeId)
+        .eq("related_document_type", "credit_note")
+        .eq("related_document_id", cnId);
+
+    if (!movements || movements.length === 0) return;
+
+    for (const m of movements) {
+        const qty = Number(m.quantity);
+        const { data: sp } = await supabase
+            .from("store_products")
+            .select("id, stock_quantity")
+            .eq("store_id", storeId)
+            .eq("product_variant_id", m.product_variant_id)
+            .maybeSingle();
+
+        if (sp) {
+            const newQty = Number(sp.stock_quantity) - qty;
+            await supabase.from("store_products").update({ stock_quantity: newQty }).eq("id", sp.id);
+        }
+        await supabase.from("stock_movements").delete().eq("id", m.id);
+    }
+}
+
+/**
+ * Apply a CN's credit against its source PUR's balance.
+ *
+ * Credit Notes never create a payment row. Instead, the source PUR's payment_status
+ * and amount_due are recomputed from (posted real payments) + (non-reversed CN totals)
+ * — see helpers/paymentStatus.js. This function is a thin wrapper that also returns
+ * { applied, receivable } for callers that want to decide follow-up UI/status changes
+ * (e.g. create a claim against the vendor when the invoice was already paid).
+ */
+async function applyCnToSourcePurchase(companyId, cnId /*, fallbackPaymentMethodId, userId */) {
+    const { data: cn } = await supabase
+        .from("purchases")
+        .select("id, total_amount, converted_from_id")
+        .eq("id", cnId)
+        .eq("company_id", companyId)
+        .single();
+    if (!cn || !cn.converted_from_id) return { applied: 0, receivable: 0 };
+
+    const cnTotal = Math.abs(Number(cn.total_amount || 0));
+    if (cnTotal <= 0) return { applied: 0, receivable: 0 };
+
+    const { data: pur } = await supabase
+        .from("purchases")
+        .select("id, amount_due, total_amount")
+        .eq("id", cn.converted_from_id)
+        .eq("company_id", companyId)
+        .single();
+    if (!pur) return { applied: 0, receivable: Math.round(cnTotal * 100) / 100 };
+
+    // Amount_due BEFORE this CN's credit is considered. recomputePurchasePaymentStatus
+    // below will include this CN (it's already a row on the PUR), so we snapshot first.
+    const dueBefore = Number(pur.amount_due != null ? pur.amount_due : pur.total_amount) || 0;
+    const applied = Math.max(0, Math.min(cnTotal, dueBefore));
+    const receivable = Math.round((cnTotal - applied) * 100) / 100;
+
+    await recomputePurchasePaymentStatus(supabase, companyId, pur.id);
+    return { applied, receivable };
+}
+
+/**
+ * Recompute the source PUR after a CN is reversed (CN row is already `reversed`).
+ */
+async function recomputeSourcePurAfterCnReverse(companyId, cnId) {
+    const { data: cn } = await supabase
+        .from("purchases")
+        .select("converted_from_id")
+        .eq("id", cnId)
+        .eq("company_id", companyId)
+        .single();
+    if (!cn || !cn.converted_from_id) return;
+    await recomputePurchasePaymentStatus(supabase, companyId, cn.converted_from_id);
+}
+
+/**
+ * Create an accounting-only CN when a PUR or GRN is fully cancelled.
+ * Stock is already reversed by reversePurchaseStock - do NOT call applyCnStock.
+ */
+async function createAutoCnOnCancellation(companyId, originalPurchase, userId) {
     const docType = String(originalPurchase.document_type || "").toUpperCase();
     if (docType !== "PUR" && docType !== "GRN") return;
 
     const items = originalPurchase.purchase_items || [];
     if (items.length === 0) return;
 
-    const dbnItems = items.map(it => ({
+    const cnItems = items.map(it => ({
         product_id: it.product_id,
         product_variant_id: it.product_variant_id,
         quantity: Number(it.quantity),
@@ -9864,13 +10504,13 @@ async function createAutoDbnOnCancellation(companyId, originalPurchase, userId) 
         vat_exempt: it.vat_exempt === true
     }));
 
-    const subtotal = dbnItems.reduce((s, it) => s + it.total_cost, 0);
+    const subtotal = cnItems.reduce((s, it) => s + it.total_cost, 0);
     const vatTotal = Math.round(subtotal * 0.2 * 100) / 100;
     const totalAmount = Math.round((subtotal + vatTotal) * 100) / 100;
 
-    const dbnNumber = await getNextSequence(companyId, "DBN");
+    const cnNumber = await getNextSequence(companyId, "CN");
 
-    const { data: dbnPurchase, error: dbnErr } = await supabase
+    const { data: cnPurchase, error: cnErr } = await supabase
         .from("purchases")
         .insert({
             company_id: companyId,
@@ -9882,25 +10522,25 @@ async function createAutoDbnOnCancellation(companyId, originalPurchase, userId) 
             vat_total: vatTotal,
             notes: originalPurchase.notes ? `Ακύρωση: ${originalPurchase.invoice_number || originalPurchase.id}` : null,
             status: "completed",
-            document_type: "DBN",
-            invoice_number: dbnNumber,
+            document_type: "CN",
+            invoice_number: cnNumber,
             converted_from_id: originalPurchase.id,
             created_by: userId || null
         })
         .select("id")
         .single();
 
-    if (dbnErr || !dbnPurchase) {
-        console.error("createAutoDbnOnCancellation:", dbnErr);
+    if (cnErr || !cnPurchase) {
+        console.error("createAutoCnOnCancellation:", cnErr);
         return;
     }
 
-    const recalcDbnItems = dbnItems.map(it => {
+    const recalcCnItems = cnItems.map(it => {
         const total = it.quantity * it.cost_price;
         const vatRate = it.vat_exempt ? 0 : (it.vat_rate || 0);
         const lineVat = Math.round(total * vatRate * 100) / 100;
         return {
-            purchase_id: dbnPurchase.id,
+            purchase_id: cnPurchase.id,
             product_id: it.product_id,
             product_variant_id: it.product_variant_id,
             quantity: it.quantity,
@@ -9911,17 +10551,17 @@ async function createAutoDbnOnCancellation(companyId, originalPurchase, userId) 
         };
     });
 
-    await supabase.from("purchase_items").insert(recalcDbnItems);
-    let dbnSubtotal = 0;
-    let dbnVatTotal = 0;
-    for (const it of recalcDbnItems) {
-        dbnSubtotal += it.total_cost;
-        dbnVatTotal += Math.round(it.total_cost * it.vat_rate * 100) / 100;
+    await supabase.from("purchase_items").insert(recalcCnItems);
+    let cnSubtotal = 0;
+    let cnVatTotal = 0;
+    for (const it of recalcCnItems) {
+        cnSubtotal += it.total_cost;
+        cnVatTotal += Math.round(it.total_cost * it.vat_rate * 100) / 100;
     }
-    dbnSubtotal = Math.round(dbnSubtotal * 100) / 100;
-    dbnVatTotal = Math.round(dbnVatTotal * 100) / 100;
-    const dbnTotal = Math.round((dbnSubtotal + dbnVatTotal) * 100) / 100;
-    await supabase.from("purchases").update({ subtotal: dbnSubtotal, vat_total: dbnVatTotal, total_amount: dbnTotal }).eq("id", dbnPurchase.id).eq("company_id", companyId);
+    cnSubtotal = Math.round(cnSubtotal * 100) / 100;
+    cnVatTotal = Math.round(cnVatTotal * 100) / 100;
+    const cnTotal = Math.round((cnSubtotal + cnVatTotal) * 100) / 100;
+    await supabase.from("purchases").update({ subtotal: cnSubtotal, vat_total: cnVatTotal, total_amount: cnTotal }).eq("id", cnPurchase.id).eq("company_id", companyId);
 }
 
 // PATCH /company/purchases/:id - Update purchase
@@ -9994,7 +10634,7 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
         }
 
         const storeId = existing.store_id;
-        const isDBN = docType === "DBN";
+        const isCN = docType === "CN";
         const isPO = docType === "PO";
         const isPUR = docType === "PUR";
         const validPurchaseTerms = ["immediate", "15", "30", "60", "90"];
@@ -10011,13 +10651,29 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
 
         // Fetch context for documentTransitions validation
         let purchasePaymentStatus = null;
+        let purchaseCreditStatus = null;
+        let purchaseAmountDue = 0;
         let hasPayments = false;
         let hasLinkedInvoice = false;
-        if (docType === "PUR" || docType === "DBN") {
-            const { data: purRow } = await supabase.from("purchases").select("payment_status").eq("id", id).eq("company_id", companyId).single();
+        let hasDraftCn = false;
+        if (docType === "PUR" || docType === "CN") {
+            const { data: purRow } = await supabase.from("purchases").select("payment_status, credit_status, amount_due").eq("id", id).eq("company_id", companyId).single();
             purchasePaymentStatus = purRow?.payment_status;
+            purchaseCreditStatus = purRow?.credit_status;
+            purchaseAmountDue = Number(purRow?.amount_due ?? 0);
             const { count: payCount } = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("purchase_id", id).eq("company_id", companyId).neq("status", "reversed");
             hasPayments = (payCount || 0) > 0;
+        }
+        if (docType === "PUR") {
+            // A draft CN linked to this PUR blocks reversal — the user must
+            // delete it before reversing the invoice.
+            const { count: draftCnCount } = await supabase.from("purchases")
+                .select("id", { count: "exact", head: true })
+                .eq("company_id", companyId)
+                .eq("converted_from_id", id)
+                .eq("document_type", "CN")
+                .eq("status", "draft");
+            hasDraftCn = (draftCnCount || 0) > 0;
         }
         if (docType === "GRN") {
             const { data: purFromGrn } = await supabase.from("purchases").select("id").eq("converted_from_id", id).eq("document_type", "PUR").neq("status", "reversed").eq("company_id", companyId).maybeSingle();
@@ -10030,7 +10686,14 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             .eq("purchase_id", id);
         const oldItemsList = oldItems || [];
 
-        const purchaseContext = { paymentStatus: purchasePaymentStatus, hasPayments, hasLinkedInvoice };
+        const purchaseContext = {
+            paymentStatus: purchasePaymentStatus,
+            creditStatus: purchaseCreditStatus,
+            amountDue: purchaseAmountDue,
+            hasPayments,
+            hasLinkedInvoice,
+            hasDraftCn
+        };
         const allowedStatuses = getAllowedPurchaseStatuses(docType, oldStatus, purchaseContext);
 
         const requestedStatus = status && typeof status === "string" ? status.trim().toLowerCase() : null;
@@ -10072,8 +10735,11 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             }
         }
 
-        // PUR/GRN with stock applied: only allow status change to cancelled (PUR) or reversed (GRN)
-        if (wasStockApplied && newStatus !== "cancelled" && newStatus !== "reversed") {
+        // PUR/GRN with stock applied: only allow status change to cancelled (PUR) or reversed (GRN).
+        // CN has its own post-finalize transitions (completed → closed via Καταχώρηση Είσπραξης,
+        // completed → reversed via Αντιλογισμός Πιστωτικού) handled by the dedicated blocks below.
+        if (wasStockApplied && newStatus !== "cancelled" && newStatus !== "reversed"
+            && !(isCN && newStatus === "closed")) {
             return res.status(403).json({
                 success: false,
                 message: "Ολοκληρωμένη/παραληφθείσα αγορά δεν μπορεί να επεξεργαστεί. Μόνο ακύρωση ή αντιλογισμός επιτρέπεται.",
@@ -10081,18 +10747,16 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             });
         }
 
-        // Cancel short-circuit (PUR/GRN): reverse stock, create DBN for PUR, update status, return
+        // Cancel short-circuit (PUR/GRN): reverse stock, create CN for PUR, update status, return
         if (wasStockApplied && newStatus === "cancelled") {
             await reversePurchaseStock(companyId, storeId, parseInt(id, 10));
 
-            // Delete non-auto payments and clear payment fields for PUR
             if (docType === "PUR") {
                 await supabase
                     .from("payments")
                     .delete()
                     .eq("purchase_id", id)
-                    .eq("company_id", companyId)
-                    .eq("is_auto", false);
+                    .eq("company_id", companyId);
             }
             const cancelPayload = { status: "cancelled" };
             if (docType === "PUR") {
@@ -10111,16 +10775,16 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
                 return res.status(500).json({ success: false, message: "Σφάλμα ακύρωσης", code: "DB_ERROR" });
             }
 
-            const { data: fullPurchaseForDbn } = await supabase.from("purchases")
+            const { data: fullPurchaseForCn } = await supabase.from("purchases")
                 .select("id, store_id, vendor_id, payment_method_id, subtotal, vat_total, total_amount, notes, document_type, invoice_number")
                 .eq("id", id)
                 .eq("company_id", companyId)
                 .single();
-            const { data: purchaseItemsForDbn } = await supabase.from("purchase_items")
+            const { data: purchaseItemsForCn } = await supabase.from("purchase_items")
                 .select("product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt")
                 .eq("purchase_id", id);
-            if (fullPurchaseForDbn && purchaseItemsForDbn && purchaseItemsForDbn.length > 0) {
-                await createAutoDbnOnCancellation(companyId, { ...fullPurchaseForDbn, purchase_items: purchaseItemsForDbn }, userId);
+            if (fullPurchaseForCn && purchaseItemsForCn && purchaseItemsForCn.length > 0) {
+                await createAutoCnOnCancellation(companyId, { ...fullPurchaseForCn, purchase_items: purchaseItemsForCn }, userId);
             }
 
             const { data: fullPurchase } = await supabase.from("purchases").select(`
@@ -10131,7 +10795,7 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             return res.json({ success: true, data: fullPurchase });
         }
 
-        // GRN reversal (Αντιλογισμός): reverse stock, update status, no DBN
+        // GRN reversal (Αντιλογισμός): reverse stock, update status, no CN
         if (wasStockApplied && newStatus === "reversed" && docType === "GRN") {
             try {
                 await reversePurchaseStock(companyId, storeId, parseInt(id, 10));
@@ -10165,6 +10829,63 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             return res.json({ success: true, data: fullPurchase });
         }
 
+        // CN reversal (Αντιλογισμός Πιστωτικού): from completed. Undo CN stock OUT,
+        // recompute source PUR payment_status, set CN → reversed. `closed` is blocked
+        // upstream via the disabled reverse button in documentSpec → not in allowed statuses.
+        if (isCN && (oldStatus === "completed" || oldStatus === "posted") && newStatus === "reversed") {
+            try {
+                await reverseCnStock(companyId, storeId, parseInt(id, 10));
+            } catch (revErr) {
+                const msg = revErr && typeof revErr.message === "string" && revErr.message.trim()
+                    ? revErr.message
+                    : "Σφάλμα αντιλογισμού πιστωτικού";
+                return res.status(400).json({
+                    success: false,
+                    message: msg,
+                    code: "STOCK_REVERSAL_FAILED",
+                });
+            }
+            // Flip the CN to `reversed` FIRST so the subsequent recompute
+            // excludes it from the credits sum (active CN set = everything
+            // except drafts and reversed), then recompute the source PUR.
+            const { error: updErr } = await supabase
+                .from("purchases")
+                .update({ status: "reversed" })
+                .eq("id", id)
+                .eq("company_id", companyId);
+            if (updErr) {
+                console.error("PATCH purchases CN reverse:", updErr);
+                return res.status(500).json({ success: false, message: "Σφάλμα αντιλογισμού", code: "DB_ERROR" });
+            }
+            await recomputeSourcePurAfterCnReverse(companyId, parseInt(id, 10));
+            const { data: fullPurchase } = await supabase.from("purchases").select(`
+                id, created_at, store_id, vendor_id, payment_method_id, total_amount, status, notes,
+                subtotal, vat_total, invoice_number, invoice_date, document_type, converted_from_id,
+                purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt)
+            `).eq("id", id).eq("company_id", companyId).single();
+            return res.json({ success: true, data: fullPurchase });
+        }
+
+        // CN receipt recorded (Καταχώρηση Είσπραξης): completed → closed. Status-only flag that the
+        // receivable from the vendor was collected. Stock and PUR cash balance are unchanged.
+        if (isCN && (oldStatus === "completed" || oldStatus === "posted") && newStatus === "closed") {
+            const { error: updErr } = await supabase
+                .from("purchases")
+                .update({ status: "closed" })
+                .eq("id", id)
+                .eq("company_id", companyId);
+            if (updErr) {
+                console.error("PATCH purchases CN close:", updErr);
+                return res.status(500).json({ success: false, message: "Σφάλμα ενημέρωσης κατάστασης", code: "DB_ERROR" });
+            }
+            const { data: fullPurchase } = await supabase.from("purchases").select(`
+                id, created_at, store_id, vendor_id, payment_method_id, total_amount, status, notes,
+                subtotal, vat_total, invoice_number, invoice_date, document_type, converted_from_id,
+                purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt)
+            `).eq("id", id).eq("company_id", companyId).single();
+            return res.json({ success: true, data: fullPurchase });
+        }
+
         if (!items || !Array.isArray(items)) {
             return res.status(400).json({
                 success: false,
@@ -10186,7 +10907,7 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
         if (!it || typeof it.product_id !== "number" || typeof it.product_variant_id !== "number" ||
             typeof it.quantity !== "number" || it.quantity <= 0 || typeof it.cost_price !== "number" ||
             typeof it.vat_exempt !== "boolean") return false;
-        if (isDBN) return it.cost_price <= 0;
+        if (isCN) return it.cost_price <= 0;
         return it.cost_price >= 0;
     });
 
@@ -10300,6 +11021,70 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
                         success: false,
                         message: "Η γραμμή παραλαβής δεν αντιστοιχεί στη γραμμή της παραγγελίας",
                         code: "INVALID_PO_LINE_LINK"
+                    });
+                }
+            }
+        }
+
+        // CN lines must match the source purchase: each (product, variant) must exist there,
+        // and the cumulative returned quantity across non-reversed CNs (excluding this one)
+        // plus the new amount must not exceed what was originally purchased.
+        if (isCN && existing.converted_from_id) {
+            const keyOf = (pid, vid) => `${pid}:${vid}`;
+            const { data: srcItems } = await supabase
+                .from("purchase_items")
+                .select("product_id, product_variant_id, quantity")
+                .eq("purchase_id", existing.converted_from_id);
+            const srcByKey = new Map();
+            for (const s of srcItems || []) {
+                const k = keyOf(s.product_id, s.product_variant_id);
+                srcByKey.set(k, (srcByKey.get(k) || 0) + Number(s.quantity || 0));
+            }
+            for (const it of validItems) {
+                const k = keyOf(it.product_id, it.product_variant_id);
+                if (!srcByKey.has(k)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Η γραμμή πιστωτικού αναφέρεται σε προϊόν/παραλλαγή που δεν υπάρχει στην αρχική αγορά",
+                        code: "CN_LINE_NOT_IN_SOURCE"
+                    });
+                }
+            }
+
+            const { data: otherCns } = await supabase
+                .from("purchases")
+                .select("id, status")
+                .eq("company_id", companyId)
+                .eq("converted_from_id", existing.converted_from_id)
+                .eq("document_type", "CN");
+            const otherCnIds = (otherCns || [])
+                .filter((d) => String(d.id) !== String(id) && (d.status || "").toLowerCase() !== "reversed")
+                .map((d) => d.id);
+            const returnedByKey = new Map();
+            if (otherCnIds.length > 0) {
+                const { data: otherLines } = await supabase
+                    .from("purchase_items")
+                    .select("product_id, product_variant_id, quantity, purchase_id")
+                    .in("purchase_id", otherCnIds);
+                for (const l of otherLines || []) {
+                    const k = keyOf(l.product_id, l.product_variant_id);
+                    returnedByKey.set(k, (returnedByKey.get(k) || 0) + Math.abs(Number(l.quantity || 0)));
+                }
+            }
+            const newByKey = new Map();
+            for (const it of validItems) {
+                const k = keyOf(it.product_id, it.product_variant_id);
+                newByKey.set(k, (newByKey.get(k) || 0) + Math.abs(Number(it.quantity || 0)));
+            }
+            for (const [k, qty] of newByKey.entries()) {
+                const purchased = srcByKey.get(k) || 0;
+                const already = returnedByKey.get(k) || 0;
+                if (qty + already > purchased + 1e-9) {
+                    const remaining = Math.max(0, purchased - already);
+                    return res.status(400).json({
+                        success: false,
+                        message: `Η ποσότητα πιστωτικού υπερβαίνει την αρχική αγορά. Διαθέσιμο προς επιστροφή: ${remaining}`,
+                        code: "CN_QTY_EXCEEDS_SOURCE"
                     });
                 }
             }
@@ -10572,36 +11357,24 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
             }
         }
 
-        // Auto-payment for completed PUR with immediate payment terms
-        if (isPUR && newStatus === "completed" && effectivePaymentTerms === "immediate" && vendor_id && typeof vendor_id === "string" && vendor_id.trim()) {
-            const { error: payErr } = await supabase.from("payments").insert({
-                company_id: companyId,
-                store_id: storeId,
-                purchase_id: parseInt(id, 10),
-                vendor_id: vendor_id.trim(),
-                amount: totalAmount,
-                payment_method_id: payment_method_id.trim(),
-                is_auto: true,
-                created_by: userId || null
-            });
-            if (payErr) {
-                console.error("PATCH /company/purchases auto-payment:", payErr);
-                return res.status(500).json({
-                    success: false,
-                    message: "Σφάλμα κατά την καταχώρηση αυτόματης πληρωμής",
-                    code: "DB_ERROR"
-                });
-            }
-        }
-
-        // When DBN is finalized (draft → posted/completed), apply stock OUT
-        if (isDBN && oldStatus === "draft" && (newStatus === "posted" || newStatus === "completed")) {
-            const { data: dbnItems } = await supabase
+        // When CN is finalized (draft → completed):
+        //  1) apply stock OUT (credit_note movement with negative qty);
+        //  2) reduce the source PUR's amount_due — no payment row is ever created.
+        //     The remaining balance is always recomputed live as:
+        //         max(0, total − paid − sum(non-reversed CN totals))
+        //     Reversed CNs drop out automatically, restoring the balance.
+        //  3) If the PUR was Unpaid/Partial and the credits wipe the remaining
+        //     balance to zero (Fully Credited case), recompute cascades CN →
+        //     `closed`. If the PUR was already Paid, the CN stays `completed`
+        //     regardless — it represents a cash claim on the vendor that the
+        //     user settles manually via Καταχώρηση Είσπραξης.
+        if (isCN && oldStatus === "draft" && (newStatus === "posted" || newStatus === "completed")) {
+            const { data: cnItems } = await supabase
                 .from("purchase_items")
                 .select("product_id, product_variant_id, quantity, cost_price, vat_rate, vat_exempt")
                 .eq("purchase_id", id);
-            if (dbnItems && dbnItems.length > 0) {
-                const stockItems = dbnItems.map(it => ({
+            if (cnItems && cnItems.length > 0) {
+                const stockItems = cnItems.map(it => ({
                     product_id: it.product_id,
                     product_variant_id: it.product_variant_id,
                     quantity: Math.abs(Number(it.quantity)),
@@ -10609,8 +11382,10 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
                     vat_rate: it.vat_rate,
                     vat_exempt: it.vat_exempt
                 }));
-                await applyDbnStock(companyId, storeId, parseInt(id, 10), userId, stockItems);
+                await applyCnStock(companyId, storeId, parseInt(id, 10), userId, stockItems);
             }
+
+            await applyCnToSourcePurchase(companyId, parseInt(id, 10));
         }
 
         // When PUR is finalized (draft → completed) and came from a GRN, set that GRN to "invoiced"
@@ -10629,11 +11404,20 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
                 .eq("company_id", companyId);
         }
 
+        // Recompute payment_status / credit_status / amount_due on the PUR so the
+        // response carries fresh values. Without this, a freshly finalized PUR
+        // would ship with amount_due = NULL and the UI would incorrectly show
+        // "υπόλοιπο 0" and disable the Καταχώρηση Πληρωμής button.
+        if (isPUR) {
+            await recomputePurchasePaymentStatus(supabase, companyId, parseInt(id, 10));
+        }
+
         const { data: fullPurchase } = await supabase
             .from("purchases")
             .select(`
                 id, created_at, store_id, vendor_id, payment_method_id, total_amount, status, notes,
                 subtotal, vat_total, invoice_number, invoice_date, document_type, converted_from_id,
+                payment_status, credit_status, amount_due,
                 purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt, po_line_id, is_extra)
             `)
             .eq("id", id)
@@ -10651,7 +11435,7 @@ router.patch("/company/purchases/:id", requireAuth, requireAnyPermission(['purch
     }
 });
 
-// POST /company/purchases/:id/partial-return - PUR/GRN (received/completed) → create draft DBN with selected items
+// POST /company/purchases/:id/partial-return - PUR/GRN (received/completed) → create draft CN with selected items
 router.post("/company/purchases/:id/partial-return", requireAuth, requireAnyPermission(['purchases.create', 'purchases.edit', '*']), async (req, res) => {
     const companyId = req.user.companyId;
     const userId = req.user.id;
@@ -10660,23 +11444,47 @@ router.post("/company/purchases/:id/partial-return", requireAuth, requireAnyPerm
     if (!companyId || !id) return res.status(400).json({ success: false, message: "Λείπουν στοιχεία", code: "MISSING_PARAMS" });
     if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ success: false, message: "Χρειάζονται γραμμές επιστροφής (items: [{purchase_item_id, quantity}])", code: "VALIDATION_ERROR" });
     try {
-        const { data: orig, error: e } = await supabase.from("purchases").select("id, store_id, vendor_id, payment_method_id, subtotal, vat_total, total_amount, notes, document_type, status").eq("id", id).eq("company_id", companyId).single();
+        const { data: orig, error: e } = await supabase.from("purchases").select("id, store_id, vendor_id, payment_method_id, subtotal, vat_total, total_amount, notes, document_type, status, invoice_number").eq("id", id).eq("company_id", companyId).single();
         if (e || !orig) return res.status(404).json({ success: false, message: "Η αγορά δεν βρέθηκε", code: "NOT_FOUND" });
         const dt = (orig.document_type || "").toUpperCase();
         if (dt !== "PUR" && dt !== "GRN") return res.status(400).json({ success: false, message: "Μόνο τιμολόγιο αγοράς ή δελτίο αποστολής προμηθευτή μπορεί να έχει μερική επιστροφή", code: "INVALID_STATE" });
         const statusLower = (orig.status || "").toLowerCase();
         if (statusLower !== "received" && statusLower !== "completed") return res.status(400).json({ success: false, message: "Η αγορά πρέπει να είναι παραληφθείσα ή ολοκληρωμένη", code: "INVALID_STATE" });
+
+        // If an open draft CN already exists for this source PUR, reuse it instead of creating a new one.
+        const { data: existingDraftCn } = await supabase
+            .from("purchases")
+            .select("id")
+            .eq("company_id", companyId)
+            .eq("converted_from_id", id)
+            .eq("document_type", "CN")
+            .eq("status", "draft")
+            .maybeSingle();
+        if (existingDraftCn) {
+            const { data: fullExisting } = await supabase.from("purchases").select(`
+                id, created_at, store_id, vendor_id, payment_method_id, total_amount, status, notes,
+                subtotal, vat_total, invoice_number, invoice_date, document_type, converted_from_id,
+                purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt)
+            `).eq("id", existingDraftCn.id).eq("company_id", companyId).single();
+            return res.json({
+                success: true,
+                data: { ...(fullExisting || {}), reused_existing_draft: true },
+            });
+        }
+
+        const remainingByPurItem = await getRemainingCreditQtyByPurchaseItemIdMap(supabase, companyId, parseInt(id, 10));
+
         const { data: allItems } = await supabase.from("purchase_items").select("id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt").eq("purchase_id", id);
         const byId = (allItems || []).reduce((acc, it) => { acc[it.id] = it; return acc; }, {});
         const returnLines = [];
-        let dbnSubtotal = 0, dbnVat = 0;
+        let cnSubtotal = 0, cnVat = 0;
         for (const r of items) {
             const pid = r.purchase_item_id != null ? Number(r.purchase_item_id) : null;
             const qty = r.quantity != null ? Number(r.quantity) : 0;
             if (!pid || qty <= 0 || !byId[pid]) continue;
             const origItem = byId[pid];
-            const maxQty = origItem.quantity;
-            const returnQty = Math.min(qty, maxQty);
+            const maxRemaining = remainingByPurItem.get(pid) ?? 0;
+            const returnQty = Math.min(qty, maxRemaining);
             if (returnQty <= 0) continue;
             const total = -returnQty * Number(origItem.cost_price);
             const vatRate = Number(origItem.vat_rate) || 0;
@@ -10691,30 +11499,36 @@ router.post("/company/purchases/:id/partial-return", requireAuth, requireAnyPerm
                 vat_exempt: origItem.vat_exempt,
                 lineVat
             });
-            dbnSubtotal += total;
-            dbnVat += lineVat;
+            cnSubtotal += total;
+            cnVat += lineVat;
         }
-        if (returnLines.length === 0) return res.status(400).json({ success: false, message: "Δεν υπάρχουν έγκυρες γραμμές επιστροφής", code: "VALIDATION_ERROR" });
-        const dbnTotal = Math.round((dbnSubtotal + dbnVat) * 100) / 100;
-        const dbnNum = await getNextSequence(companyId, "DBN");
-        const { data: dbn, error: insErr } = await supabase.from("purchases").insert({
+        if (returnLines.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Δεν απομένει διαθέσιμη ποσότητα για πίστωση (ή οι ποσότητες ξεπερνούν το υπόλοιπο μετά από προηγούμενα πιστωτικά).",
+                code: "VALIDATION_ERROR",
+            });
+        }
+        const cnTotal = Math.round((cnSubtotal + cnVat) * 100) / 100;
+        const cnNum = await getNextSequence(companyId, "CN");
+        const { data: cn, error: insErr } = await supabase.from("purchases").insert({
             company_id: companyId,
             store_id: orig.store_id,
             vendor_id: orig.vendor_id,
             payment_method_id: orig.payment_method_id,
-            subtotal: Math.round(dbnSubtotal * 100) / 100,
-            vat_total: Math.round(dbnVat * 100) / 100,
-            total_amount: dbnTotal,
+            subtotal: Math.round(cnSubtotal * 100) / 100,
+            vat_total: Math.round(cnVat * 100) / 100,
+            total_amount: cnTotal,
             notes: orig.notes ? `Μερική επιστροφή από ${orig.invoice_number || id}` : null,
-            document_type: "DBN",
-            invoice_number: dbnNum,
+            document_type: "CN",
+            invoice_number: cnNum,
             converted_from_id: parseInt(id, 10),
             status: "draft",
             created_by: userId
         }).select("id").single();
-        if (insErr || !dbn) return res.status(500).json({ success: false, message: "Σφάλμα δημιουργίας χρεωστικού", code: "DB_ERROR" });
-        const dbnItems = returnLines.map(it => ({
-            purchase_id: dbn.id,
+        if (insErr || !cn) return res.status(500).json({ success: false, message: "Σφάλμα δημιουργίας χρεωστικού", code: "DB_ERROR" });
+        const cnItems = returnLines.map(it => ({
+            purchase_id: cn.id,
             product_id: it.product_id,
             product_variant_id: it.product_variant_id,
             quantity: it.quantity,
@@ -10723,16 +11537,16 @@ router.post("/company/purchases/:id/partial-return", requireAuth, requireAnyPerm
             vat_rate: it.vat_rate,
             vat_exempt: it.vat_exempt
         }));
-        const { error: itemsErr } = await supabase.from("purchase_items").insert(dbnItems);
+        const { error: itemsErr } = await supabase.from("purchase_items").insert(cnItems);
         if (itemsErr) {
-            await supabase.from("purchases").delete().eq("id", dbn.id);
+            await supabase.from("purchases").delete().eq("id", cn.id);
             return res.status(500).json({ success: false, message: "Σφάλμα γραμμών", code: "DB_ERROR" });
         }
         const { data: full } = await supabase.from("purchases").select(`
             id, created_at, store_id, vendor_id, payment_method_id, total_amount, status, notes,
             subtotal, vat_total, invoice_number, invoice_date, document_type, converted_from_id,
             purchase_items (id, product_id, product_variant_id, quantity, cost_price, total_cost, vat_rate, vat_exempt)
-        `).eq("id", dbn.id).eq("company_id", companyId).single();
+        `).eq("id", cn.id).eq("company_id", companyId).single();
         return res.json({ success: true, data: full });
     } catch (err) {
         console.error("partial-return purchases:", err);
@@ -11138,11 +11952,11 @@ router.delete("/company/purchases/:id", requireAuth, requireAnyPermission(['purc
             });
         }
 
-        if ((existing.document_type || "").toUpperCase() === "DBN" && (existing.status || "").toLowerCase() === "completed") {
+        if ((existing.document_type || "").toUpperCase() === "CN" && (existing.status || "").toLowerCase() === "completed") {
             return res.status(403).json({
                 success: false,
                 message: "Δεν επιτρέπεται διαγραφή ολοκληρωμένου χρεωστικού σημειώματος",
-                code: "CANNOT_DELETE_COMPLETED_DBN"
+                code: "CANNOT_DELETE_COMPLETED_CN"
             });
         }
 
@@ -12599,8 +13413,5 @@ router.post("/onboarding/goto/:step", requireAuth, requireOwner, async (req, res
         });
     }
 });
-
-
-
 
 module.exports = router;
